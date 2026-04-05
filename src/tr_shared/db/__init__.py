@@ -9,6 +9,7 @@ from tr_shared.db.base import (
 )
 from tr_shared.db.repository import BaseRepository
 from tr_shared.db.session import create_async_engine_factory, create_session_factory, get_db
+from tr_shared.db.utils import to_migration_url, to_session_mode_url, to_sync_url
 
 __all__ = [
     "AuditMixin",
@@ -20,4 +21,7 @@ __all__ = [
     "create_async_engine_factory",
     "create_session_factory",
     "get_db",
+    "to_migration_url",
+    "to_session_mode_url",
+    "to_sync_url",
 ]
