@@ -145,9 +145,9 @@ class ServiceHTTPClient:
         merged_headers = dict(headers) if headers else {}
         if "X-Correlation-ID" not in merged_headers:
             try:
-                from structlog.contextvars import get_merged_contextvars
+                from structlog.contextvars import get_contextvars
 
-                ctx = get_merged_contextvars()
+                ctx = get_contextvars()
                 cid = ctx.get("correlation_id")
                 if cid:
                     merged_headers["X-Correlation-ID"] = str(cid)
