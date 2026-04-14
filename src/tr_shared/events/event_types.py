@@ -125,8 +125,18 @@ class HREvents:
     """Events produced by TR-HR-System-be."""
 
     EMPLOYEE_CREATED = "hr.employee.created"
+    EMPLOYEE_UPDATED = "hr.employee.updated"
+    EMPLOYEE_SYNC_COMPLETED = "hr.employee.sync_completed"
     ATTENDANCE_SYNCED = "hr.attendance.synced"
+    PAYROLL_CALCULATED = "hr.payroll.calculated"
+    PAYROLL_APPROVED = "hr.payroll.approved"
+    PAYROLL_REJECTED = "hr.payroll.rejected"
+    JOB_POSTING_PUBLISHED = "hr.job_posting.published"
+    JOB_POSTING_CLOSED = "hr.job_posting.closed"
     APPLICATION_SUBMITTED = "hr.application.submitted"
+    APPLICATION_STAGE_CHANGED = "hr.application.stage_changed"
+    APPLICATION_HIRED = "hr.application.hired"
+    APPLICATION_REJECTED = "hr.application.rejected"
     OFFER_SENT = "hr.offer.sent"
     OFFER_ACCEPTED = "hr.offer.accepted"
 
