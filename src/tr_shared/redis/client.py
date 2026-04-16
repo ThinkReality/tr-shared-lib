@@ -7,6 +7,8 @@ all 10 service implementations.
 """
 
 import redis.asyncio as aioredis
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 _client: aioredis.Redis | None = None
 
@@ -31,11 +33,17 @@ async def get_redis_client(
     """
     global _client
     if _client is None:
+        retry = Retry(ExponentialBackoff(cap=2, base=0.1), retries=3)
         pool = aioredis.ConnectionPool.from_url(
             url,
             max_connections=max_connections,
             decode_responses=decode_responses,
             socket_connect_timeout=socket_connect_timeout,
+            socket_timeout=socket_connect_timeout,
+            health_check_interval=10,
+            socket_keepalive=True,
+            retry=retry,
+            retry_on_error=[ConnectionError, TimeoutError, OSError],
         )
         _client = aioredis.Redis(connection_pool=pool)
     return _client

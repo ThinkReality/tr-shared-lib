@@ -5,6 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
+from tr_shared.cache.exceptions import CacheConnectionError
 
 try:
     from tr_shared.cache.adapters.upstash import UpstashAdapter as _UpstashAdapter
@@ -91,7 +92,16 @@ class CacheProviderFactory:
 
     @staticmethod
     async def create_and_initialize(**kwargs) -> "CacheInterface":
-        """Create cache provider and initialize connection."""
+        """Create cache provider and initialize connection.
+
+        Raises:
+            CacheConnectionError: If the adapter fails to initialize
+                (e.g., Redis unreachable, DNS failure, auth error).
+        """
         cache = CacheProviderFactory.create(**kwargs)
-        await cache.initialize()
+        success = await cache.initialize()
+        if not success:
+            raise CacheConnectionError(
+                "Cache adapter failed to initialize — Redis may be unreachable"
+            )
         return cache

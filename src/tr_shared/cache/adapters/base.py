@@ -64,7 +64,7 @@ class BaseRedisAdapter(CacheInterface):
 
     def _check_initialized(self, op: str) -> None:
         """Raise CacheConnectionError if the client has not been initialised."""
-        if not self._client:
+        if not self._client or not self._available:
             raise CacheConnectionError(
                 f"Cache not initialized — call initialize() before {op}()"
             )

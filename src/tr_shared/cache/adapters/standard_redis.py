@@ -12,6 +12,8 @@ import logging
 from typing import Any
 
 from redis.asyncio import ConnectionPool, Redis
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 from tr_shared.cache.adapters.base import BaseRedisAdapter
 from tr_shared.cache.exceptions import CacheConnectionError, CacheOperationError
@@ -69,12 +71,17 @@ class StandardRedisAdapter(BaseRedisAdapter):
     async def initialize(self) -> bool:
         """Initialize Redis connection."""
         try:
+            retry = Retry(ExponentialBackoff(cap=2, base=0.1), retries=3)
             self._pool = ConnectionPool.from_url(
                 self._url,
                 max_connections=self._max_connections,
                 decode_responses=True,
                 socket_timeout=self._socket_timeout,
                 socket_connect_timeout=self._socket_connect_timeout,
+                health_check_interval=10,
+                socket_keepalive=True,
+                retry=retry,
+                retry_on_error=[ConnectionError, TimeoutError, OSError],
             )
             self._client = Redis(connection_pool=self._pool)
             await self._client.ping()
