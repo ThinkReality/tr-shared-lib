@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tr_shared.db.session import (
     PGBOUNCER_CONNECT_ARGS,
+    _build_connect_args,
     _to_asyncpg,
     create_async_engine_factory,
     create_session_factory,
@@ -59,6 +60,77 @@ class TestPgbouncerConnectArgs:
 
 
 # ---------------------------------------------------------------------------
+# _build_connect_args helper
+# ---------------------------------------------------------------------------
+
+class TestBuildConnectArgs:
+    def test_no_overrides_matches_defaults(self):
+        result = _build_connect_args("", "", None)
+        assert result["statement_cache_size"] == PGBOUNCER_CONNECT_ARGS["statement_cache_size"]
+        assert result["prepared_statement_cache_size"] == PGBOUNCER_CONNECT_ARGS["prepared_statement_cache_size"]
+        assert result["command_timeout"] == PGBOUNCER_CONNECT_ARGS["command_timeout"]
+        assert result["server_settings"]["jit"] == "off"
+
+    def test_returns_deep_copy(self):
+        result = _build_connect_args("", "", None)
+        result["statement_cache_size"] = 999
+        result["server_settings"]["jit"] = "on"
+        assert PGBOUNCER_CONNECT_ARGS["statement_cache_size"] == 0
+        assert PGBOUNCER_CONNECT_ARGS["server_settings"]["jit"] == "off"
+
+    def test_service_name_sets_application_name(self):
+        result = _build_connect_args("crm-backend", "", None)
+        assert result["server_settings"]["application_name"] == "crm-backend"
+        assert result["server_settings"]["jit"] == "off"
+
+    def test_schema_sets_search_path(self):
+        result = _build_connect_args("", "lead", None)
+        assert result["server_settings"]["search_path"] == "lead,public"
+        assert result["server_settings"]["jit"] == "off"
+
+    def test_both_service_name_and_schema(self):
+        result = _build_connect_args("crm-backend", "auth_schema", None)
+        assert result["server_settings"]["application_name"] == "crm-backend"
+        assert result["server_settings"]["search_path"] == "auth_schema,public"
+        assert result["server_settings"]["jit"] == "off"
+
+    def test_empty_strings_do_not_inject(self):
+        result = _build_connect_args("", "", None)
+        assert "application_name" not in result["server_settings"]
+        assert "search_path" not in result["server_settings"]
+
+    def test_custom_connect_args_merges_with_defaults(self):
+        result = _build_connect_args("", "", {"command_timeout": 120})
+        assert result["command_timeout"] == 120
+        assert result["statement_cache_size"] == 0
+        assert result["prepared_statement_cache_size"] == 0
+
+    def test_custom_connect_args_can_override_defaults(self):
+        result = _build_connect_args("", "", {"command_timeout": 120})
+        assert result["command_timeout"] == 120
+
+    def test_custom_server_settings_merges_not_replaces(self):
+        result = _build_connect_args(
+            "admin-panel", "admin",
+            {"server_settings": {"plan_cache_mode": "force_custom_plan"}},
+        )
+        assert result["server_settings"]["plan_cache_mode"] == "force_custom_plan"
+        assert result["server_settings"]["jit"] == "off"
+        assert result["server_settings"]["application_name"] == "admin-panel"
+        assert result["server_settings"]["search_path"] == "admin,public"
+
+    def test_pgbouncer_safe_keys_always_present(self):
+        result = _build_connect_args(
+            "test", "test_schema",
+            {"command_timeout": 120, "server_settings": {"extra": "value"}},
+        )
+        assert result["statement_cache_size"] == 0
+        assert result["prepared_statement_cache_size"] == 0
+        assert callable(result["prepared_statement_name_func"])
+        assert result["prepared_statement_name_func"]() == ""
+
+
+# ---------------------------------------------------------------------------
 # Engine + session factory creation (no actual DB connection)
 # ---------------------------------------------------------------------------
 
@@ -81,6 +153,42 @@ class TestCreateAsyncEngineFactory:
         # Should not raise — _to_asyncpg is applied internally
         engine = create_async_engine_factory("postgres://user:pw@localhost/db")
         assert isinstance(engine, AsyncEngine)
+
+    def test_service_name_sets_application_name(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test",
+            service_name="crm-backend",
+        )
+        assert isinstance(engine, AsyncEngine)
+
+    def test_schema_sets_search_path(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test",
+            schema="lead",
+        )
+        assert isinstance(engine, AsyncEngine)
+
+    def test_both_service_name_and_schema(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test",
+            service_name="lead",
+            schema="lead",
+        )
+        assert isinstance(engine, AsyncEngine)
+
+    def test_custom_connect_args_merge_preserves_defaults(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test",
+            service_name="admin-panel",
+            schema="admin",
+            connect_args={"server_settings": {"plan_cache_mode": "force_custom_plan"}},
+        )
+        assert isinstance(engine, AsyncEngine)
+
+    def test_defaults_preserved_when_no_new_params(self):
+        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        assert isinstance(engine, AsyncEngine)
+        assert engine.echo is False
 
 
 class TestCreateSessionFactory:

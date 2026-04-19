@@ -8,13 +8,19 @@ from tr_shared.db.base import (
     TenantMixin,
 )
 from tr_shared.db.repository import BaseRepository
-from tr_shared.db.session import create_async_engine_factory, create_session_factory, get_db
+from tr_shared.db.session import (
+    PGBOUNCER_CONNECT_ARGS,
+    create_async_engine_factory,
+    create_session_factory,
+    get_db,
+)
 from tr_shared.db.utils import to_migration_url, to_session_mode_url, to_sync_url
 
 __all__ = [
     "AuditMixin",
     "BaseModel",
     "BaseRepository",
+    "PGBOUNCER_CONNECT_ARGS",
     "SoftDeleteMixin",
     "TenantMixin",
     "TimestampMixin",
