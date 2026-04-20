@@ -1062,7 +1062,7 @@ wheels = [
 
 [[package]]
 name = "tr-shared-lib"
-version = "0.9.6"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic-settings" },
@@ -1082,6 +1082,7 @@ all = [
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-sdk" },
     { name = "prometheus-client" },
+    { name = "pydantic" },
     { name = "pyjwt" },
     { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -1104,6 +1105,10 @@ db = [
 ]
 http = [
     { name = "httpx" },
+]
+integrations = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 logging = [
     { name = "structlog" },
@@ -1168,6 +1173,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'rate-limiter'", specifier = ">=0.109.0" },
     { name = "fastapi", marker = "extra == 'webhooks'", specifier = ">=0.109.0" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'integrations'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'middleware'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'monitoring'", specifier = ">=0.27.0" },
     { name = "opentelemetry-api", marker = "extra == 'monitoring'", specifier = ">=1.20.0" },
@@ -1179,6 +1185,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", marker = "extra == 'monitoring'", specifier = ">=1.20.0" },
     { name = "prometheus-client", marker = "extra == 'monitoring'", specifier = ">=0.20.0" },
     { name = "prometheus-client", marker = "extra == 'monitoring-prometheus'", specifier = ">=0.20.0" },
+    { name = "pydantic", marker = "extra == 'integrations'", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pyjwt", marker = "extra == 'auth'", specifier = ">=2.8.0" },
     { name = "redis", marker = "extra == 'cache'", specifier = ">=5.0.0" },
@@ -1188,10 +1195,10 @@ requires-dist = [
     { name = "redis", marker = "extra == 'webhooks'", specifier = ">=5.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'db'", specifier = ">=2.0.0" },
     { name = "structlog", marker = "extra == 'logging'", specifier = ">=24.0.0" },
-    { name = "tr-shared-lib", extras = ["redis", "celery", "db", "http", "middleware", "logging", "auth", "monitoring", "cache", "rate-limiter", "webhooks"], marker = "extra == 'all'" },
+    { name = "tr-shared-lib", extras = ["redis", "celery", "db", "http", "middleware", "logging", "auth", "monitoring", "cache", "rate-limiter", "webhooks", "integrations"], marker = "extra == 'all'" },
     { name = "upstash-redis", marker = "extra == 'upstash'", specifier = ">=1.0.0" },
 ]
-provides-extras = ["redis", "celery", "db", "http", "middleware", "logging", "cache", "upstash", "auth", "monitoring", "monitoring-prometheus", "monitoring-otlp", "rate-limiter", "webhooks", "all"]
+provides-extras = ["redis", "celery", "db", "http", "middleware", "logging", "cache", "upstash", "auth", "monitoring", "monitoring-prometheus", "monitoring-otlp", "rate-limiter", "webhooks", "integrations", "all"]
 
 [package.metadata.requires-dev]
 dev = [

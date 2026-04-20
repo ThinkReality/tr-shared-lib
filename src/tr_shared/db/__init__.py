@@ -2,6 +2,7 @@
 
 from tr_shared.db.base import (
     AuditMixin,
+    Base,
     BaseModel,
     SoftDeleteMixin,
     TimestampMixin,
@@ -18,6 +19,7 @@ from tr_shared.db.utils import to_migration_url, to_session_mode_url, to_sync_ur
 
 __all__ = [
     "AuditMixin",
+    "Base",
     "BaseModel",
     "BaseRepository",
     "PGBOUNCER_CONNECT_ARGS",

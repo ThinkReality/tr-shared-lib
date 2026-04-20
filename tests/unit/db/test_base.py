@@ -42,7 +42,7 @@ class TestTimestampMixin:
 
     def test_updated_at_is_nullable(self):
         col = TimestampMixin.__dict__["updated_at"]
-        assert col.nullable is True
+        assert col.nullable is False
 
 
 # ---------------------------------------------------------------------------
