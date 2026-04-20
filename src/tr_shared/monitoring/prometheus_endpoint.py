@@ -22,6 +22,7 @@ Usage::
     app.include_router(create_metrics_router())
 """
 
+import errno
 import logging
 
 from prometheus_client import (
@@ -60,7 +61,14 @@ def start_prometheus_http_server(
             },
         )
         return server
-    except Exception as exc:
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            logger.warning(
+                "Prometheus port %d already in use — skipping (hot-reload?)",
+                port,
+                extra={"service": service_name, "port": port},
+            )
+            return None
         logger.error(
             "Failed to start Prometheus metrics server",
             extra={"error": str(exc), "port": port},
