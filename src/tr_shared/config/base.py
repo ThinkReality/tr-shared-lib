@@ -44,6 +44,7 @@ class BaseServiceSettings(BaseSettings):
     # ── shared-auth-lib ──
     AUTH_LIB_GATEWAY_SIGNING_SECRET: str = ""
     AUTH_LIB_CRM_BACKEND_URL: str = "http://crm-backend:8000"
+    AUTH_LIB_ADMIN_PANEL_URL: str = "http://tr-be-admin-panel:8003"
     AUTH_LIB_SERVICE_TOKEN: str = ""
 
     # ── Vault Secret Resolution (optional — empty = use plain env var) ──
