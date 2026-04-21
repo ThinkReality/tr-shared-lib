@@ -340,3 +340,117 @@ class TestMultipleProviders:
             headers={"Content-Type": "application/json"},
         )
         assert resp2.status_code == 202
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Batch Pre-4A — ``dynamic_secret`` flag contract
+#
+# spec: docs/specs/04-batch-downstream-handlers.md §Pre-4A.
+# ──────────────────────────────────────────────────────────────────────
+
+
+class _StubVerifier:
+    """Verifier that records every call and returns a configurable result.
+
+    Lets us assert whether the framework invokes the verifier under each
+    (secret, dynamic_secret) combination — the whole point of Pre-4A.
+    """
+
+    def __init__(self, result: bool = True) -> None:
+        self.calls: list[tuple[bytes, dict, str]] = []
+        self.result = result
+
+    def verify(self, raw_body: bytes, headers: dict, secret: str) -> bool:
+        self.calls.append((raw_body, headers, secret))
+        return self.result
+
+
+class TestDynamicSecretFlag:
+    def test_default_dynamic_secret_false(self):
+        cfg = ProviderConfig(name="propertyfinder")
+        assert cfg.dynamic_secret is False
+
+    def test_secret_empty_dynamic_false_skips_verification(self):
+        """Legacy behavior: empty secret + default flag → verifier NOT invoked."""
+        vrf = _StubVerifier(result=False)
+        app = _build_app(
+            configs=[ProviderConfig(name="propertyfinder", secret="")],
+            verifiers={"propertyfinder": vrf},
+        )
+        client = TestClient(app)
+        resp = client.post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={"Content-Type": "application/json"},
+        )
+        # No verifier call → no 401 regardless of verifier's configured result.
+        assert resp.status_code == 202
+        assert vrf.calls == []
+
+    def test_secret_empty_dynamic_true_invokes_verifier_and_401s_on_false(self):
+        """Pre-4A: empty secret + dynamic_secret=True → verifier IS invoked."""
+        vrf = _StubVerifier(result=False)
+        app = _build_app(
+            configs=[
+                ProviderConfig(
+                    name="propertyfinder",
+                    secret="",
+                    dynamic_secret=True,
+                ),
+            ],
+            verifiers={"propertyfinder": vrf},
+        )
+        client = TestClient(app)
+        resp = client.post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401
+        assert len(vrf.calls) == 1
+        # The framework passes the (empty) ``cfg.secret`` through — the
+        # verifier is expected to ignore it and read the real secret from
+        # headers (e.g. X-Webhook-Secret).
+        assert vrf.calls[0][2] == ""
+
+    def test_secret_empty_dynamic_true_verifier_true_yields_success(self):
+        vrf = _StubVerifier(result=True)
+        app = _build_app(
+            configs=[
+                ProviderConfig(
+                    name="propertyfinder",
+                    secret="",
+                    dynamic_secret=True,
+                ),
+            ],
+            verifiers={"propertyfinder": vrf},
+        )
+        client = TestClient(app)
+        resp = client.post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 202
+        assert len(vrf.calls) == 1
+
+    def test_secret_set_behavior_unchanged(self):
+        """Static-secret path: dynamic_secret default is False; verifier invoked
+        with the configured secret. Guards against regression of the existing
+        Bayut/Meta/Dubizzle static-secret path.
+        """
+        vrf = _StubVerifier(result=True)
+        app = _build_app(
+            configs=[ProviderConfig(name="propertyfinder", secret=SECRET)],
+            verifiers={"propertyfinder": vrf},
+        )
+        client = TestClient(app)
+        sig = _sign(BODY, SECRET)
+        resp = client.post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={"X-Signature": sig, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 202
+        assert len(vrf.calls) == 1
+        assert vrf.calls[0][2] == SECRET

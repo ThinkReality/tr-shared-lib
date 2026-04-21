@@ -179,8 +179,12 @@ def _register_provider_endpoints(
         # Build lowercased headers dict
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        # Verify signature
-        if vrf and cfg.secret:
+        # Verify signature.
+        # Pre-4A: when ``cfg.dynamic_secret`` is True, invoke the verifier
+        # even if ``cfg.secret`` is empty — the verifier is expected to
+        # read the real HMAC secret from a request header (e.g.
+        # ``X-Webhook-Secret`` injected by the API gateway for PF).
+        if vrf and (cfg.secret or cfg.dynamic_secret):
             if not vrf.verify(raw_body, headers, cfg.secret):
                 logger.warning("Invalid webhook signature: provider=%s", pn)
                 return JSONResponse(

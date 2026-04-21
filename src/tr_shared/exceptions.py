@@ -11,9 +11,18 @@ Usage:
     from tr_shared.exceptions import (
         BaseAPIException, ValidationError, NotFoundError, ...
     )
+
+Subclass contract:
+    Every subclass MUST call ``super().__init__(status_code, error, detail, code)``
+    so that the four public attributes (``status_code``, ``error``,
+    ``detail_message``, ``error_code``) are set. A subclass that skips the
+    super call raises ``TypeError`` at construction time — the bad subclass
+    fails loudly instead of rendering a broken error response in production.
 """
 
 from fastapi import HTTPException
+
+_REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "error_code")
 
 
 class BaseAPIException(HTTPException):
@@ -40,6 +49,30 @@ class BaseAPIException(HTTPException):
         self.error = error
         self.detail_message = detail
         self.error_code = code
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Wrap subclass ``__init__`` to enforce the attribute contract.
+
+        After the subclass constructor runs, every required attribute must
+        exist on the instance. Missing attrs => ``TypeError`` — catches
+        subclasses that forget ``super().__init__(...)`` before the broken
+        exception leaks into a FastAPI handler.
+        """
+        super().__init_subclass__(**kwargs)
+        original_init = cls.__init__
+
+        def _verified_init(self: "BaseAPIException", *args: object, **kw: object) -> None:
+            original_init(self, *args, **kw)
+            missing = [a for a in _REQUIRED_ATTRS if not hasattr(self, a)]
+            if missing:
+                raise TypeError(
+                    f"{type(self).__name__} did not set required attributes "
+                    f"{missing}. Every BaseAPIException subclass must call "
+                    "super().__init__(status_code=..., error=..., detail=..., "
+                    "code=...). See tr_shared.exceptions docstring.",
+                )
+
+        cls.__init__ = _verified_init  # type: ignore[method-assign]
 
     def to_dict(self) -> dict:
         """Serialize to the standard error response shape.
@@ -142,3 +175,18 @@ class ServiceTimeoutError(BaseAPIException):
 
     def __init__(self, detail: str = "Service timeout", code: str = "SERVICE_TIMEOUT_001") -> None:
         super().__init__(status_code=504, error="Service timeout", detail=detail, code=code)
+
+
+__all__ = [
+    "AuthenticationError",
+    "AuthorizationError",
+    "BaseAPIException",
+    "ConflictError",
+    "DatabaseError",
+    "InternalServerError",
+    "NotFoundError",
+    "RateLimitError",
+    "ServiceTimeoutError",
+    "ServiceUnavailableError",
+    "ValidationError",
+]

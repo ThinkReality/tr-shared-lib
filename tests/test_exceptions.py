@@ -94,3 +94,79 @@ class TestServerErrors:
     def test_service_timeout_error(self):
         exc = ServiceTimeoutError()
         assert exc.status_code == 504
+
+
+# ---------------------------------------------------------------------------
+# Subclass contract freeze
+# ---------------------------------------------------------------------------
+
+
+_REQUIRED_ATTRS = ("status_code", "error", "detail_message", "error_code")
+_ALL_BUILTIN_EXC = (
+    ValidationError,
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    ConflictError,
+    RateLimitError,
+    DatabaseError,
+    InternalServerError,
+    ServiceUnavailableError,
+    ServiceTimeoutError,
+)
+
+
+def _construct(cls):
+    """Build a subclass instance honoring its required positional args."""
+    if cls is ValidationError:
+        return cls(detail="validation failed")
+    return cls()
+
+
+class TestSubclassContract:
+    @pytest.mark.parametrize("cls", _ALL_BUILTIN_EXC)
+    def test_all_builtin_subclasses_set_required_attrs(self, cls):
+        exc = _construct(cls)
+        for attr in _REQUIRED_ATTRS:
+            assert hasattr(exc, attr), f"{cls.__name__} missing {attr}"
+
+    @pytest.mark.parametrize("cls", _ALL_BUILTIN_EXC)
+    def test_to_dict_is_stable(self, cls):
+        exc = _construct(cls)
+        body = exc.to_dict()
+        assert "error" in body
+        for key in ("error", "detail", "code"):
+            if key in body:
+                assert isinstance(body[key], str)
+
+    def test_to_dict_minimal_has_only_error(self):
+        exc = BaseAPIException(status_code=400, error="Bad")
+        assert exc.to_dict() == {"error": "Bad"}
+
+    def test_to_dict_full_includes_detail_and_code(self):
+        exc = BaseAPIException(
+            status_code=400, error="Bad", detail="bad thing", code="X_001",
+        )
+        assert exc.to_dict() == {
+            "error": "Bad",
+            "detail": "bad thing",
+            "code": "X_001",
+        }
+
+    def test_subclass_skipping_super_raises_type_error(self):
+        class BrokenExc(BaseAPIException):
+            def __init__(self) -> None:  # noqa: D401 — intentional bug
+                pass
+
+        with pytest.raises(TypeError, match="did not set required attributes"):
+            BrokenExc()
+
+    def test_subclass_calling_super_passes(self):
+        class GoodExc(BaseAPIException):
+            def __init__(self) -> None:
+                super().__init__(status_code=418, error="teapot")
+
+        exc = GoodExc()
+        assert exc.status_code == 418
+        assert exc.error == "teapot"
+        assert exc.to_dict() == {"error": "teapot"}

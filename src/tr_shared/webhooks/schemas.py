@@ -42,13 +42,20 @@ class ProviderConfig(BaseModel):
 
     Attributes:
         name: Provider identifier used in URL paths and logging.
-        secret: HMAC signing secret. Empty string skips verification.
+        secret: HMAC signing secret. Empty string skips verification
+            **unless** ``dynamic_secret`` is True.
         signature_header: HTTP header containing the signature.
         signature_format: ``"hex"`` for raw hex digest, ``"sha256={hex}"``
             for prefixed format (used by Bayut/Meta).
         event_id_fields: Ordered list of payload field names to extract event ID from.
         event_type_fields: Ordered list of payload field names to extract event type from.
         idempotency_ttl_seconds: TTL for the idempotency key in Redis.
+        dynamic_secret: When True, the framework invokes the verifier even
+            if ``secret`` is empty. The verifier is expected to read the
+            HMAC secret from a request header (e.g. ``X-Webhook-Secret``)
+            rather than from ``ProviderConfig.secret``. Added in Batch
+            Pre-4A of the PropertyFinder gateway-injected-secret flow
+            (docs/specs/04-batch-downstream-handlers.md).
     """
 
     name: str
@@ -58,6 +65,7 @@ class ProviderConfig(BaseModel):
     event_id_fields: list[str] = ["eventId", "event_id", "id"]
     event_type_fields: list[str] = ["type", "event", "eventType", "event_type"]
     idempotency_ttl_seconds: int = 86400
+    dynamic_secret: bool = False
 
 
 class WebhookResult(BaseModel):
