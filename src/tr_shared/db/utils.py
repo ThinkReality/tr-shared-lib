@@ -21,11 +21,17 @@ def to_session_mode_url(url: str) -> str:
 
 
 def to_sync_url(url: str) -> str:
-    """Convert async driver URL to sync driver for Alembic.
+    """Convert async/legacy driver URL to sync driver for Alembic.
 
+    postgres:// → postgresql+psycopg2://  (Railway legacy scheme)
     postgresql+asyncpg:// → postgresql+psycopg2://
+    postgresql:// → postgresql+psycopg2://
     """
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+    url = url.replace("postgres://", "postgresql://", 1)
+    url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
 
 
 def to_migration_url(url: str) -> str:
