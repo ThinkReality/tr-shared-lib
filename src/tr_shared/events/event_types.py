@@ -138,8 +138,6 @@ class HREvents:
     APPLICATION_STAGE_CHANGED = "hr.application.stage_changed"
     APPLICATION_HIRED = "hr.application.hired"
     APPLICATION_REJECTED = "hr.application.rejected"
-    OFFER_SENT = "hr.offer.sent"
-    OFFER_ACCEPTED = "hr.offer.accepted"
 
 
 class LMSEvents:
