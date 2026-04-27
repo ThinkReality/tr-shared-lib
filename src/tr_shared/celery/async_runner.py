@@ -1,41 +1,43 @@
 """
-Utility for running async coroutines inside Celery worker processes.
+Persistent worker event loop for Celery tasks.
 
-Celery workers are synchronous by default.  Each Celery task that needs
-to call async application code must create a fresh event loop — but the
-naive ``asyncio.run()`` pattern is dangerous when the failure-handling
-path is also async, because ``asyncio.run()`` cannot be called from a
-running event loop, producing a ``RuntimeError`` at runtime.
+Celery workers are synchronous. Tasks that need to call async code must
+run that code on an asyncio loop. The naive ``asyncio.run(coro)`` pattern
+creates and destroys a fresh loop on every task — which silently breaks
+any async resource (httpx connection pool, SQLAlchemy AsyncEngine, Redis
+async client) whose internal state is bound to the loop. The next task
+finds those resources still cached but pointing at a closed loop, and
+raises ``RuntimeError: Event loop is closed``.
 
-This module provides ``run_async_in_celery``, a single helper that:
+This module provides a single persistent event loop per worker process.
+Every task runs on that one loop. Long-lived async resources stay healthy
+across tasks. This is the canonical Celery + asyncio integration pattern.
 
-* Calls ``engine.dispose(close=True)`` before creating a new loop so that
-  connections carried over from a previous loop are fully released.
-* Detects (unexpected) already-running loops and falls back to a
-  manually-created loop with full cleanup.
-* Is completely service-agnostic — the caller passes its own ``engine``
-  and ``service_name``; no globals are imported.
+Wiring (each service's ``app/celery_app.py``)::
 
-Usage (in any service's task file)::
+    from celery.signals import worker_process_shutdown
+    from tr_shared.celery import shutdown_worker_loop
+
+    @worker_process_shutdown.connect
+    def _close_loop(**_kwargs):
+        shutdown_worker_loop()
+
+Usage (in any task)::
 
     from tr_shared.celery import run_async_in_celery
-    from app.core.database import engine
-    from app.core.config import get_settings
 
-    settings = get_settings()
-
-    @celery_app.task(bind=True, max_retries=3)
-    def process_something(self, entity_id: str) -> None:
-        run_async_in_celery(
-            _process_async(entity_id),
-            engine=engine,
-            service_name=settings.SERVICE_NAME,
-        )
+    @celery_app.task(bind=True)
+    def my_task(self, entity_id: str):
+        return run_async_in_celery(_my_async_impl(entity_id))
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Awaitable, TypeVar
+import threading
+from collections.abc import Awaitable
+from typing import Any, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -43,87 +45,89 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
+# Module-global loop — one per worker process. Celery's ``solo`` and
+# ``prefork`` pools each give a fresh process per worker, so the global
+# is per-worker by virtue of process boundaries.
+_worker_loop: asyncio.AbstractEventLoop | None = None
+_loop_lock = threading.Lock()
+
+
+def _get_or_create_worker_loop() -> asyncio.AbstractEventLoop:
+    """Return this worker's persistent event loop, creating it if needed.
+
+    Thread-safe — Celery's solo/prefork pools are single-threaded per
+    process, but the lock guards against re-entry from signal handlers.
+    """
+    global _worker_loop
+    with _loop_lock:
+        if _worker_loop is None or _worker_loop.is_closed():
+            _worker_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_worker_loop)
+        return _worker_loop
+
 
 def run_async_in_celery(
     coro: Awaitable[T],
     *,
-    engine: AsyncEngine,
-    service_name: str,
+    engine: AsyncEngine | None = None,
+    service_name: str | None = None,
 ) -> T:
-    """Run an async coroutine inside a Celery (synchronous) worker process.
+    """Run an async coroutine on this worker's persistent event loop.
 
-    Properly handles event loop creation in forked Celery workers so that
-    database connections and other async resources work correctly.
+    All tasks in a worker process share ONE event loop. This keeps async
+    resource pools (httpx, SQLAlchemy, Redis) alive across tasks instead
+    of having them bind+die on every invocation.
 
     Args:
         coro: The async coroutine to execute.
-        engine: The SQLAlchemy ``AsyncEngine`` for this service.  Its
-            connection pool is disposed before creating the new event loop
-            to prevent stale file-descriptor leaks across retries.
-        service_name: Human-readable service identifier used in log
-            messages only — not used for routing or config.
+        engine: Deprecated — kept for backward compatibility. With a
+            persistent loop, per-task ``engine.dispose()`` is harmful
+            (it drains the connection pool every task) and unnecessary
+            (the pool stays bound to the same loop). Pass ``None`` or
+            simply omit. Kept to avoid breaking existing callers.
+        service_name: Deprecated — kept for backward compatibility and
+            no longer used in logging. Will be removed in a future
+            major bump once all callers stop passing it.
 
     Returns:
         Whatever the coroutine returns.
 
     Raises:
         Any exception raised by the coroutine.
-
-    Note:
-        Uses ``asyncio.run()`` to create a completely fresh event loop for
-        each task invocation.  This ensures database connections are
-        created within the correct loop context, avoiding
-        "attached to a different loop" errors.
-
-        The engine pool is disposed with ``close=True`` (closes the
-        kernel-level socket) before the new loop is created, preventing
-        accumulation of orphaned file descriptors.
     """
-    # Dispose of the connection pool so no sockets from a previous loop
-    # survive into the new one.  close=True shuts the kernel socket; the
-    # pool will be recreated automatically on next use.
-    try:
-        engine.dispose(close=True)
-    except Exception as exc:
-        logger.debug(
-            "Database connection pool disposal (may be expected) - service=%s, error=%s",
-            service_name,
-            str(exc) or "none",
-        )
+    # Keep backward-compat parameters silent. Callers can drop them at
+    # their convenience.
+    _ = engine, service_name
+    loop = _get_or_create_worker_loop()
+    return loop.run_until_complete(coro)
 
-    try:
-        asyncio.get_running_loop()
-        # A running loop inside a Celery worker is unexpected.  Create a
-        # new loop manually so we don't crash.
-        logger.warning(
-            "Running event loop detected in Celery worker — creating a new loop. "
-            "service=%s",
-            service_name,
-            stack_info=True,
-        )
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+
+def shutdown_worker_loop(**_kwargs: Any) -> None:
+    """Close the persistent worker event loop on worker shutdown.
+
+    Wire this to Celery's ``worker_process_shutdown`` signal. Idempotent —
+    safe to call multiple times. Kwargs are accepted so this can be used
+    directly as a signal handler without a wrapper.
+    """
+    global _worker_loop
+    with _loop_lock:
+        if _worker_loop is None or _worker_loop.is_closed():
+            _worker_loop = None
+            return
+        loop = _worker_loop
         try:
-            return loop.run_until_complete(coro)
-        finally:
-            # Cancel any tasks that the coroutine left pending.
-            try:
-                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            except Exception as exc:
-                logger.debug(
-                    "Error cancelling pending tasks during event loop cleanup - service=%s, error=%s",
-                    service_name,
-                    str(exc),
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True),
                 )
-            finally:
+        except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+            logger.debug("worker_loop_pending_task_cleanup_error: %s", exc)
+        finally:
+            try:
                 loop.close()
-                asyncio.set_event_loop(None)
-    except RuntimeError:
-        # No running loop — the normal case inside a Celery worker.
-        # asyncio.run() creates a fresh loop, runs the coroutine, then
-        # tears the loop down cleanly.
-        return asyncio.run(coro)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("worker_loop_close_error: %s", exc)
+            _worker_loop = None
