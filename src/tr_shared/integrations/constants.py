@@ -17,8 +17,8 @@ Must exactly match the value written by admin-panel's connect_propertyfinder()."
 PF_AUTH_URL: Final[str] = "https://auth.propertyfinder.com/auth/oauth/v1/token"
 """OAuth2 client-credentials token endpoint."""
 
-PF_API_BASE_URL: Final[str] = "https://api.propertyfinder.com"
-"""PropertyFinder REST API base URL (webhooks, leads, listings)."""
+PF_API_BASE_URL: Final[str] = "https://atlas.propertyfinder.com"
+"""PropertyFinder Atlas REST API base URL (webhooks, leads, listings)."""
 
 ALL_PF_WEBHOOK_EVENTS: Final[tuple[str, ...]] = (
     "lead.created",
