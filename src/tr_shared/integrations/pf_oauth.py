@@ -1,17 +1,16 @@
-"""PropertyFinder OAuth2 client-credentials helper.
+"""PropertyFinder Atlas token-exchange helper.
 
-Extracted from tr-listing-service/app/clients/propertyfinder/token_manager.py
-so admin-panel and listing-service share one implementation. Higher-level
-concerns (token caching, refresh scheduling) stay in the calling code —
-this helper is only the raw HTTP exchange.
+PropertyFinder's Atlas API uses a non-standard token endpoint that does NOT
+follow OAuth2 client-credentials. The actual contract:
 
-PF's contract (non-obvious):
-  - Credentials go in an HTTP Basic header, NOT in the request body.
-  - Body is JSON with scope=openid + grant_type=client_credentials,
-    NOT application/x-www-form-urlencoded.
+  POST https://atlas.propertyfinder.com/v1/auth/token
+  Content-Type: application/json
+  Body: {"apiKey": "...", "apiSecret": "..."}
+  Response: {"accessToken": "...", "expiresIn": <seconds>}
+
+This helper is the single source of truth for token exchange across services.
+Higher-level concerns (caching, refresh scheduling) stay in the calling code.
 """
-
-import base64
 
 import httpx
 
@@ -26,14 +25,14 @@ async def fetch_pf_access_token(
     http_client: httpx.AsyncClient,
     auth_url: str = PF_AUTH_URL,
 ) -> tuple[str, int]:
-    """Exchange PropertyFinder API credentials for an OAuth access token.
+    """Exchange PropertyFinder API credentials for an Atlas access token.
 
     Args:
-        api_key: PF API key (client_id equivalent).
-        api_secret: PF API secret (client_secret equivalent).
+        api_key: PF API key.
+        api_secret: PF API secret.
         http_client: Caller-owned httpx.AsyncClient. The caller is responsible
             for timeouts, connection pooling, and lifecycle.
-        auth_url: OAuth2 token endpoint; defaults to PF_AUTH_URL.
+        auth_url: PF Atlas token endpoint; defaults to PF_AUTH_URL.
 
     Returns:
         (access_token, expires_in_seconds) — the caller is responsible for
@@ -43,37 +42,36 @@ async def fetch_pf_access_token(
         IntegrationConfigError: on non-2xx response, network failure, or
             malformed response body.
     """
-    encoded = base64.b64encode(f"{api_key}:{api_secret}".encode()).decode()
     headers = {
-        "Authorization": f"Basic {encoded}",
         "Content-Type": "application/json",
+        "Accept": "application/json",
     }
-    payload = {"scope": "openid", "grant_type": "client_credentials"}
+    payload = {"apiKey": api_key, "apiSecret": api_secret}
 
     try:
         response = await http_client.post(auth_url, headers=headers, json=payload)
     except httpx.HTTPError as exc:
         raise IntegrationConfigError(
-            f"PF OAuth exchange failed: {exc.__class__.__name__}: {exc}"
+            f"PF token exchange failed: {exc.__class__.__name__}: {exc}"
         ) from exc
 
     if response.status_code != 200:
-        # Do NOT include response body in the error message — it may contain
-        # the credentials echoed back. Status code + reason is enough.
+        # Do NOT include response body in the error message — it may echo
+        # the credentials back. Status code alone is enough for diagnosis.
         raise IntegrationConfigError(
-            f"PF OAuth exchange returned HTTP {response.status_code}"
+            f"PF token exchange returned HTTP {response.status_code}"
         )
 
     try:
         data = response.json()
     except ValueError as exc:
-        raise IntegrationConfigError("PF OAuth response was not valid JSON") from exc
+        raise IntegrationConfigError("PF token response was not valid JSON") from exc
 
-    token = data.get("access_token")
-    expires_in = data.get("expires_in")
+    token = data.get("accessToken")
+    expires_in = data.get("expiresIn")
     if not isinstance(token, str) or not token:
-        raise IntegrationConfigError("PF OAuth response missing access_token")
+        raise IntegrationConfigError("PF token response missing accessToken")
     if not isinstance(expires_in, int) or expires_in <= 0:
-        raise IntegrationConfigError("PF OAuth response missing/invalid expires_in")
+        raise IntegrationConfigError("PF token response missing/invalid expiresIn")
 
     return token, expires_in

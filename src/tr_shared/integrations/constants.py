@@ -14,8 +14,9 @@ PF_PLATFORM_NAME: Final[str] = "PropertyFinder API"
 """Canonical platform_name string used in admin.admin_panel_listing_platform_configs.
 Must exactly match the value written by admin-panel's connect_propertyfinder()."""
 
-PF_AUTH_URL: Final[str] = "https://auth.propertyfinder.com/auth/oauth/v1/token"
-"""OAuth2 client-credentials token endpoint."""
+PF_AUTH_URL: Final[str] = "https://atlas.propertyfinder.com/v1/auth/token"
+"""PropertyFinder Atlas token endpoint. Non-standard protocol — accepts
+JSON body {apiKey, apiSecret}, returns {accessToken, expiresIn}."""
 
 PF_API_BASE_URL: Final[str] = "https://atlas.propertyfinder.com"
 """PropertyFinder Atlas REST API base URL (webhooks, leads, listings)."""
