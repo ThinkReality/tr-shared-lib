@@ -28,6 +28,7 @@ import os
 import time
 from collections import defaultdict
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -140,9 +141,14 @@ class IntegrationConfigClient:
         if await self._circuit.is_open():
             raise IntegrationConfigError("Circuit open: admin panel unavailable")
 
+        # Pre-encode the platform_name path segment. Canonical names like
+        # "PropertyFinder API" contain a literal space that must reach the
+        # admin-panel router as %20. Relying on httpx's auto-encoding is
+        # unreliable across versions and edge proxies — encode explicitly.
+        encoded_name = quote(platform_name, safe="")
         try:
             response = await self._client.get(
-                f"/api/v1/internal/integrations/platforms/{platform_name}/tenants",
+                f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants",
                 headers={"X-Service-Token": self._service_token},
             )
         except httpx.HTTPError as exc:
@@ -244,9 +250,15 @@ class IntegrationConfigClient:
         if await self._circuit.is_open():
             raise IntegrationConfigError("Circuit open: admin panel unavailable")
 
+        # Pre-encode path segments — see note in get_enabled_tenants. The
+        # canonical "PropertyFinder API" platform_name contains a literal
+        # space; relying on httpx auto-encoding produced 404s in production
+        # because the wire-format space wasn't normalized to %20.
+        encoded_name = quote(platform_name, safe="")
+        encoded_tenant = quote(str(tenant_id), safe="")
         url = (
-            f"/api/v1/internal/integrations/platforms/{platform_name}"
-            f"/tenants/{tenant_id}"
+            f"/api/v1/internal/integrations/platforms/{encoded_name}"
+            f"/tenants/{encoded_tenant}"
         )
         headers = {"X-Service-Token": self._service_token}
         if correlation_id:
