@@ -66,6 +66,7 @@ class ListingEvents:
     PUBLISH_REQUESTED = "listing.publish_requested"
     PRICE_CHANGED = "listing.price_changed"
     OWNER_CHANGED = "listing.owner_changed"
+    REFRESHED = "listing.refreshed"
 
 
 class CMSEvents:
