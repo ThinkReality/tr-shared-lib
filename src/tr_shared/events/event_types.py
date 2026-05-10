@@ -67,6 +67,11 @@ class ListingEvents:
     PRICE_CHANGED = "listing.price_changed"
     OWNER_CHANGED = "listing.owner_changed"
     REFRESHED = "listing.refreshed"
+    REPUBLISHED = "listing.republished"
+    EXPIRED = "listing.expired"
+    SOLD = "listing.sold"
+    RENTED = "listing.rented"
+    DELETED = "listing.deleted"
 
 
 class CMSEvents:
@@ -87,6 +92,9 @@ class ActivityEvents:
     """Events produced by tr-activity-service and consumed for activity logging."""
 
     COMMENT_ADDED = "activity.comment.added"
+    COMMENT_EDITED = "activity.comment.edited"
+    COMMENT_DELETED = "activity.comment.deleted"
+    LOG_CREATED = "activity.log.created"
     MENTION_CREATED = "activity.mention.created"
     LOGGED = "activity.logged"
 
