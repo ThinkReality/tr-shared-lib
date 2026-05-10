@@ -53,10 +53,28 @@ GEMINI_PLATFORM_NAME: Final[str] = "Google Gemini AI"
 stored alongside real portal integrations in admin_panel_listing_platform_configs."""
 
 
+# Bayut / Dubizzle ------------------------------------------------------
+
+BAYUT_PLATFORM_NAME: Final[str] = "Bayut API"
+"""Canonical platform_name string for the Bayut Profolio API (pull leads
++ push webhooks). Admin enters a static Bearer token via the admin-panel
+connect endpoint; the Vault payload is ``{"api_token": "..."}``."""
+
+DUBIZZLE_PLATFORM_NAME: Final[str] = "Dubizzle API"
+"""Canonical platform_name string for the Dubizzle Profolio API. Same
+underlying api.bayut.com endpoint and same auth scheme as Bayut, registered
+separately so admin can manage the two portals independently."""
+
+
 # Platform registry ------------------------------------------------------
 
 KNOWN_PLATFORM_NAMES: Final[frozenset[str]] = frozenset(
-    {PF_PLATFORM_NAME, GEMINI_PLATFORM_NAME},
+    {
+        PF_PLATFORM_NAME,
+        GEMINI_PLATFORM_NAME,
+        BAYUT_PLATFORM_NAME,
+        DUBIZZLE_PLATFORM_NAME,
+    },
 )
 """Superset of all platform_name values the admin panel manages today.
 The admin-panel CHECK constraint (admin.admin_panel_listing_platform_configs

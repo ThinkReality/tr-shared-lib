@@ -11,7 +11,7 @@ Concrete provider verifiers for PropertyFinder, Bayut/Dubizzle, and Meta.
 
 from tr_shared.webhooks.endpoint import create_webhook_router
 from tr_shared.webhooks.idempotency import WebhookIdempotencyGuard
-from tr_shared.webhooks.providers.bayut import BayutVerifier
+from tr_shared.webhooks.providers.bayut import BayutMD5Verifier, DubizzleVerifier
 from tr_shared.webhooks.providers.meta import MetaWebhookVerifier
 from tr_shared.webhooks.providers.propertyfinder import PropertyFinderVerifier
 from tr_shared.webhooks.router import WebhookRouter
@@ -32,6 +32,7 @@ __all__ = [
     "WebhookVerifier",
     "HMACVerifier",
     "PropertyFinderVerifier",
-    "BayutVerifier",
+    "BayutMD5Verifier",
+    "DubizzleVerifier",
     "MetaWebhookVerifier",
 ]
