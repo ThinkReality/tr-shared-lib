@@ -86,6 +86,7 @@ class CMSEvents:
     PAGE_UPDATED = "cms.page.updated"
     PAGE_PUBLISHED = "cms.page.published"
     PAGE_DELETED = "cms.page.deleted"
+    LANDING_PAGE_PUBLISHED = "cms.landing_page.published"
 
 
 class ActivityEvents:
@@ -154,6 +155,8 @@ class LMSEvents:
 
     COURSE_COMPLETED = "lms.course.completed"
     CERTIFICATE_ISSUED = "lms.certificate.issued"
+    QUIZ_GENERATED = "lms.quiz.generated"
+    QUIZ_ASSIGNED = "lms.quiz.assigned"
 
 
 class FinanceEvents:
