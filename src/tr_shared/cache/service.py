@@ -167,8 +167,12 @@ class CacheService:
     # Write
     # ------------------------------------------------------------------
 
-    async def set(self, key: str, value: Any, ttl: int = 3600) -> None:
+    async def set(self, key: str, value: Any, ttl: int = 3600, *, nx: bool = False) -> bool:
         """Serialize value to JSON and store with TTL.
+
+        Args:
+            nx: If True, only set the key if it does not already exist (atomic SET NX).
+                Returns True if the key was set, False if it already existed.
 
         Raises:
             ValueError: If serialized payload exceeds ``max_value_bytes``.
@@ -180,12 +184,18 @@ class CacheService:
                     f"Cache value for '{key}' is {len(serialized.encode())} bytes, "
                     f"exceeds limit of {self._max_value_bytes} bytes"
                 )
+            if nx:
+                result = await self.cache.set(key, serialized, ttl=ttl, nx=True)
+                logger.debug("Cached key (NX): %s (TTL: %ds, set=%s)", key, ttl, result)
+                return result
             await self.cache.setex(key, ttl, serialized)
             logger.debug("Cached key: %s (TTL: %ds)", key, ttl)
+            return True
         except ValueError:
             raise
         except Exception as e:
             logger.error("Cache set error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            return False
 
     async def set_many(self, items: dict[str, Any], ttl: int = 3600) -> int:
         """Serialize and cache multiple key-value pairs via pipeline."""

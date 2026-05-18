@@ -203,10 +203,18 @@ class TestSetAndSetex:
         await adapter.set("key:3", "v3", ttl=120)
         mock_client.setex.assert_awaited_once_with("key:3", 120, "v3")
 
-    async def test_set_nx_calls_setnx(self, adapter, mock_client):
-        mock_client.setnx = AsyncMock(return_value=1)
-        await adapter.set("key:nx", "v", nx=True)
-        mock_client.setnx.assert_awaited_once_with("key:nx", "v")
+    async def test_set_nx_atomic(self, adapter, mock_client):
+        """NX path must use a single atomic SET NX EX call, not SETNX + EXPIRE."""
+        mock_client.set.return_value = "OK"
+        result = await adapter.set("key:nx", "v", nx=True, ttl=60)
+        assert result is True
+        mock_client.set.assert_awaited_once_with("key:nx", "v", nx=True, ex=60)
+
+    async def test_set_nx_returns_false_on_miss(self, adapter, mock_client):
+        """When key already exists NX returns None; adapter must return False."""
+        mock_client.set.return_value = None
+        result = await adapter.set("key:nx", "v", nx=True, ttl=60)
+        assert result is False
 
 
 # ---------------------------------------------------------------------------

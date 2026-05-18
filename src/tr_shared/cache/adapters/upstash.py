@@ -105,21 +105,19 @@ class UpstashAdapter(BaseRedisAdapter):
     ) -> bool:
         """Set key to value.
 
-        Upstash REST API does not support atomic SET+NX+EX in one call,
-        so NX+TTL requires two separate commands (SETNX + EXPIRE).
-
-        **Known race window:** Between SETNX and EXPIRE, another client
-        could observe a key with no expiration. This window is typically
-        sub-millisecond over Upstash REST and acceptable for cache use
-        cases. Do NOT rely on this for distributed locking with TTL.
+        When ``nx=True``, uses a single atomic SET NX EX command so the key
+        either gets both the value and TTL or is not written at all. This
+        prevents a permanently-live key if the process crashes between a
+        SETNX and EXPIRE pair.
         """
         self._check_initialized("set")
         try:
             if nx:
-                result = await self._client.setnx(key, value)
-                if result and ttl:
-                    await self._client.expire(key, ttl)
-                return bool(result)
+                # Atomic SET NX EX — single round-trip, no TTL gap on crash.
+                # upstash-redis supports the same set(nx=True, ex=ttl) signature
+                # as redis-py; returns the stored value on success, None on miss.
+                result = await self._client.set(key, value, nx=True, ex=ttl)
+                return result is not None
             elif ttl:
                 result = await self._client.setex(key, ttl, value)
                 return result is not None
