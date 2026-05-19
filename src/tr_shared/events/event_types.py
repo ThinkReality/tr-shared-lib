@@ -157,6 +157,7 @@ class LMSEvents:
     CERTIFICATE_ISSUED = "lms.certificate.issued"
     QUIZ_GENERATED = "lms.quiz.generated"
     QUIZ_ASSIGNED = "lms.quiz.assigned"
+    QUIZ_EXPIRED = "lms.quiz.expired"
 
 
 class FinanceEvents:
