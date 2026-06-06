@@ -312,6 +312,12 @@ class EventConsumer:
                         success = await self._process_message(msg_id, msg_data)
                         if success:
                             await self._ack(msg_id)
+            except redis.TimeoutError:
+                # Idle blocking-read timeout: no messages arrived within block_ms.
+                # redis-py 8.x raises TimeoutError here where 7.x returned empty —
+                # both mean "nothing to read, poll again". Caught before
+                # ConnectionError because some redis-py versions subclass it there.
+                continue
             except redis.ConnectionError:
                 logger.exception("Redis connection error")
                 try:
