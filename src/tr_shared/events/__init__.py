@@ -19,6 +19,12 @@ from tr_shared.events.event_types import (
     TaskEvents,
     WAMEvents,
 )
+from tr_shared.events.helpers import (
+    make_event_producer,
+    parse_payload,
+    publish_event,
+)
+from tr_shared.events.payloads import EventPayload
 from tr_shared.events.outbox_drainer import (
     DEFAULT_DRAINER_INTERVAL_SECONDS,
     create_outbox_drainer_task,
@@ -37,6 +43,7 @@ __all__ = [
     "DurableEventPublisher",
     "EventConsumer",
     "EventEnvelope",
+    "EventPayload",
     "EventProducer",
     "FinanceEvents",
     "HREvents",
@@ -51,4 +58,7 @@ __all__ = [
     "WAMEvents",
     "create_outbox_drainer_task",
     "drain_outbox",
+    "make_event_producer",
+    "parse_payload",
+    "publish_event",
 ]

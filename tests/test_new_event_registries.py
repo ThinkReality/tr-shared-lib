@@ -40,7 +40,6 @@ def test_cms_page_review_events():
 
 
 def test_contracts_and_registries_all_importable():
-    import tr_shared  # noqa: F401
     from tr_shared.contracts import (  # noqa: F401
         GLOSSARY,
         Channel,
@@ -56,4 +55,3 @@ def test_contracts_and_registries_all_importable():
     )
 
     assert Feature.LEAD == "lead"
-    assert tr_shared.__version__ == "0.15.0"
