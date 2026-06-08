@@ -86,6 +86,10 @@ class CMSEvents:
     PAGE_UPDATED = "cms.page.updated"
     PAGE_PUBLISHED = "cms.page.published"
     PAGE_DELETED = "cms.page.deleted"
+    PAGE_UNPUBLISHED = "cms.page.unpublished"
+    PAGE_REVIEW_REQUESTED = "cms.page.review_requested"
+    PAGE_APPROVED = "cms.page.approved"
+    PAGE_REJECTED = "cms.page.rejected"
     LANDING_PAGE_PUBLISHED = "cms.landing_page.published"
 
 
@@ -172,3 +176,27 @@ class FinanceEvents:
 
     COMMISSION_PAID = "finance.commission.paid"
     INVOICE_PAID = "finance.invoice.paid"
+
+
+class TaskEvents:
+    """Events produced by the task module (tr-crm-core)."""
+
+    CREATED = "task.created"
+    ASSIGNED = "task.assigned"
+    CO_ASSIGNED = "task.co_assigned"
+    STATUS_CHANGED = "task.status_changed"
+    DUE_SOON = "task.due_soon"
+    WATCHER_ADDED = "task.watcher_added"
+
+
+class NotificationEvents:
+    """Cross-module request events consumed by the notification module."""
+
+    LEAD_REASSIGN_REQUESTED = "notification.lead.reassign_requested"
+    LEAD_OVERDUE_REQUESTED = "notification.lead.overdue_requested"
+
+
+class WAMEvents:
+    """Events produced by tr-whatsApp-marketing-agent."""
+
+    LEAD_QUALIFIED = "wam.lead.qualified"

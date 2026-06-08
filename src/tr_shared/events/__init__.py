@@ -15,6 +15,9 @@ from tr_shared.events.event_types import (
     ListingEvents,
     LMSEvents,
     MediaEvents,
+    NotificationEvents,
+    TaskEvents,
+    WAMEvents,
 )
 from tr_shared.events.outbox_drainer import (
     DEFAULT_DRAINER_INTERVAL_SECONDS,
@@ -42,7 +45,10 @@ __all__ = [
     "LeadEvents",
     "ListingEvents",
     "MediaEvents",
+    "NotificationEvents",
     "RetryPolicy",
+    "TaskEvents",
+    "WAMEvents",
     "create_outbox_drainer_task",
     "drain_outbox",
 ]
