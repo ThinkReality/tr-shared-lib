@@ -17,6 +17,30 @@ def test_notification_events():
     assert NotificationEvents.SENT == "notification.sent"
 
 
+def test_finance_events_expense_invoice_card():
+    from tr_shared.events.event_types import FinanceEvents
+
+    assert FinanceEvents.EXPENSE_CREATED == "finance.expense.created"
+    assert FinanceEvents.EXPENSE_SUBMITTED == "finance.expense.submitted"
+    assert FinanceEvents.EXPENSE_APPROVED == "finance.expense.approved"
+    assert FinanceEvents.EXPENSE_REJECTED == "finance.expense.rejected"
+    assert FinanceEvents.EXPENSE_PAID == "finance.expense.paid"
+    assert FinanceEvents.EXPENSE_REIMBURSED == "finance.expense.reimbursed"
+    assert FinanceEvents.INVOICE_CREATED == "finance.invoice.created"
+    assert FinanceEvents.INVOICE_SENT == "finance.invoice.sent"
+    assert FinanceEvents.INVOICE_PAYMENT_RECORDED == "finance.invoice.payment_recorded"
+    assert FinanceEvents.CARD_TRANSACTION_IMPORTED == "finance.card_transaction.imported"
+    assert FinanceEvents.CARD_TRANSACTION_MATCHED == "finance.card_transaction.matched"
+
+
+def test_deal_and_hr_offer_events():
+    from tr_shared.events.event_types import DealEvents, HREvents
+
+    assert DealEvents.AMOUNT_CHANGED == "deal.amount_changed"
+    assert HREvents.OFFER_SENT == "hr.offer.sent"
+    assert HREvents.OFFER_ACCEPTED == "hr.offer.accepted"
+
+
 def test_wam_events():
     assert WAMEvents.LEAD_QUALIFIED == "wam.lead.qualified"
 

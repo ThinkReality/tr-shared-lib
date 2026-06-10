@@ -46,6 +46,7 @@ class DealEvents:
     WON = "deal.won"
     LOST = "deal.lost"
     STAGE_CHANGED = "deal.stage_changed"
+    AMOUNT_CHANGED = "deal.amount_changed"
     COMPLETED = "deal.completed"
     CANCELLED = "deal.cancelled"
     ROLLED_BACK = "deal.rolled_back"
@@ -155,6 +156,8 @@ class HREvents:
     PAYROLL_REJECTED = "hr.payroll.rejected"
     JOB_POSTING_PUBLISHED = "hr.job_posting.published"
     JOB_POSTING_CLOSED = "hr.job_posting.closed"
+    OFFER_SENT = "hr.offer.sent"
+    OFFER_ACCEPTED = "hr.offer.accepted"
     APPLICATION_SUBMITTED = "hr.application.submitted"
     APPLICATION_STAGE_CHANGED = "hr.application.stage_changed"
     APPLICATION_HIRED = "hr.application.hired"
@@ -174,8 +177,19 @@ class LMSEvents:
 class FinanceEvents:
     """Events consumed by tr-notification-service."""
 
-    COMMISSION_PAID = "finance.commission.paid"
+    EXPENSE_CREATED = "finance.expense.created"
+    EXPENSE_SUBMITTED = "finance.expense.submitted"
+    EXPENSE_APPROVED = "finance.expense.approved"
+    EXPENSE_REJECTED = "finance.expense.rejected"
+    EXPENSE_PAID = "finance.expense.paid"
+    EXPENSE_REIMBURSED = "finance.expense.reimbursed"
+    INVOICE_CREATED = "finance.invoice.created"
+    INVOICE_SENT = "finance.invoice.sent"
+    INVOICE_PAYMENT_RECORDED = "finance.invoice.payment_recorded"
     INVOICE_PAID = "finance.invoice.paid"
+    CARD_TRANSACTION_IMPORTED = "finance.card_transaction.imported"
+    CARD_TRANSACTION_MATCHED = "finance.card_transaction.matched"
+    COMMISSION_PAID = "finance.commission.paid"
 
 
 class TaskEvents:
