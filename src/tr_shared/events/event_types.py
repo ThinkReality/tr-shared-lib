@@ -194,6 +194,7 @@ class NotificationEvents:
 
     LEAD_REASSIGN_REQUESTED = "notification.lead.reassign_requested"
     LEAD_OVERDUE_REQUESTED = "notification.lead.overdue_requested"
+    SENT = "notification.sent"
 
 
 class WAMEvents:
