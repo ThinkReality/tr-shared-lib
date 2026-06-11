@@ -32,6 +32,29 @@ def test_retired_aliases_are_not_live_members():
 
 
 def test_known_migrations_are_recorded():
-    assert "urgent" in GLOSSARY["priority"].retired_aliases
-    assert "mobile_push" in GLOSSARY["channel"].retired_aliases
-    assert "comment" in GLOSSARY["entity_type"].retired_aliases
+    assert GLOSSARY["priority"].migrations["urgent"] == "critical"
+    assert GLOSSARY["channel"].migrations["mobile_push"] == "push"
+    assert GLOSSARY["entity_type"].migrations["comment"] == "activity.comment"
+
+
+def test_glossary_covers_exactly_the_canonical_enums():
+    """Type-level bijection: the glossary registers exactly the four cross-domain
+    canonical enums — adding/removing one without updating the glossary fails here."""
+    assert set(GLOSSARY) == {"feature", "entity_type", "priority", "channel"}
+
+
+def test_every_migration_replacement_is_a_live_member():
+    """Reverse direction: every retired alias maps to a replacement that IS a live
+    member of its enum (and the retired alias itself is gone). Catches a migration
+    whose replacement was later renamed/removed."""
+    for key, term in GLOSSARY.items():
+        live = {m.value for m in _resolve(term.type)}
+        for retired, replacement in term.migrations.items():
+            assert replacement in live, (
+                f"glossary[{key!r}] migrates {retired!r} -> {replacement!r}, but "
+                f"{replacement!r} is NOT a live member of {term.canonical} — drift"
+            )
+            assert retired not in live, (
+                f"glossary[{key!r}] retired alias {retired!r} is STILL live in "
+                f"{term.canonical} — drift"
+            )

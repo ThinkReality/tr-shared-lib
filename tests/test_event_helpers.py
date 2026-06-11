@@ -1,6 +1,5 @@
 # tests/test_event_helpers.py
 import pytest
-import tr_shared
 from pydantic import ValidationError
 
 from tr_shared.contracts.taxonomy import Feature
@@ -76,11 +75,16 @@ def test_make_event_producer_sets_source_to_the_feature_value():
 
 
 def test_helpers_and_payload_base_exported_from_events_package():
-    from tr_shared.events import (  # noqa: F401
+    from tr_shared.events import (
         EventPayload,
         make_event_producer,
         parse_payload,
         publish_event,
     )
 
-    assert tr_shared.__version__ == "0.16.0"
+    # The export surface is the contract — assert the names resolve, not a pinned
+    # version literal (which rots on every bump).
+    assert callable(make_event_producer)
+    assert callable(parse_payload)
+    assert callable(publish_event)
+    assert isinstance(EventPayload, type)
