@@ -183,6 +183,7 @@ class FinanceEvents:
     EXPENSE_REJECTED = "finance.expense.rejected"
     EXPENSE_PAID = "finance.expense.paid"
     EXPENSE_REIMBURSED = "finance.expense.reimbursed"
+    EXPENSE_APPROVAL_REMINDER = "finance.expense.approval_reminder"
     INVOICE_CREATED = "finance.invoice.created"
     INVOICE_SENT = "finance.invoice.sent"
     INVOICE_PAYMENT_RECORDED = "finance.invoice.payment_recorded"

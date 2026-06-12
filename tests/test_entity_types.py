@@ -11,7 +11,7 @@ EXPECTED = {
     "hr.employee", "hr.application", "hr.offer",
     "hr.attendance_record", "hr.attendance_exception",
     "hr.attendance_manual_entry", "hr.attendance_sync_job",
-    "finance.commission", "finance.invoice",
+    "finance.commission", "finance.invoice", "finance.expense",
     "admin.user",
     "media",
 }

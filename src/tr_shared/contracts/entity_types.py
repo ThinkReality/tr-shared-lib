@@ -29,6 +29,7 @@ class EntityType(StrEnum):
     HR_ATTENDANCE_SYNC_JOB = "hr.attendance_sync_job"
     FINANCE_COMMISSION = "finance.commission"
     FINANCE_INVOICE = "finance.invoice"
+    FINANCE_EXPENSE = "finance.expense"
     ADMIN_USER = "admin.user"
     MEDIA = "media"
 
