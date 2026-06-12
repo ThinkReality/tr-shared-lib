@@ -26,6 +26,13 @@ from tr_shared.events.payloads.auth import (
     AdminUserCreatedV1,
     AdminUserUpdatedV1,
 )
+from tr_shared.events.payloads.listing import (
+    ListingDeletedV1,
+    ListingExpiredV1,
+    ListingPfEventV1,
+    ListingRepublishedV1,
+    ListingSaleV1,
+)
 from tr_shared.events.payloads.lms import (
     LMSQuizAssignedV1,
     LMSQuizExpiredV1,
@@ -69,6 +76,12 @@ __all__ = [
     "AdminRoleAssignedV1",
     "AdminUserCreatedV1",
     "AdminUserUpdatedV1",
+    # listing (PF-keyed lifecycle)
+    "ListingDeletedV1",
+    "ListingExpiredV1",
+    "ListingPfEventV1",
+    "ListingRepublishedV1",
+    "ListingSaleV1",
     # lms
     "LMSQuizAssignedV1",
     "LMSQuizExpiredV1",
