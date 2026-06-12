@@ -26,6 +26,18 @@ from tr_shared.events.payloads.auth import (
     AdminUserCreatedV1,
     AdminUserUpdatedV1,
 )
+from tr_shared.events.payloads.finance import (
+    FinanceExpenseEventV1,
+    FinanceExpenseRejectedV1,
+)
+from tr_shared.events.payloads.hr import (
+    HRAttendanceCorrectionV1,
+    HREventV1,
+    HRJobPostingClosedV1,
+    HRJobPostingPublishedV1,
+    HRManualEntryCreatedV1,
+    HRSyncFailedV1,
+)
 from tr_shared.events.payloads.listing import (
     ListingDeletedV1,
     ListingExpiredV1,
@@ -76,6 +88,16 @@ __all__ = [
     "AdminRoleAssignedV1",
     "AdminUserCreatedV1",
     "AdminUserUpdatedV1",
+    # finance (expense lifecycle)
+    "FinanceExpenseEventV1",
+    "FinanceExpenseRejectedV1",
+    # hr (attendance + recruitment)
+    "HRAttendanceCorrectionV1",
+    "HREventV1",
+    "HRJobPostingClosedV1",
+    "HRJobPostingPublishedV1",
+    "HRManualEntryCreatedV1",
+    "HRSyncFailedV1",
     # listing (PF-keyed lifecycle)
     "ListingDeletedV1",
     "ListingExpiredV1",

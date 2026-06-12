@@ -143,6 +143,7 @@ class HREvents:
     EMPLOYEE_CREATED = "hr.employee.created"
     EMPLOYEE_UPDATED = "hr.employee.updated"
     EMPLOYEE_SYNC_COMPLETED = "hr.employee.sync_completed"
+    SYNC_FAILED = "hr.sync.failed"  # generic HR sync failure (attendance or employee)
     ATTENDANCE_SYNCED = "hr.attendance.synced"
     ATTENDANCE_SYNC_FAILED = "hr.attendance.sync_failed"
     ATTENDANCE_EXCEPTION_CREATED = "hr.attendance.exception.created"
