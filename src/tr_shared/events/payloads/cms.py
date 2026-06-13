@@ -78,7 +78,7 @@ class CMSBlogEventV1(EventPayload):
     entity_id: str
     blog_id: str
     blog_title: str
-    blog_slug: str
+    blog_slug: str | None = None  # blog events don't all carry a slug (e.g. bulk ops)
     action: str
     actor_id: str | None = None
     actor_name: str | None = None
