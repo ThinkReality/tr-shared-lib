@@ -26,11 +26,29 @@ from tr_shared.events.payloads.auth import (
     AdminUserCreatedV1,
     AdminUserUpdatedV1,
 )
+from tr_shared.events.payloads.cms import (
+    CMSBlogEventV1,
+    CMSBlogUpdatedV1,
+    CMSLandingPageContextV1,
+    CMSLandingPageMediaV1,
+    CMSLandingPagePublishedV1,
+    CMSPageApprovedV1,
+    CMSPageEventV1,
+    CMSPagePublishedV1,
+    CMSPageRejectedV1,
+    CMSPageReviewRequestedV1,
+    CMSPageUpdatedV1,
+)
 from tr_shared.events.payloads.finance import (
+    FinanceCardTransactionImportedV1,
+    FinanceCardTransactionMatchedV1,
     FinanceExpenseEventV1,
     FinanceExpenseRejectedV1,
+    FinanceInvoiceEventV1,
 )
 from tr_shared.events.payloads.hr import (
+    HRApplicationStageChangedV1,
+    HRApplicationSubmittedV1,
     HRAttendanceCorrectionV1,
     HREventV1,
     HRJobPostingClosedV1,
@@ -38,7 +56,16 @@ from tr_shared.events.payloads.hr import (
     HRManualEntryCreatedV1,
     HRSyncFailedV1,
 )
+from tr_shared.events.payloads.lead import (
+    LeadAssignedV1,
+    LeadCreatedV1,
+    LeadEventV1,
+    LeadFollowupDueV1,
+    LeadQualifiedV1,
+    LeadStatusChangedV1,
+)
 from tr_shared.events.payloads.listing import (
+    ListingAuditEventV1,
     ListingDeletedV1,
     ListingExpiredV1,
     ListingPfEventV1,
@@ -64,6 +91,10 @@ from tr_shared.events.payloads.task import (
     TaskStatusChangedV1,
     TaskWatcherAddedV1,
 )
+from tr_shared.events.payloads.wam import (
+    WAMLeadQualifiedV1,
+    WAMQualificationResultV1,
+)
 
 __all__ = [
     "EventPayload",
@@ -88,17 +119,42 @@ __all__ = [
     "AdminRoleAssignedV1",
     "AdminUserCreatedV1",
     "AdminUserUpdatedV1",
-    # finance (expense lifecycle)
+    # cms (page + blog lifecycle, landing page)
+    "CMSBlogEventV1",
+    "CMSBlogUpdatedV1",
+    "CMSLandingPageContextV1",
+    "CMSLandingPageMediaV1",
+    "CMSLandingPagePublishedV1",
+    "CMSPageApprovedV1",
+    "CMSPageEventV1",
+    "CMSPagePublishedV1",
+    "CMSPageRejectedV1",
+    "CMSPageReviewRequestedV1",
+    "CMSPageUpdatedV1",
+    # finance (expense lifecycle + invoice + card)
+    "FinanceCardTransactionImportedV1",
+    "FinanceCardTransactionMatchedV1",
     "FinanceExpenseEventV1",
     "FinanceExpenseRejectedV1",
+    "FinanceInvoiceEventV1",
     # hr (attendance + recruitment)
+    "HRApplicationStageChangedV1",
+    "HRApplicationSubmittedV1",
     "HRAttendanceCorrectionV1",
     "HREventV1",
     "HRJobPostingClosedV1",
     "HRJobPostingPublishedV1",
     "HRManualEntryCreatedV1",
     "HRSyncFailedV1",
-    # listing (PF-keyed lifecycle)
+    # lead
+    "LeadAssignedV1",
+    "LeadCreatedV1",
+    "LeadEventV1",
+    "LeadFollowupDueV1",
+    "LeadQualifiedV1",
+    "LeadStatusChangedV1",
+    # listing (PF-keyed lifecycle + audit)
+    "ListingAuditEventV1",
     "ListingDeletedV1",
     "ListingExpiredV1",
     "ListingPfEventV1",
@@ -120,4 +176,7 @@ __all__ = [
     "TaskEventV1",
     "TaskStatusChangedV1",
     "TaskWatcherAddedV1",
+    # wam
+    "WAMLeadQualifiedV1",
+    "WAMQualificationResultV1",
 ]

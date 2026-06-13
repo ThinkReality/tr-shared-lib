@@ -64,3 +64,29 @@ class HRJobPostingClosedV1(HREventV1):
 
     job_id: str
     title: str
+
+
+class HRApplicationSubmittedV1(HREventV1):
+    """hr.application.submitted — a candidate submitted an application.
+
+    Public-applicant flow: there is no actor user, so ``notification_event`` and
+    actor routing tolerate absence; the emit method passes actor_id=None.
+    """
+
+    application_id: str
+    job_id: str
+    applicant_name: str | None = None
+    applicant_email: str | None = None
+
+
+class HRApplicationStageChangedV1(HREventV1):
+    """hr.application.stage_changed (also reused for hired/rejected terminal moves).
+
+    Differs only by ``action`` / ``new_stage`` across the stage-changed, hired,
+    and rejected events — mirrors the HRAttendanceCorrectionV1 reuse pattern.
+    """
+
+    application_id: str
+    job_id: str
+    new_stage: str
+    old_stage: str | None = None

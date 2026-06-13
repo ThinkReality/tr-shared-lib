@@ -9,6 +9,8 @@ from uuid import uuid4
 
 import redis.asyncio as redis
 
+from tr_shared.contracts.taxonomy import Feature
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,16 +24,31 @@ class EventProducer:
         self,
         redis_url: str | None = None,
         stream_name: str = "tr_event_bus",
-        source_service: str = "unknown",
+        *,
+        source_service: Feature | str,
         maxlen: int | None = None,
         max_data_bytes: int = DEFAULT_MAX_DATA_BYTES,
     ) -> None:
         self._redis_url = redis_url
         self._stream_name = stream_name
-        self._source_service = source_service
+        self._source_service = self._normalize_source(source_service)
         self._maxlen = maxlen or self.STREAM_MAXLEN
         self._max_data_bytes = max_data_bytes
         self._redis: redis.Redis | None = None
+
+    @staticmethod
+    def _normalize_source(source: Feature | str) -> str:
+        """Enforce the locked invariant: event source is ALWAYS a Feature value,
+        never a deployable name. Accepts a Feature or its string value; rejects
+        anything else (including the old ``"unknown"`` sentinel) at construction."""
+        try:
+            return str(Feature(str(source)))
+        except ValueError as exc:
+            valid = ", ".join(f.value for f in Feature)
+            raise ValueError(
+                f"EventProducer source_service must be a Feature value, "
+                f"got {source!r}. Valid Feature values: {valid}"
+            ) from exc
 
     async def connect(self) -> None:
         if self._redis is None and self._redis_url:

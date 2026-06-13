@@ -11,6 +11,8 @@ app/modules/listing/services/events/event_publisher.py:emit_listing_*. All ids
 are str (UUIDs stringified at emit); prices are float; dates are ISO str.
 """
 
+from typing import Any
+
 from tr_shared.events.payloads._base import EventPayload
 
 
@@ -44,3 +46,30 @@ class ListingRepublishedV1(ListingPfEventV1):
 
 class ListingDeletedV1(ListingPfEventV1):
     """listing.deleted (base fields only)."""
+
+
+class ListingAuditEventV1(EventPayload):
+    """Single generic model for the 13 audit-path listing.* events.
+
+    Covers listing.{created,updated,price_changed,owner_changed,verified,rejected,
+    resubmitted,document_submitted,publish_requested,published,unpublished,
+    archived,refreshed} — these are shape-identical, differing only by the
+    envelope event_type and the ``action`` value. The legacy emit dict also
+    injected a redundant ``event_type`` key into ``data``; that key is dropped
+    here (extra="forbid" rejects it).
+
+    Field set mirrors
+    app/modules/listing/services/listings/listing_audit_service.py base_data.
+    ``entity_type`` is retained — crm-core notification + activity-logger
+    consumers read it for entity linking.
+    """
+
+    entity_id: str
+    entity_type: str
+    action: str
+    new_status: str | None = None
+    old_status: str | None = None
+    new_verification_state: str | None = None
+    old_verification_state: str | None = None
+    changes: dict[str, Any] | None = None
+    notification_recipient_id: str | None = None
