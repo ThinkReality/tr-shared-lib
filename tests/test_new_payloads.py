@@ -58,6 +58,8 @@ def _env(event_type: str, data: dict) -> EventEnvelope:
 # ---------- CMS ----------
 
 _PAGE_BASE = {
+    "entity_type": "cms.page",
+    "entity_id": "p1",
     "page_id": "p1",
     "page_title": "Home",
     "page_slug": "home",
@@ -95,6 +97,8 @@ def test_cms_page_subclasses_construct():
 
 def test_cms_blog_event_roundtrip():
     data = {
+        "entity_type": "cms.blog",
+        "entity_id": "b1",
         "blog_id": "b1",
         "blog_title": "Post",
         "blog_slug": "post",

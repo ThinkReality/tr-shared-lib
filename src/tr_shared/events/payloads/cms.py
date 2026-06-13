@@ -20,8 +20,12 @@ class CMSPageEventV1(EventPayload):
     """Common shape for cms.page.* lifecycle events (created/deleted/unpublished).
 
     Subclasses add per-event fields; the plain lifecycle events use this directly.
+    ``entity_type``/``entity_id`` are carried on the wire (the publish task injects
+    them) and read by the notification/activity consumers for entity linking.
     """
 
+    entity_type: str
+    entity_id: str
     page_id: str
     page_title: str
     page_slug: str
@@ -70,6 +74,8 @@ class CMSBlogEventV1(EventPayload):
     distinct record kinds, so the id/title/slug fields are not shared).
     """
 
+    entity_type: str
+    entity_id: str
     blog_id: str
     blog_title: str
     blog_slug: str
