@@ -27,6 +27,16 @@ from tr_shared.integrations.exceptions import (
 )
 from tr_shared.integrations.models import IntegrationConfig
 from tr_shared.integrations.pf_oauth import fetch_pf_access_token
+from tr_shared.integrations.portal_errors import (
+    PortalAuthError,
+    PortalDuplicateError,
+    PortalError,
+    PortalNotFoundError,
+    PortalRateLimitError,
+    PortalServerError,
+    PortalUnavailableError,
+    PortalValidationError,
+)
 from tr_shared.integrations.registry import (
     init_integration_config_client,
     get_integration_config_client,
@@ -42,6 +52,15 @@ __all__ = [
     # Exceptions
     "IntegrationConfigError",
     "IntegrationConfigNotFound",
+    # Portal error taxonomy (raised by portal adapters; Celery retries on the retryable ones)
+    "PortalError",
+    "PortalAuthError",
+    "PortalValidationError",
+    "PortalRateLimitError",
+    "PortalDuplicateError",
+    "PortalNotFoundError",
+    "PortalUnavailableError",
+    "PortalServerError",
     # Constants
     "PF_PLATFORM_NAME",
     "PF_AUTH_URL",
