@@ -20,6 +20,7 @@ from tr_shared.db.migrations.constraints import (
 )
 from tr_shared.db.migrations.dedup import dedup_with_table_lock
 from tr_shared.db.migrations.include_object import make_service_include_object
+from tr_shared.db.migrations.runner import run_async_migrations
 
 __all__ = [
     "CrossSchemaFKError",
@@ -30,4 +31,5 @@ __all__ = [
     "concurrent_index_context",
     "dedup_with_table_lock",
     "make_service_include_object",
+    "run_async_migrations",
 ]

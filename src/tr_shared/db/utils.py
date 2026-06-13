@@ -26,6 +26,12 @@ def to_sync_url(url: str) -> str:
     postgres:// → postgresql+psycopg2://  (Railway legacy scheme)
     postgresql+asyncpg:// → postgresql+psycopg2://
     postgresql:// → postgresql+psycopg2://
+
+    .. deprecated::
+        The platform is standardising on a single asyncpg driver for both
+        runtime and migrations. New/migrated services should use
+        ``run_async_migrations`` (async Alembic) instead of this sync-psycopg2
+        path. Retained for services not yet converted.
     """
     url = url.replace("postgres://", "postgresql://", 1)
     url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
@@ -43,5 +49,11 @@ def to_migration_url(url: str) -> str:
     Usage in alembic/env.py:
         from tr_shared.db.utils import to_migration_url
         url = to_migration_url(os.getenv("DATABASE_URL", ""))
+
+    .. deprecated::
+        Forces the sync psycopg2 driver. The platform is standardising on a
+        single asyncpg driver — new/migrated services should use
+        ``run_async_migrations`` (async Alembic) + ``to_session_mode_url``
+        instead. Retained for services not yet converted.
     """
     return to_sync_url(to_session_mode_url(url))

@@ -17,6 +17,7 @@ from tr_shared.db.migrations import (
     concurrent_index_context,
     dedup_with_table_lock,
     make_service_include_object,
+    run_async_migrations,
 )
 from tr_shared.db.repository import BaseRepository
 from tr_shared.db.session import (
@@ -47,6 +48,7 @@ __all__ = [
     "dedup_with_table_lock",
     "get_db",
     "make_service_include_object",
+    "run_async_migrations",
     "to_migration_url",
     "to_session_mode_url",
     "to_sync_url",
