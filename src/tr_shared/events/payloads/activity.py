@@ -6,13 +6,14 @@ app/modules/activity/services/activity_service.py (LOG_CREATED).
 All ids are str (UUIDs stringified at emit).
 """
 
+from tr_shared.contracts.enums import CommentAction
 from tr_shared.events.payloads._base import EventPayload
 
 
 class ActivityCommentAddedV1(EventPayload):
     entity_type: str
     entity_id: str
-    action: str
+    action: CommentAction
     comment_id: str
     parent_entity_type: str
     parent_entity_id: str
@@ -28,7 +29,7 @@ class ActivityCommentEditedV1(ActivityCommentAddedV1):
 class ActivityCommentDeletedV1(EventPayload):
     entity_type: str
     entity_id: str
-    action: str
+    action: CommentAction
     comment_id: str
     parent_entity_type: str
     parent_entity_id: str

@@ -18,3 +18,11 @@ class Channel(StrEnum):
     SMS = "sms"
     PUSH = "push"  # replaces the retired notification value `mobile_push`
     WHATSAPP = "whatsapp"
+
+
+class CommentAction(StrEnum):
+    """Action carried by activity.comment.* events."""
+
+    CREATED = "created"
+    EDITED = "edited"
+    DELETED = "deleted"
