@@ -1,7 +1,17 @@
 """Event bus utilities: consumer, producer, durable outbox, envelope, retry, DLQ, and event types."""
 
 from tr_shared.events.consumer import EventConsumer, InMemoryIdempotencyChecker
-from tr_shared.events.dead_letter import DeadLetterHandler
+from tr_shared.events.dead_letter import (
+    DEAD_LETTER_SUFFIX,
+    DLQ_FIELD_CONSUMER_GROUP,
+    DLQ_FIELD_FAILURE_REASON,
+    DLQ_FIELD_ORIGINAL_DATA,
+    DLQ_FIELD_ORIGINAL_MESSAGE_ID,
+    DLQ_FIELD_ORIGINAL_STREAM,
+    DLQ_FIELD_TIMESTAMP,
+    DeadLetterHandler,
+    dead_letter_stream_name,
+)
 from tr_shared.events.durable_publisher import DurableEventPublisher
 from tr_shared.events.envelope import EventEnvelope
 from tr_shared.events.event_types import (
@@ -37,8 +47,16 @@ __all__ = [
     "ActivityEvents",
     "AdminEvents",
     "CMSEvents",
+    "DEAD_LETTER_SUFFIX",
     "DEFAULT_DRAINER_INTERVAL_SECONDS",
+    "DLQ_FIELD_CONSUMER_GROUP",
+    "DLQ_FIELD_FAILURE_REASON",
+    "DLQ_FIELD_ORIGINAL_DATA",
+    "DLQ_FIELD_ORIGINAL_MESSAGE_ID",
+    "DLQ_FIELD_ORIGINAL_STREAM",
+    "DLQ_FIELD_TIMESTAMP",
     "DeadLetterHandler",
+    "dead_letter_stream_name",
     "DealEvents",
     "DurableEventPublisher",
     "EventConsumer",

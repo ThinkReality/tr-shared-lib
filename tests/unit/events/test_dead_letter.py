@@ -5,7 +5,17 @@ from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
-from tr_shared.events.dead_letter import DeadLetterHandler
+from tr_shared.events.dead_letter import (
+    DEAD_LETTER_SUFFIX,
+    DLQ_FIELD_CONSUMER_GROUP,
+    DLQ_FIELD_FAILURE_REASON,
+    DLQ_FIELD_ORIGINAL_DATA,
+    DLQ_FIELD_ORIGINAL_MESSAGE_ID,
+    DLQ_FIELD_ORIGINAL_STREAM,
+    DLQ_FIELD_TIMESTAMP,
+    DeadLetterHandler,
+    dead_letter_stream_name,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -27,10 +37,28 @@ def _handler(redis_client=None, source_stream="events:leads", consumer_group="gr
 # Initialization
 # ---------------------------------------------------------------------------
 
+class TestStreamNameContract:
+    """The suffix + derivation are the shared producer/reader contract."""
+
+    def test_suffix_value(self):
+        assert DEAD_LETTER_SUFFIX == "_dead_letter"
+
+    def test_dead_letter_stream_name_helper(self):
+        assert dead_letter_stream_name("tr_event_bus") == "tr_event_bus_dead_letter"
+
+    def test_handler_uses_canonical_derivation(self):
+        handler, _ = _handler(source_stream="tr_event_bus")
+        assert handler._dl_stream == dead_letter_stream_name("tr_event_bus")
+
+
 class TestInitialization:
     def test_dl_stream_name_appends_dead_letter(self):
         handler, _ = _handler(source_stream="events:leads")
         assert handler._dl_stream == "events:leads_dead_letter"
+
+    def test_source_stream_stored(self):
+        handler, _ = _handler(source_stream="events:leads")
+        assert handler._source_stream == "events:leads"
 
     def test_maxlen_stored(self):
         handler, _ = _handler(maxlen=500)
@@ -92,6 +120,25 @@ class TestMove:
         await handler.move("msg-1", {}, reason="test")
         entry = client.xadd.call_args[0][1]
         assert entry["consumer_group"] == "my-group"
+
+    async def test_entry_keys_match_field_constants(self):
+        handler, client = _handler()
+        await handler.move("msg-1", {"k": "v"}, reason="test")
+        entry = client.xadd.call_args[0][1]
+        assert set(entry.keys()) == {
+            DLQ_FIELD_ORIGINAL_MESSAGE_ID,
+            DLQ_FIELD_ORIGINAL_STREAM,
+            DLQ_FIELD_CONSUMER_GROUP,
+            DLQ_FIELD_FAILURE_REASON,
+            DLQ_FIELD_TIMESTAMP,
+            DLQ_FIELD_ORIGINAL_DATA,
+        }
+
+    async def test_original_stream_equals_source_stream(self):
+        handler, client = _handler(source_stream="tr_event_bus")
+        await handler.move("msg-1", {}, reason="test")
+        entry = client.xadd.call_args[0][1]
+        assert entry[DLQ_FIELD_ORIGINAL_STREAM] == "tr_event_bus"
 
     async def test_redis_failure_is_swallowed(self):
         client = AsyncMock()
