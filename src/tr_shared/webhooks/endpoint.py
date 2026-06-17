@@ -7,12 +7,12 @@ for each configured provider. For Meta providers, also generates a
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -201,8 +201,14 @@ def _register_provider_endpoints(
                 content={"error": "Invalid JSON payload"},
             )
 
-        # Extract event_id and event_type
-        event_id = _extract_field(payload, cfg.event_id_fields) or str(uuid4())
+        # Extract event_id and event_type.
+        # When the provider supplies no id field, derive a deterministic id from
+        # the raw body so identical re-deliveries collide in the idempotency
+        # check. A random UUID here would make every delivery unique and
+        # silently disable deduplication.
+        event_id = _extract_field(payload, cfg.event_id_fields)
+        if not event_id:
+            event_id = f"sha256:{hashlib.sha256(raw_body).hexdigest()}"
         event_type = _extract_field(payload, cfg.event_type_fields) or "unknown"
 
         # Resolve tenant_id

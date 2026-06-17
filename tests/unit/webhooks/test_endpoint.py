@@ -119,6 +119,26 @@ class TestWebhookEndpointPost:
         )
         assert resp.json()["event_id"] == "lst-001"
 
+    def test_missing_event_id_falls_back_to_deterministic_body_hash(self):
+        """No id field → event_id is sha256(body), not a random UUID, so the
+        same payload re-delivered yields the same id (dedup still works)."""
+        body = json.dumps({"foo": "bar"}).encode()
+        expected = f"sha256:{hashlib.sha256(body).hexdigest()}"
+        app = _build_app(configs=[ProviderConfig(name="propertyfinder", secret="")])
+        client = TestClient(app)
+        first = client.post(
+            "/webhooks/propertyfinder",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        second = client.post(
+            "/webhooks/propertyfinder",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        assert first.json()["event_id"] == expected
+        assert second.json()["event_id"] == expected
+
     def test_extracts_type_field_for_pf_envelope(self):
         """PF sends event type in 'type' field (base envelope format)."""
         pf_body = json.dumps({
