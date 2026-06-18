@@ -11,9 +11,27 @@ Field sets mirror app/modules/cms/services/landing_page/service.py and the blog
 service emit sites. All ids are str (UUIDs stringified at emit).
 """
 
+from enum import StrEnum
 from typing import Any
 
+from pydantic import Field
+
+from tr_shared.contracts.entity_types import EntityType
 from tr_shared.events.payloads._base import EventPayload
+
+
+class CMSLifecycleAction(StrEnum):
+    """Canonical lifecycle action values carried by CMS events."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    DELETED = "deleted"
+    PUBLISHED = "published"
+    UNPUBLISHED = "unpublished"
+    REVIEW_REQUESTED = "review_requested"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
 
 
 class CMSPageEventV1(EventPayload):
@@ -24,12 +42,12 @@ class CMSPageEventV1(EventPayload):
     them) and read by the notification/activity consumers for entity linking.
     """
 
-    entity_type: str
+    entity_type: EntityType
     entity_id: str
     page_id: str
     page_title: str
     page_slug: str
-    action: str
+    action: CMSLifecycleAction
     actor_id: str | None = None
     actor_name: str | None = None
     recipient_id: str | None = None
@@ -74,12 +92,12 @@ class CMSBlogEventV1(EventPayload):
     distinct record kinds, so the id/title/slug fields are not shared).
     """
 
-    entity_type: str
+    entity_type: EntityType
     entity_id: str
     blog_id: str
     blog_title: str
     blog_slug: str | None = None  # blog events don't all carry a slug (e.g. bulk ops)
-    action: str
+    action: CMSLifecycleAction
     actor_id: str | None = None
     actor_name: str | None = None
     recipient_id: str | None = None
@@ -110,14 +128,14 @@ class CMSLandingPageContextV1(EventPayload):
     about_project_summary: str | None = None
     project_type: str
     project_status: str | None = None
-    property_types: list[str] = []
+    property_types: list[str] = Field(default_factory=list)
     starting_price: float | None = None
     starting_price_currency: str | None = None
     handover_date: str | None = None
     area_name: str | None = None
     community_name: str | None = None
-    amenities: list[str] = []
-    media: list[CMSLandingPageMediaV1] = []
+    amenities: list[str] = Field(default_factory=list)
+    media: list[CMSLandingPageMediaV1] = Field(default_factory=list)
 
 
 class CMSLandingPagePublishedV1(EventPayload):
