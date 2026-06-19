@@ -4,8 +4,10 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from tr_shared.contracts.taxonomy import Feature
+from tr_shared.events.exceptions import EventPublishTransportError
 from tr_shared.events.producer import EventProducer
 
 
@@ -95,6 +97,19 @@ class TestPublish:
         p = EventProducer(stream_name="s", source_service=Feature.TASK)
         with pytest.raises(RuntimeError, match="not available"):
             await p.publish("x", "t1", {})
+
+    async def test_redis_failure_translated_to_transport_error(self, producer):
+        producer._redis.xadd = AsyncMock(
+            side_effect=RedisConnectionError("broker down")
+        )
+        with pytest.raises(EventPublishTransportError):
+            await producer.publish("listing.created", "t1", {})
+
+    async def test_programming_error_propagates_raw(self, producer):
+        # A non-Redis bug must NOT be masked as a transport failure.
+        producer._redis.xadd = AsyncMock(side_effect=TypeError("bug"))
+        with pytest.raises(TypeError):
+            await producer.publish("listing.created", "t1", {})
 
 
 class TestConnectDisconnect:

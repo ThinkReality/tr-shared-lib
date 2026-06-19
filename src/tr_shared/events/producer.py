@@ -8,8 +8,10 @@ from typing import Any
 from uuid import uuid4
 
 import redis.asyncio as redis
+from redis.exceptions import RedisError
 
 from tr_shared.contracts.taxonomy import Feature
+from tr_shared.events.exceptions import EventPublishTransportError
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,9 @@ class EventProducer:
         Raises:
             ValueError: If strict_mode is True and required fields are missing.
             RuntimeError: If Redis is not connected.
+            EventPublishTransportError: If the broker rejects/loses the write
+                (Redis connection lost, timeout, ResponseError). Best-effort
+                callers may swallow this; programming errors still propagate raw.
         """
         if strict_mode:
             for field in ("entity_id", "entity_type", "action"):
@@ -141,7 +146,7 @@ class EventProducer:
         # then have a separate worker poll and publish to Redis.
         try:
             await self._redis.xadd(self._stream_name, envelope, maxlen=self._maxlen)
-        except Exception:
+        except RedisError as exc:
             logger.error(
                 "Failed to publish event",
                 extra={
@@ -151,7 +156,9 @@ class EventProducer:
                     "metric": "event_publish_failed",
                 },
             )
-            raise
+            raise EventPublishTransportError(
+                f"Failed to publish {event_type!r} to {self._stream_name!r}: {exc}"
+            ) from exc
         logger.info(
             "Published event",
             extra={
