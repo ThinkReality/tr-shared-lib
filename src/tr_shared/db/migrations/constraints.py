@@ -59,7 +59,7 @@ def add_check_constraint_deferred(
             table="admin_panel_listing_platform_configs",
             schema="admin",
             constraint_name="ck_platform_name_known",
-            predicate="platform_name IN ('PropertyFinder API', 'Google Gemini AI')",
+            predicate="platform_name IN ('propertyfinder', 'gemini')",
         )
     """
     qtable = _qualified(schema, table)

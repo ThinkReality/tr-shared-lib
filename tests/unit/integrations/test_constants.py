@@ -4,8 +4,8 @@ from tr_shared.integrations import constants as K
 
 
 def test_pf_platform_name_exact_string() -> None:
-    """Admin panel writes this exact string — any drift breaks lookups."""
-    assert K.PF_PLATFORM_NAME == "PropertyFinder API"
+    """Admin panel writes this exact slug — any drift breaks lookups."""
+    assert K.PF_PLATFORM_NAME == "propertyfinder"
 
 
 def test_pf_auth_url_matches_token_manager_reference() -> None:
@@ -45,16 +45,29 @@ def test_frozenset_immutability() -> None:
 
 
 def test_gemini_platform_name_exact_string() -> None:
-    assert K.GEMINI_PLATFORM_NAME == "Google Gemini AI"
+    assert K.GEMINI_PLATFORM_NAME == "gemini"
 
 
 def test_known_platform_names_includes_gemini() -> None:
     assert K.GEMINI_PLATFORM_NAME in K.KNOWN_PLATFORM_NAMES
 
 
-def test_known_platform_names_has_exactly_pf_and_gemini() -> None:
+def test_platform_name_aliases_are_slugs() -> None:
+    """All platform-name aliases are lowercase slugs (no legacy display names)."""
+    assert K.PF_PLATFORM_NAME == "propertyfinder"
+    assert K.BAYUT_PLATFORM_NAME == "bayut"
+    assert K.DUBIZZLE_PLATFORM_NAME == "dubizzle"
+    assert K.GEMINI_PLATFORM_NAME == "gemini"
+
+
+def test_known_platform_names_has_all_connectable_platforms() -> None:
     assert K.KNOWN_PLATFORM_NAMES == frozenset(
-        {K.PF_PLATFORM_NAME, K.GEMINI_PLATFORM_NAME},
+        {
+            K.PF_PLATFORM_NAME,
+            K.BAYUT_PLATFORM_NAME,
+            K.DUBIZZLE_PLATFORM_NAME,
+            K.GEMINI_PLATFORM_NAME,
+        },
     )
 
 

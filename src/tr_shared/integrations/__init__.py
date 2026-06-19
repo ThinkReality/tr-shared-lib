@@ -12,6 +12,8 @@ See docs/specs/01-batch-foundation.md for the full spec.
 from tr_shared.integrations.config_client import IntegrationConfigClient
 from tr_shared.integrations.constants import (
     ALL_PF_WEBHOOK_EVENTS,
+    BAYUT_PLATFORM_NAME,
+    DUBIZZLE_PLATFORM_NAME,
     GEMINI_PLATFORM_NAME,
     KNOWN_PF_EVENT_PREFIXES,
     KNOWN_PLATFORM_NAMES,
@@ -20,6 +22,17 @@ from tr_shared.integrations.constants import (
     PF_PLATFORM_NAME,
     PUBLIC_CONFIG_KEYS,
     sanitize_public_config,
+)
+from tr_shared.integrations.portal_identity import (
+    EXTERNALLY_PUBLISHABLE_SLUGS,
+    KNOWN_PLATFORM_SLUGS,
+    LISTING_PORTAL_SLUGS,
+    PORTAL_PROVIDER_KEYS,
+    PORTAL_REGISTRY,
+    PORTAL_USER_ID_KEYS,
+    PortalIdentity,
+    PortalSlug,
+    get_portal_identity,
 )
 from tr_shared.integrations.exceptions import (
     IntegrationConfigError,
@@ -61,12 +74,25 @@ __all__ = [
     "PortalNotFoundError",
     "PortalUnavailableError",
     "PortalServerError",
-    # Constants
+    # Portal identity (single source of truth — prefer PortalSlug in new code)
+    "PortalSlug",
+    "PortalIdentity",
+    "PORTAL_REGISTRY",
+    "get_portal_identity",
+    "KNOWN_PLATFORM_SLUGS",
+    "LISTING_PORTAL_SLUGS",
+    "EXTERNALLY_PUBLISHABLE_SLUGS",
+    "PORTAL_USER_ID_KEYS",
+    "PORTAL_PROVIDER_KEYS",
+    # Platform-name aliases (slug values; legacy — prefer PortalSlug)
     "PF_PLATFORM_NAME",
-    "PF_AUTH_URL",
-    "PF_API_BASE_URL",
+    "BAYUT_PLATFORM_NAME",
+    "DUBIZZLE_PLATFORM_NAME",
     "GEMINI_PLATFORM_NAME",
     "KNOWN_PLATFORM_NAMES",
+    # PropertyFinder transport constants
+    "PF_AUTH_URL",
+    "PF_API_BASE_URL",
     "ALL_PF_WEBHOOK_EVENTS",
     "KNOWN_PF_EVENT_PREFIXES",
     "PUBLIC_CONFIG_KEYS",

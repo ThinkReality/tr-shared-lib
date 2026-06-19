@@ -1,18 +1,27 @@
 """Canonical constants for third-party integration platforms.
 
-Extending these requires a coordinated change across tr-be-admin-panel,
-tr-listing-service, and (where applicable) a migration to update the
-admin.admin_panel_listing_platform_configs.ck_platform_name_known CHECK
-constraint. See docs/specs/00-shared-contracts.md §A.
+Portal **identity** (slug, display name, user-id key, platform registry) lives in
+:mod:`tr_shared.integrations.portal_identity` — the single source of truth. The
+``*_PLATFORM_NAME`` aliases and :data:`KNOWN_PLATFORM_NAMES` below are thin
+re-exports of that registry's slug values, kept so existing imports keep working;
+prefer :class:`~tr_shared.integrations.portal_identity.PortalSlug` in new code.
+
+PropertyFinder transport constants (auth/base URL, webhook event ids) stay here —
+they are PF-specific protocol detail, not identity. Changing a connectable
+platform requires a data migration + CHECK-constraint regen on
+admin.admin_panel_listing_platform_configs (generated from KNOWN_PLATFORM_NAMES).
 """
 
 from typing import Any, Final
 
-# PropertyFinder ---------------------------------------------------------
+from tr_shared.integrations.portal_identity import KNOWN_PLATFORM_SLUGS, PortalSlug
 
-PF_PLATFORM_NAME: Final[str] = "PropertyFinder API"
-"""Canonical platform_name string used in admin.admin_panel_listing_platform_configs.
-Must exactly match the value written by admin-panel's connect_propertyfinder()."""
+# Platform-name aliases (slug values; prefer PortalSlug in new code) ------
+
+PF_PLATFORM_NAME: Final[str] = PortalSlug.PROPERTYFINDER.value
+"""Canonical platform_name (slug) in admin.admin_panel_listing_platform_configs.
+Equals the value written by admin's connect_propertyfinder(). Legacy alias of
+``PortalSlug.PROPERTYFINDER``."""
 
 PF_AUTH_URL: Final[str] = "https://atlas.propertyfinder.com/v1/auth/token"
 """PropertyFinder Atlas token endpoint. Non-standard protocol — accepts
@@ -48,38 +57,31 @@ by comparing configured prefixes against this set."""
 
 # Google Gemini ---------------------------------------------------------
 
-GEMINI_PLATFORM_NAME: Final[str] = "Google Gemini AI"
-"""Canonical platform_name string for the Google Gemini API integration
-stored alongside real portal integrations in admin_panel_listing_platform_configs."""
+GEMINI_PLATFORM_NAME: Final[str] = PortalSlug.GEMINI.value
+"""platform_name (slug) for the Google Gemini API integration stored alongside
+real portal integrations. Legacy alias of ``PortalSlug.GEMINI``."""
 
 
 # Bayut / Dubizzle ------------------------------------------------------
 
-BAYUT_PLATFORM_NAME: Final[str] = "Bayut API"
-"""Canonical platform_name string for the Bayut Profolio API (pull leads
-+ push webhooks). Admin enters a static Bearer token via the admin-panel
-connect endpoint; the Vault payload is ``{"api_token": "..."}``."""
+BAYUT_PLATFORM_NAME: Final[str] = PortalSlug.BAYUT.value
+"""platform_name (slug) for the Bayut Profolio API (pull leads + push webhooks).
+Admin enters a static Bearer token; Vault payload ``{"api_token": "..."}``.
+Legacy alias of ``PortalSlug.BAYUT``."""
 
-DUBIZZLE_PLATFORM_NAME: Final[str] = "Dubizzle API"
-"""Canonical platform_name string for the Dubizzle Profolio API. Same
-underlying api.bayut.com endpoint and same auth scheme as Bayut, registered
-separately so admin can manage the two portals independently."""
+DUBIZZLE_PLATFORM_NAME: Final[str] = PortalSlug.DUBIZZLE.value
+"""platform_name (slug) for the Dubizzle Profolio API. Same upstream provider
+and auth scheme as Bayut, managed separately. Legacy alias of
+``PortalSlug.DUBIZZLE``."""
 
 
 # Platform registry ------------------------------------------------------
 
-KNOWN_PLATFORM_NAMES: Final[frozenset[str]] = frozenset(
-    {
-        PF_PLATFORM_NAME,
-        GEMINI_PLATFORM_NAME,
-        BAYUT_PLATFORM_NAME,
-        DUBIZZLE_PLATFORM_NAME,
-    },
-)
-"""Superset of all platform_name values the admin panel manages today.
-The admin-panel CHECK constraint (admin.admin_panel_listing_platform_configs
-.ck_platform_name_known) MUST be generated from this frozenset — keeps DB
-and shared lib impossible to drift. See 01-batch-foundation.md §1B."""
+KNOWN_PLATFORM_NAMES: Final[frozenset[str]] = KNOWN_PLATFORM_SLUGS
+"""All platform_name (slug) values the admin panel manages. Derived from
+:data:`tr_shared.integrations.portal_identity.PORTAL_REGISTRY`. The admin CHECK
+constraint (admin.admin_panel_listing_platform_configs.ck_platform_name_known)
+MUST be generated from this set — keeps DB and shared lib impossible to drift."""
 
 
 # Public (non-secret) config allowlist -----------------------------------

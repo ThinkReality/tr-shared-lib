@@ -46,7 +46,7 @@ def dedup_with_table_lock(
             (e.g. ``["is_enabled DESC", "updated_at DESC NULLS LAST"]``).
             The FIRST row in this ordering is kept; the rest are deduped.
         filter_predicate: Optional WHERE clause to restrict scope (e.g.
-            ``"platform_name = 'PropertyFinder API'"``). Must not include
+            ``"platform_name = 'propertyfinder'"``). Must not include
             the ``WHERE`` keyword.
         strategy: ``"soft_delete"`` sets soft-delete columns on losers;
             ``"hard_delete"`` issues DELETE FROM.
