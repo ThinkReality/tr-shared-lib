@@ -17,6 +17,7 @@ Usage::
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, Generic, TypeVar
 from uuid import UUID
@@ -58,13 +59,60 @@ class BaseRepository(Generic[T]):
         self,
         tenant_id: UUID,
         filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
+        descending: bool = True,
     ) -> list[T]:
-        """Get all non-deleted entities for a tenant."""
+        """Get all non-deleted entities for a tenant.
+
+        ``order_by`` names a model column to sort on; ``descending`` picks the
+        direction. Unknown ``order_by`` values are ignored (no ordering).
+        """
         query = select(self.model).where(self.model.tenant_id == tenant_id)
         if hasattr(self.model, "deleted_at"):
             query = query.where(self.model.deleted_at.is_(None))
         if filters:
             query = self._apply_filters(query, filters)
+        if order_by and hasattr(self.model, order_by):
+            column = getattr(self.model, order_by)
+            query = query.order_by(column.desc() if descending else column.asc())
+        result = await self.db_session.execute(query)
+        return list(result.scalars().all())
+
+    async def find_by_field(
+        self, field_name: str, value: Any, tenant_id: UUID
+    ) -> T | None:
+        """Return one entity where ``field_name == value``, tenant-scoped.
+
+        Generic single-column lookup (e.g. by ``name`` or ``slug``). Respects
+        soft-delete. Raises ``ValueError`` if the model has no such column.
+        """
+        column = self._column(field_name)
+        query = select(self.model).where(
+            column == value,
+            self.model.tenant_id == tenant_id,
+        )
+        if hasattr(self.model, "deleted_at"):
+            query = query.where(self.model.deleted_at.is_(None))
+        result = await self.db_session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def find_by_field_in(
+        self, field_name: str, values: Sequence[Any], tenant_id: UUID
+    ) -> list[T]:
+        """Return all entities where ``field_name IN values``, tenant-scoped.
+
+        Empty ``values`` short-circuits to ``[]`` (no query issued). Respects
+        soft-delete. Raises ``ValueError`` if the model has no such column.
+        """
+        if not values:
+            return []
+        column = self._column(field_name)
+        query = select(self.model).where(
+            column.in_(list(values)),
+            self.model.tenant_id == tenant_id,
+        )
+        if hasattr(self.model, "deleted_at"):
+            query = query.where(self.model.deleted_at.is_(None))
         result = await self.db_session.execute(query)
         return list(result.scalars().all())
 
@@ -157,3 +205,10 @@ class BaseRepository(Generic[T]):
             if value is not None and hasattr(self.model, key):
                 query = query.where(getattr(self.model, key) == value)
         return query
+
+    def _column(self, field_name: str):
+        """Resolve a model column by name, raising ``ValueError`` if absent."""
+        column = getattr(self.model, field_name, None)
+        if column is None:
+            raise ValueError(f"{self.model.__name__} has no column '{field_name}'")
+        return column
