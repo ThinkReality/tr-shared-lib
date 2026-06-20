@@ -36,6 +36,8 @@ class HttpHeader(StrEnum):
 
     # --- Service-to-service auth (bypasses HMAC on /internal/* endpoints) ---
     SERVICE_TOKEN = "X-Service-Token"
+    # Identifies the calling service on S2S requests (gateway + service clients).
+    SERVICE_NAME = "X-Service-Name"
 
     IDEMPOTENCY_KEY = "X-Idempotency-Key"
     IDEMPOTENCY_REPLAYED = "X-Idempotency-Replayed"
