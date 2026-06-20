@@ -1,5 +1,3 @@
-"""Tests for MemoryFallback in-memory rate limiter."""
-
 import time
 
 from tr_shared.rate_limiter.memory_fallback import MemoryFallback
@@ -35,25 +33,32 @@ class TestMemoryFallback:
         assert result.remaining == 0
         assert result.retry_after > 0
 
+    async def test_exact_boundary_nth_allowed_n_plus_one_blocked(self):
+        fb = self._fallback()
+        limit = 3
+        for i in range(1, limit + 1):
+            result = await fb.check("key:boundary", limit=limit, window_seconds=60)
+            assert result.allowed is True, f"request {i} should be allowed"
+            assert result.remaining == limit - i
+        blocked = await fb.check("key:boundary", limit=limit, window_seconds=60)
+        assert blocked.allowed is False
+        assert blocked.remaining == 0
+
     async def test_different_keys_are_isolated(self):
         fb = self._fallback()
         for _ in range(3):
             await fb.check("key:d", limit=3, window_seconds=60)
-        # Different key should be unaffected
         result = await fb.check("key:e", limit=3, window_seconds=60)
         assert result.allowed is True
 
     async def test_expired_bucket_resets(self):
         fb = self._fallback()
-        # Fill up the limit
         for _ in range(3):
             await fb.check("key:f", limit=3, window_seconds=1)
         blocked = await fb.check("key:f", limit=3, window_seconds=1)
         assert blocked.allowed is False
 
-        # Manually expire the bucket
         fb._buckets["key:f"] = {"count": 3, "reset_time": time.time() - 0.1}
-        # Next check should start fresh
         result = await fb.check("key:f", limit=3, window_seconds=1)
         assert result.allowed is True
 
@@ -67,21 +72,17 @@ class TestMemoryFallback:
         fb = self._fallback()
         now = int(time.time())
         result = await fb.check("key:h", limit=5, window_seconds=60)
-        # reset_at should be approximately now + 60
         assert now + 55 <= result.reset_at <= now + 65
 
     async def test_cleanup_removes_expired_buckets(self):
         fb = MemoryFallback(cleanup_threshold=2)
-        # Add expired buckets
         for i in range(3):
             fb._buckets[f"old:key:{i}"] = {
                 "count": 1,
                 "reset_time": time.time() - 100,
             }
-        # Trigger cleanup by adding a new check when over threshold
         result = await fb.check("key:new", limit=10, window_seconds=60)
         assert result.allowed is True
-        # Expired buckets should be removed; only "key:new" remains
         assert "key:new" in fb._buckets
         assert all(
             "old:key" not in k for k in fb._buckets

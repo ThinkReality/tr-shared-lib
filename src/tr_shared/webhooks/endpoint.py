@@ -1,10 +1,3 @@
-"""FastAPI router factory for webhook ingestion endpoints.
-
-Generates ``POST /{provider}`` and ``GET /{provider}/health`` endpoints
-for each configured provider. For Meta providers, also generates a
-``GET /{provider}`` endpoint to handle the verification handshake.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -17,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.webhooks.idempotency import WebhookIdempotencyGuard
 from tr_shared.webhooks.providers.meta import MetaWebhookVerifier
 from tr_shared.webhooks.router import WebhookRouter
@@ -25,13 +19,11 @@ from tr_shared.webhooks.verifier import WebhookVerifier
 
 logger = logging.getLogger(__name__)
 
-# Tenant resolver callable type:
 # (provider, headers, payload) -> tenant_id or None
 TenantResolver = Callable[[str, dict[str, str], dict[str, Any]], str | None]
 
 
 def _extract_field(payload: dict[str, Any], field_names: list[str]) -> str:
-    """Extract the first matching field from a payload dict."""
     for name in field_names:
         value = payload.get(name)
         if value is not None:
@@ -40,8 +32,7 @@ def _extract_field(payload: dict[str, Any], field_names: list[str]) -> str:
 
 
 def _get_client_ip(request: Request) -> str | None:
-    """Extract client IP from request, respecting X-Forwarded-For."""
-    forwarded = request.headers.get("x-forwarded-for")
+    forwarded = request.headers.get(HttpHeader.FORWARDED_FOR.value)
     if forwarded:
         return forwarded.split(",")[0].strip()
     if request.client:
@@ -61,43 +52,6 @@ def create_webhook_router(
     tenant_resolver: TenantResolver | None = None,
     response_status_code: int = 202,
 ) -> APIRouter:
-    """Create a FastAPI router with webhook endpoints for each provider.
-
-    For each :class:`ProviderConfig`, generates:
-
-    - ``POST /{provider_name}`` — receive and verify webhook
-    - ``GET /{provider_name}/health`` — provider-specific health check
-
-    If the verifier for a provider is a :class:`MetaWebhookVerifier`, also
-    generates ``GET /{provider_name}`` for the verification handshake.
-
-    Request flow:
-
-    1. Read raw body
-    2. Verify signature (if secret configured) → 401 on failure
-    3. Parse JSON → 400 on failure
-    4. Extract event_id / event_type from payload
-    5. Resolve tenant_id via custom resolver or ``X-Tenant-ID`` header
-    6. Idempotency check → 200 with duplicate status if seen before
-    7. Publish to EventProducer (if configured)
-    8. Dispatch to WebhookRouter (if configured)
-    9. Return configured status code with :class:`WebhookResult`
-
-    Args:
-        provider_configs: List of provider configurations.
-        verifiers: Map of provider name → verifier instance. If not provided
-            for a provider, signature verification is skipped.
-        idempotency_guard: Optional idempotency guard for deduplication.
-        event_producer: Optional ``EventProducer`` for publishing to Redis Streams.
-        webhook_router: Optional router for dispatching to handlers.
-        rate_limiter: Optional ``RateLimiter`` instance.
-        rate_limit_config: Optional ``RateLimitConfig`` for the rate limiter.
-        tenant_resolver: Optional callable ``(provider, headers, payload) -> tenant_id``.
-        response_status_code: HTTP status code for successful responses (default 202).
-
-    Returns:
-        A configured FastAPI ``APIRouter``.
-    """
     router = APIRouter()
     verifiers = verifiers or {}
     config_map: dict[str, ProviderConfig] = {c.name: c for c in provider_configs}
@@ -134,11 +88,9 @@ def _register_provider_endpoints(
     tenant_resolver: TenantResolver | None,
     response_status_code: int,
 ) -> None:
-    """Register POST, GET/health, and optional GET handshake for a provider."""
     provider_name = config.name
     verifier = verifiers.get(provider_name)
 
-    # --- POST /{provider_name} ---
     @router.post(
         f"/{provider_name}",
         status_code=response_status_code,
@@ -150,7 +102,6 @@ def _register_provider_endpoints(
         cfg = config_map[pn]
         vrf = verifiers.get(pn)
 
-        # Rate limit check
         if rate_limiter and rate_limit_config:
             try:
                 ip = _get_client_ip(request)
@@ -165,21 +116,18 @@ def _register_provider_endpoints(
                         status_code=429,
                         content={"error": "Rate limit exceeded"},
                         headers={
-                            "X-RateLimit-Limit": str(result.limit),
-                            "X-RateLimit-Remaining": str(result.remaining),
-                            "X-RateLimit-Reset": str(result.reset_at),
+                            HttpHeader.RATE_LIMIT_LIMIT.value: str(result.limit),
+                            HttpHeader.RATE_LIMIT_REMAINING.value: str(result.remaining),
+                            HttpHeader.RATE_LIMIT_RESET.value: str(result.reset_at),
                         },
                     )
             except Exception:
                 logger.warning("Rate limit check failed — allowing request", exc_info=True)
 
-        # Read raw body once
         raw_body = await request.body()
 
-        # Build lowercased headers dict
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        # Verify signature.
         # Pre-4A: when ``cfg.dynamic_secret`` is True, invoke the verifier
         # even if ``cfg.secret`` is empty — the verifier is expected to
         # read the real HMAC secret from a request header (e.g.
@@ -192,7 +140,6 @@ def _register_provider_endpoints(
                     content={"error": "Invalid webhook signature"},
                 )
 
-        # Parse JSON
         try:
             payload = json.loads(raw_body)
         except (json.JSONDecodeError, ValueError):
@@ -201,7 +148,6 @@ def _register_provider_endpoints(
                 content={"error": "Invalid JSON payload"},
             )
 
-        # Extract event_id and event_type.
         # When the provider supplies no id field, derive a deterministic id from
         # the raw body so identical re-deliveries collide in the idempotency
         # check. A random UUID here would make every delivery unique and
@@ -211,14 +157,13 @@ def _register_provider_endpoints(
             event_id = f"sha256:{hashlib.sha256(raw_body).hexdigest()}"
         event_type = _extract_field(payload, cfg.event_type_fields) or "unknown"
 
-        # Resolve tenant_id
         tenant_id: str | None = None
         if tenant_resolver:
             tenant_id = tenant_resolver(pn, headers, payload)
         if not tenant_id:
-            tenant_id = headers.get("x-tenant-id")
+            # `headers` keys are lowercased (built at line 181), so match case.
+            tenant_id = headers.get(HttpHeader.TENANT_ID.value.lower())
 
-        # Idempotency check
         if idempotency_guard:
             is_dup = await idempotency_guard.is_duplicate(
                 pn,
@@ -236,8 +181,7 @@ def _register_provider_endpoints(
                     ).model_dump(),
                 )
 
-        # Build webhook event
-        correlation_id = headers.get("x-correlation-id")
+        correlation_id = headers.get(HttpHeader.CORRELATION_ID.value.lower())
         event = WebhookEvent(
             provider=pn,
             event_id=event_id,
@@ -251,7 +195,6 @@ def _register_provider_endpoints(
             ip_address=_get_client_ip(request),
         )
 
-        # Publish to event bus
         if event_producer:
             try:
                 await event_producer.publish(
@@ -268,7 +211,6 @@ def _register_provider_endpoints(
             except Exception:
                 logger.warning("Failed to publish webhook event to stream", exc_info=True)
 
-        # Dispatch to handler
         if webhook_router:
             try:
                 await webhook_router.dispatch(event)
@@ -288,7 +230,6 @@ def _register_provider_endpoints(
             ).model_dump(),
         )
 
-    # --- GET /{provider_name}/health ---
     @router.get(
         f"/{provider_name}/health",
         status_code=200,
@@ -302,7 +243,6 @@ def _register_provider_endpoints(
             "endpoint": f"webhook_{_pn}",
         }
 
-    # --- GET /{provider_name} (Meta handshake) ---
     if isinstance(verifier, MetaWebhookVerifier):
         _meta_verifier = verifier
 

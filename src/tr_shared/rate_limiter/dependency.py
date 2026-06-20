@@ -1,25 +1,3 @@
-"""FastAPI dependency and decorator for per-endpoint rate limiting.
-
-Usage (dependency)::
-
-    from tr_shared.rate_limiter import create_rate_limit_dependency
-
-    rate_dep = create_rate_limit_dependency(limiter, limit=10, window=60)
-
-    @router.post("/webhook")
-    async def webhook(request: Request, _=Depends(rate_dep)):
-        ...
-
-Usage (decorator)::
-
-    from tr_shared.rate_limiter import rate_limit
-
-    @router.post("/webhook")
-    @rate_limit(limiter, limit=10, window=60, key_prefix="webhook")
-    async def webhook(request: Request):
-        ...
-"""
-
 import logging
 from collections.abc import Callable
 from functools import wraps
@@ -27,6 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request, status
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.rate_limiter.core import RateLimiter, default_identifier_extractor
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
@@ -46,19 +25,6 @@ def create_rate_limit_dependency(
     key_prefix: str = "api",
     fail_mode: FailMode = FailMode.OPEN,
 ) -> Callable:
-    """Create a FastAPI dependency function for rate limiting.
-
-    Args:
-        limiter: Shared ``RateLimiter`` instance.
-        limit: Maximum requests per window.
-        window: Window duration in seconds.
-        algorithm: Rate limiting algorithm.
-        key_prefix: Prefix for the rate limit scope.
-        fail_mode: Behavior when Redis is unavailable.
-
-    Returns:
-        An async dependency function suitable for ``Depends()``.
-    """
     config = RateLimitConfig(
         windows=[WindowConfig(limit=limit, window_seconds=window)],
         algorithm=algorithm,
@@ -94,14 +60,13 @@ def create_rate_limit_dependency(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Rate limit exceeded. Please try again later.",
                 headers={
-                    "X-RateLimit-Limit": str(tightest.limit),
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(tightest.reset_at),
+                    HttpHeader.RATE_LIMIT_LIMIT.value: str(tightest.limit),
+                    HttpHeader.RATE_LIMIT_REMAINING.value: "0",
+                    HttpHeader.RATE_LIMIT_RESET.value: str(tightest.reset_at),
                     "Retry-After": str(retry_after),
                 },
             )
 
-        # Store info on request for downstream use
         request.state.rate_limit_info = info
 
     return dependency
@@ -115,19 +80,7 @@ def rate_limit(
     algorithm: Algorithm = Algorithm.FIXED_WINDOW,
     fail_mode: FailMode = FailMode.OPEN,
 ) -> Callable:
-    """Decorator for rate limiting an endpoint function.
-
-    The decorated function **must** accept ``request: Request`` as its
-    first positional argument.
-
-    Args:
-        limiter: Shared ``RateLimiter`` instance.
-        limit: Maximum requests per window.
-        window: Window duration in seconds.
-        key_prefix: Prefix for the rate limit scope.
-        algorithm: Rate limiting algorithm.
-        fail_mode: Behavior when Redis is unavailable.
-    """
+    """The decorated function **must** accept ``request: Request`` as its first positional argument."""
     dep = create_rate_limit_dependency(
         limiter=limiter,
         limit=limit,
@@ -140,7 +93,6 @@ def rate_limit(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Find the Request object from args or kwargs
             request = kwargs.get("request")
             if request is None:
                 for arg in args:

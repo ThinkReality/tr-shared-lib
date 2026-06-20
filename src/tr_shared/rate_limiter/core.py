@@ -1,15 +1,11 @@
-"""Central RateLimiter class — delegates to algorithms, handles fallback.
-
-All three usage patterns (middleware, dependency, decorator) delegate to this
-class for the actual rate-limit check.
-"""
-
 import logging
 import time
 from typing import Any
 
+import redis.asyncio as aioredis
 from starlette.requests import Request
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.monitoring.path_normalizer import normalize_path
 from tr_shared.rate_limiter.algorithms import (
     BaseAlgorithm,
@@ -38,16 +34,6 @@ _DEFAULT_CONFIG = RateLimitConfig()
 
 
 class RateLimiter:
-    """Redis-backed rate limiter with multi-window support and memory fallback.
-
-    Args:
-        redis_client: An existing async Redis client (preferred).
-        redis_url: Or a Redis URL for lazy connection creation.
-        key_prefix: Global prefix for all keys (e.g. ``"dev:lead"``).
-        enable_memory_fallback: Use in-memory counters when Redis is down
-            and ``fail_mode=OPEN``.
-    """
-
     def __init__(
         self,
         redis_client: Any | None = None,
@@ -61,14 +47,11 @@ class RateLimiter:
         self._memory_fallback = MemoryFallback() if enable_memory_fallback else None
 
     async def _get_redis(self) -> Any | None:
-        """Get or lazily create an async Redis client."""
         if self._redis_client is not None:
             return self._redis_client
 
         if self._redis_url:
             try:
-                import redis.asyncio as aioredis
-
                 self._redis_client = aioredis.from_url(
                     self._redis_url, encoding="utf-8", decode_responses=True
                 )
@@ -84,17 +67,7 @@ class RateLimiter:
         key: str,
         config: RateLimitConfig | None = None,
     ) -> RateLimitInfo:
-        """Check rate limit across all configured windows.
-
-        Blocked if **any** window is exceeded.
-
-        Args:
-            key: The fully-qualified rate limit key.
-            config: Rate limit configuration. Uses default (100/min) if None.
-
-        Returns:
-            Aggregated ``RateLimitInfo`` with per-window results.
-        """
+        """Blocked if **any** window is exceeded."""
         cfg = config or _DEFAULT_CONFIG
         algorithm = _ALGORITHMS[cfg.algorithm]
         redis = await self._get_redis()
@@ -124,7 +97,6 @@ class RateLimiter:
         window: WindowConfig,
         fail_mode: FailMode,
     ) -> RateLimitResult:
-        """Check a single window, handling Redis failures gracefully."""
         window_key = f"{key}:{window.window_seconds}s"
 
         if redis is not None:
@@ -141,7 +113,6 @@ class RateLimiter:
                     extra={"key": window_key, "error": str(e)},
                 )
 
-        # Redis unavailable or errored — decide based on fail_mode
         if fail_mode == FailMode.CLOSED:
             logger.warning(
                 "Redis unavailable + fail_mode=CLOSED — blocking request",
@@ -155,7 +126,6 @@ class RateLimiter:
                 retry_after=window.window_seconds,
             )
 
-        # fail_mode=OPEN — use memory fallback if available
         if self._memory_fallback is not None:
             return await self._memory_fallback.check(
                 key=window_key,
@@ -163,7 +133,6 @@ class RateLimiter:
                 window_seconds=window.window_seconds,
             )
 
-        # No fallback — allow the request
         logger.warning(
             "Redis unavailable + no memory fallback — allowing request",
             extra={"key": window_key},
@@ -177,11 +146,6 @@ class RateLimiter:
         )
 
     async def reset(self, key: str, config: RateLimitConfig | None = None) -> bool:
-        """Delete counters for a key across all configured windows.
-
-        Returns:
-            True if at least one key was deleted.
-        """
         cfg = config or _DEFAULT_CONFIG
         redis = await self._get_redis()
         if redis is None:
@@ -198,10 +162,7 @@ class RateLimiter:
     async def status(
         self, key: str, config: RateLimitConfig | None = None
     ) -> RateLimitInfo:
-        """Get current rate limit status without incrementing.
-
-        Falls back to an empty ``RateLimitInfo`` if Redis is unavailable.
-        """
+        """Get current rate limit status without incrementing."""
         cfg = config or _DEFAULT_CONFIG
         redis = await self._get_redis()
         if redis is None:
@@ -242,17 +203,9 @@ class RateLimiter:
         endpoint: str = "*",
         scope: str = "default",
     ) -> str:
-        """Build a standardized rate limit key.
+        """Format: ``{prefix}:rl:{scope}:{identifier}:{normalized_endpoint}``
 
-        Format: ``{prefix}:rl:{scope}:{identifier}:{normalized_endpoint}``
-
-        Uses ``normalize_path`` from the monitoring module to replace
-        UUIDs and numeric IDs with ``{id}`` for low-cardinality keys.
-
-        Args:
-            identifier: User ID, tenant ID, or IP address.
-            endpoint: Request path (normalized automatically).
-            scope: Logical grouping (e.g. ``"api"``, ``"webhook"``).
+        Uses ``normalize_path`` to replace UUIDs and numeric IDs with ``{id}`` for low-cardinality keys.
         """
         normalized = normalize_path(endpoint) if endpoint != "*" else "*"
         parts = [self._key_prefix, "rl", scope, identifier, normalized]
@@ -260,11 +213,7 @@ class RateLimiter:
 
 
 def default_identifier_extractor(request: Request) -> str:
-    """Extract rate-limit identifier: user_id > tenant_id > IP.
-
-    Shared by both ``RateLimitMiddleware`` and ``create_rate_limit_dependency``
-    to avoid duplicated logic.
-    """
+    """Extract rate-limit identifier: user_id > tenant_id > IP."""
     if hasattr(request.state, "auth_context") and request.state.auth_context:
         ctx = request.state.auth_context
         if hasattr(ctx, "user_id") and ctx.user_id:
@@ -272,11 +221,11 @@ def default_identifier_extractor(request: Request) -> str:
         if hasattr(ctx, "tenant_id") and ctx.tenant_id:
             return str(ctx.tenant_id)
 
-    forwarded_for = request.headers.get("X-Forwarded-For")
+    forwarded_for = request.headers.get(HttpHeader.FORWARDED_FOR.value)
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
 
-    real_ip = request.headers.get("X-Real-IP")
+    real_ip = request.headers.get(HttpHeader.REAL_IP.value)
     if real_ip:
         return real_ip.strip()
 

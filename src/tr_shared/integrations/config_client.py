@@ -1,6 +1,4 @@
-"""Client for fetching integration configuration from the admin panel.
-
-Pattern mirrors shared-auth-lib's AuthContextClient (see
+"""Pattern mirrors shared-auth-lib's AuthContextClient (see
 shared-auth-lib/shared_auth_lib/services/auth_context_client.py). Key
 deviations dictated by the spec (docs/specs/01-batch-foundation.md §1A):
 
@@ -32,6 +30,7 @@ from urllib.parse import quote
 
 import httpx
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.http.circuit_breaker import CircuitBreaker
 from tr_shared.integrations.exceptions import (
     IntegrationConfigError,
@@ -43,9 +42,7 @@ logger = logging.getLogger("tr_shared.integrations")
 
 
 class IntegrationConfigClient:
-    """Admin-panel-backed integration configuration client.
-
-    Construct one instance per process; call init_integration_config_client()
+    """Construct one instance per process; call init_integration_config_client()
     to register it in the DI registry. Services never instantiate this
     twice in a single process.
     """
@@ -76,18 +73,12 @@ class IntegrationConfigClient:
             recovery_timeout=circuit_recovery_timeout,
             redis_client=redis_client,
         )
-        # FIFO cache: {cache_key: (expires_at_monotonic, IntegrationConfig)}
         self._local_cache: dict[str, tuple[float, IntegrationConfig]] = {}
         self._local_cache_ttl = local_cache_ttl
         self._local_cache_max_size = local_cache_max_size
-        # Per-key stampede locks
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._warm_semaphore = asyncio.Semaphore(warm_all_concurrency)
         self._service_name = os.getenv("SERVICE_NAME", "unknown")
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     async def get_config(
         self,
@@ -97,15 +88,9 @@ class IntegrationConfigClient:
         include_secrets: bool = False,
         correlation_id: str | None = None,
     ) -> IntegrationConfig:
-        """Fetch per-tenant integration configuration.
-
-        When `include_secrets=False` (the default), the returned config
+        """When ``include_secrets=False`` (the default), the returned config
         contains only non-sensitive JSONB fields. When True, Vault-decrypted
         secrets are merged in and an audit log is emitted.
-
-        Raises:
-            IntegrationConfigNotFound: 404 from admin panel.
-            IntegrationConfigError: circuit open, HTTP 5xx, network error.
         """
         cache_key = self._cache_key(tenant_id, platform_name, include_secrets)
 
@@ -137,7 +122,6 @@ class IntegrationConfigClient:
         return config
 
     async def get_enabled_tenants(self, platform_name: str) -> list[str]:
-        """Return list of tenant UUIDs with an active+enabled row for this platform."""
         if await self._circuit.is_open():
             raise IntegrationConfigError("Circuit open: admin panel unavailable")
 
@@ -149,7 +133,7 @@ class IntegrationConfigClient:
         try:
             response = await self._client.get(
                 f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants",
-                headers={"X-Service-Token": self._service_token},
+                headers={HttpHeader.SERVICE_TOKEN.value: self._service_token},
             )
         except httpx.HTTPError as exc:
             await self._circuit.record_failure()
@@ -170,13 +154,6 @@ class IntegrationConfigClient:
         return [str(t) for t in tenants]
 
     async def warm_all(self, platform_name: str) -> int:
-        """Pre-warm the cache for every enabled tenant of this platform.
-
-        Calls the bulk-tenant-list endpoint, then fetches each tenant's
-        config with include_secrets=True at concurrency cap
-        `warm_all_concurrency`. Returns the number of successful warms.
-        Partial failures are logged but do NOT raise.
-        """
         tenant_ids = await self.get_enabled_tenants(platform_name)
         if not tenant_ids:
             return 0
@@ -216,7 +193,6 @@ class IntegrationConfigClient:
             self._local_cache.clear()
             return
 
-        # Cache keys are "tenant_id:platform_name:include_secrets"
         keys_to_remove = [
             key
             for key in self._local_cache
@@ -226,7 +202,6 @@ class IntegrationConfigClient:
             del self._local_cache[key]
 
     async def close(self) -> None:
-        """Close the HTTP client and drain the cache."""
         self._local_cache.clear()
         await self._client.aclose()
 
@@ -235,10 +210,6 @@ class IntegrationConfigClient:
 
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     async def _fetch_config(
         self,
@@ -260,9 +231,9 @@ class IntegrationConfigClient:
             f"/api/v1/internal/integrations/platforms/{encoded_name}"
             f"/tenants/{encoded_tenant}"
         )
-        headers = {"X-Service-Token": self._service_token}
+        headers = {HttpHeader.SERVICE_TOKEN.value: self._service_token}
         if correlation_id:
-            headers["X-Correlation-ID"] = correlation_id
+            headers[HttpHeader.CORRELATION_ID.value] = correlation_id
         params = {"include_secrets": "true" if include_secrets else "false"}
 
         try:
@@ -316,7 +287,6 @@ class IntegrationConfigClient:
         tenant_id: str | None,
         platform_name: str | None,
     ) -> bool:
-        # key format: "tenant:platform:secret_flag"
         parts = key.rsplit(":", 2)
         if len(parts) != 3:
             return False
@@ -339,7 +309,6 @@ class IntegrationConfigClient:
 
     def _put_in_cache(self, key: str, config: IntegrationConfig) -> None:
         if len(self._local_cache) >= self._local_cache_max_size:
-            # FIFO eviction — drop the oldest entry.
             oldest = next(iter(self._local_cache))
             del self._local_cache[oldest]
         self._local_cache[key] = (

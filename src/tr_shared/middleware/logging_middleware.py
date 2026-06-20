@@ -1,16 +1,3 @@
-"""
-Request/response logging middleware.
-
-Extracted from tr-listing-service — structured logging of every request
-with duration, correlation ID, tenant context, and client IP.
-
-Usage::
-
-    from tr_shared.middleware import LoggingMiddleware
-
-    app.add_middleware(LoggingMiddleware, service_name="tr-listing-service")
-"""
-
 import logging
 import time
 from collections.abc import Callable
@@ -18,6 +5,8 @@ from collections.abc import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from tr_shared.contracts.headers import HttpHeader
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +26,6 @@ DEFAULT_EXCLUDED_PATHS: set[str] = {
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """
-    Log every HTTP request with method, path, status, and duration.
-
-    Args:
-        app: ASGI application.
-        service_name: Included in every log line for filtering.
-        excluded_paths: Paths to skip (defaults to health/docs/metrics).
-    """
-
     def __init__(
         self,
         app,
@@ -105,8 +85,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if request.query_params:
             meta["query_string"] = str(request.query_params)
 
-        # Client IP (respect X-Forwarded-For)
-        forwarded = request.headers.get("X-Forwarded-For")
+        forwarded = request.headers.get(HttpHeader.FORWARDED_FOR.value)
         if forwarded:
             meta["client_ip"] = forwarded.split(",")[0].strip()
         elif request.client:
@@ -120,7 +99,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if correlation_id:
             meta["correlation_id"] = correlation_id
 
-        tenant_id = request.headers.get("X-Tenant-ID")
+        tenant_id = request.headers.get(HttpHeader.TENANT_ID.value)
         if tenant_id:
             meta["tenant_id"] = tenant_id
 

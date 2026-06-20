@@ -1,26 +1,3 @@
-"""Typed wrapper around ``ServiceHTTPClient`` for ``/api/v1/internal/*`` endpoints.
-
-Adds:
-- Standard SuccessResponse envelope parsing (returns ``.data``).
-- Auto ``X-Tenant-ID`` header injection.
-- Typed error mapping: HTTP status + response body → ``tr_shared.exceptions.*``.
-
-Subclass per target service::
-
-    class LeadInternalClient(InternalServiceClient):
-        BASE_PATH = "/api/v1/internal"
-
-        async def get_source_performance(
-            self, *, tenant_id: UUID, source_id: UUID | None = None,
-        ) -> dict:
-            params = {"source_id": str(source_id)} if source_id else None
-            return await self._get(
-                "/leads/source-performance",
-                params=params,
-                tenant_id=tenant_id,
-            )
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -39,15 +16,11 @@ from tr_shared.exceptions import (
     ServiceUnavailableError,
     ValidationError,
 )
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.http.client import ServiceHTTPClient
 
 
 def _envelope_data(envelope: Any) -> Any:
-    """Extract ``.data`` from a SuccessResponse envelope.
-
-    Raises ``ServiceUnavailableError`` if the response is not a dict or
-    lacks a ``data`` key — cleaner than silently returning garbage.
-    """
     if not isinstance(envelope, dict):
         raise ServiceUnavailableError(
             detail="Internal response was not a JSON object",
@@ -62,7 +35,6 @@ def _envelope_data(envelope: Any) -> Any:
 
 
 def _translate_status_error(exc: httpx.HTTPStatusError) -> BaseAPIException:
-    """Translate a FastAPI error envelope (4xx/5xx) into a tr_shared exception."""
     status = exc.response.status_code
     body: dict[str, Any] = {}
     try:
@@ -94,19 +66,10 @@ def _translate_status_error(exc: httpx.HTTPStatusError) -> BaseAPIException:
 
 
 class InternalServiceClient:
-    """Base class for service-to-service internal API clients.
-
-    Args:
-        http: The underlying ``ServiceHTTPClient`` (owned by the caller —
-            manage ``close()`` / lifespan at app level).
-    """
-
     BASE_PATH: str = ""
 
     def __init__(self, http: ServiceHTTPClient) -> None:
         self._http = http
-
-    # ── Public verb helpers ──────────────────────────────────────────
 
     async def _get(
         self,
@@ -143,8 +106,6 @@ class InternalServiceClient:
     ) -> Any:
         return await self._call("DELETE", path, tenant_id=tenant_id)
 
-    # ── Core request pipeline ────────────────────────────────────────
-
     async def _call(
         self,
         method: str,
@@ -157,7 +118,7 @@ class InternalServiceClient:
         full_path = f"{self.BASE_PATH}{path}" if self.BASE_PATH else path
         headers: dict[str, str] = {}
         if tenant_id is not None:
-            headers["X-Tenant-ID"] = str(tenant_id)
+            headers[HttpHeader.TENANT_ID.value] = str(tenant_id)
 
         try:
             if method == "GET":
