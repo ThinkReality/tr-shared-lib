@@ -33,4 +33,4 @@ class UserDetailRef(BaseModel):
     department_id: UUID | None = None
     portal_info: dict | None = None
     pf_public_profile_id: str | None = None
-    bayut_user_id: str | None = None
+    bayut_user_id: int | None = None
