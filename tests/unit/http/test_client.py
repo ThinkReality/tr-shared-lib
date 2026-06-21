@@ -14,7 +14,7 @@ from tr_shared.http.circuit_breaker import CircuitBreaker
 def _client(**kwargs) -> ServiceHTTPClient:
     return ServiceHTTPClient(
         service_name="crm-backend",
-        base_url="http://crm-backend:8000",
+        base_url="http://tr-crm-core:8000",
         service_token="test-token",
         **kwargs,
     )
@@ -39,7 +39,7 @@ class TestInitialization:
 
     def test_base_url_stored(self):
         c = _client()
-        assert c.base_url == "http://crm-backend:8000"
+        assert c.base_url == "http://tr-crm-core:8000"
 
     def test_service_token_stored(self):
         c = _client()

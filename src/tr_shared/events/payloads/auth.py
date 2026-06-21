@@ -12,7 +12,6 @@ from tr_shared.events.payloads._base import EventPayload
 class AdminUserCreatedV1(EventPayload):
     user_id: str
     user_name: str
-    email: str
     role_names: list[str]
     recipient_id: str
 
@@ -20,7 +19,6 @@ class AdminUserCreatedV1(EventPayload):
 class AdminUserUpdatedV1(EventPayload):
     user_id: str
     user_name: str
-    email: str
     changed_fields: list[str]
     recipient_id: str
 

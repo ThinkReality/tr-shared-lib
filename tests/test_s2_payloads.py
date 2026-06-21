@@ -55,7 +55,7 @@ _CASES = [
     (
         AdminUserCreatedV1,
         {
-            "user_id": "u1", "user_name": "Jo", "email": "jo@x.com",
+            "user_id": "u1", "user_name": "Jo",
             "role_names": ["AGENT"], "recipient_id": "r1",
         },
     ),

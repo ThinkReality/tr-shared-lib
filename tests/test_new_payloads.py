@@ -291,9 +291,12 @@ def test_hr_application_events():
         "notification_event": "hr_application_submitted",
         "application_id": "app1",
         "job_id": "j1",
-        "applicant_name": "Carol",
     }
     HRApplicationSubmittedV1(**submitted)
+    # PII dropped — extra="forbid" must now reject applicant_name / applicant_email.
+    for pii in ("applicant_name", "applicant_email"):
+        with pytest.raises(ValidationError):
+            HRApplicationSubmittedV1(**{**submitted, pii: "x"})
     stage = {
         "entity_id": "app1",
         "entity_type": "hr_application",

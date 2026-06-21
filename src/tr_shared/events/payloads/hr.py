@@ -75,8 +75,6 @@ class HRApplicationSubmittedV1(HREventV1):
 
     application_id: str
     job_id: str
-    applicant_name: str | None = None
-    applicant_email: str | None = None
 
 
 class HRApplicationStageChangedV1(HREventV1):

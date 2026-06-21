@@ -68,7 +68,6 @@ class FinanceInvoiceEventV1(EventPayload):
     total_amount: str
     invoice_type: str | None = None
     party_name: str | None = None
-    party_email: str | None = None
     payment_amount: str | None = None
     payment_method: str | None = None
     notification_recipient_id: str | None = None

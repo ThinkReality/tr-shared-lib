@@ -12,7 +12,7 @@ Usage::
 
     handler = LokiHandler(
         url="http://loki.railway.internal:3100/loki/api/v1/push",
-        labels={"service": "crm-backend", "environment": "production"},
+        labels={"service": "tr-crm-core", "environment": "production"},
     )
     logging.getLogger().addHandler(handler)
 """
