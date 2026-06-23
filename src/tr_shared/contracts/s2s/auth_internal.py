@@ -10,7 +10,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from tr_shared.contracts.headers import HttpHeader
+
 BASE_PATH = "/api/v1/internal"
+
+
+def internal_call_headers(calling_service: str, tenant_id: UUID | str) -> dict[str, str]:
+    """SSOT for the calling-service + calling-tenant header pair. X-Service-Token is added by each service's HTTP client, not here."""
+    return {
+        HttpHeader.CALLING_SERVICE.value: calling_service,
+        HttpHeader.CALLING_TENANT_ID.value: str(tenant_id),
+    }
 
 
 def user_by_id(user_id: UUID | str) -> str:

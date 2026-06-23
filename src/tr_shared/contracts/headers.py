@@ -38,6 +38,9 @@ class HttpHeader(StrEnum):
     SERVICE_TOKEN = "X-Service-Token"
     # Identifies the calling service on S2S requests (gateway + service clients).
     SERVICE_NAME = "X-Service-Name"
+    # Tenant-scoped S2S identity, read by require_internal_service for cross-tenant rejection.
+    CALLING_SERVICE = "X-Calling-Service"
+    CALLING_TENANT_ID = "X-Calling-Tenant-ID"
 
     IDEMPOTENCY_KEY = "X-Idempotency-Key"
     IDEMPOTENCY_REPLAYED = "X-Idempotency-Replayed"
