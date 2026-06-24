@@ -138,10 +138,21 @@ class ConflictError(BaseAPIException):
 
 
 class RateLimitError(BaseAPIException):
-    """Rate limit exceeded (429)."""
+    """Rate limit exceeded (429).
 
-    def __init__(self, detail: str = "Rate limit exceeded", code: str = "RATE_LIMIT_001") -> None:
+    ``retry_after`` (seconds) sets the standard ``Retry-After`` response header
+    so clients can back off; the exception handler must surface ``self.headers``.
+    """
+
+    def __init__(
+        self,
+        detail: str = "Rate limit exceeded",
+        code: str = "RATE_LIMIT_001",
+        retry_after: int | None = None,
+    ) -> None:
         super().__init__(status_code=429, error="Rate limit exceeded", detail=detail, code=code)
+        if retry_after is not None:
+            self.headers = {"Retry-After": str(retry_after)}
 
 
 # ---------------------------------------------------------------------------
