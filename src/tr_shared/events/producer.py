@@ -1,5 +1,3 @@
-"""Unified event producer for publishing to Redis Stream."""
-
 import asyncio
 import json
 import logging
@@ -17,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class EventProducer:
-    """Publishes events to a Redis Stream using the canonical 9-field envelope."""
-
     STREAM_MAXLEN = 100_000
     DEFAULT_MAX_DATA_BYTES = 1_048_576  # 1 MB
 
@@ -67,7 +63,6 @@ class EventProducer:
             self._redis = None
 
     def set_redis(self, client: redis.Redis) -> None:
-        """Inject an existing Redis client (useful for shared connections)."""
         self._redis = client
 
     async def publish(
@@ -80,27 +75,6 @@ class EventProducer:
         correlation_id: str | None = None,
         strict_mode: bool = False,
     ) -> str:
-        """Publish an event to the Redis Stream.
-
-        Args:
-            event_type: Dot-separated event type (e.g. "listing.created").
-            tenant_id: Tenant UUID string.
-            data: Event payload dict.
-            actor_id: Optional user UUID who triggered the event.
-            metadata: Optional extra metadata dict.
-            correlation_id: Optional correlation ID for tracing.
-            strict_mode: If True, require entity_id/entity_type/action in data.
-
-        Returns:
-            The generated event_id (UUID string).
-
-        Raises:
-            ValueError: If strict_mode is True and required fields are missing.
-            RuntimeError: If Redis is not connected.
-            EventPublishTransportError: If the broker rejects/loses the write
-                (Redis connection lost, timeout, ResponseError). Best-effort
-                callers may swallow this; programming errors still propagate raw.
-        """
         if strict_mode:
             for field in ("entity_id", "entity_type", "action"):
                 if field not in data:
@@ -136,14 +110,18 @@ class EventProducer:
         if self._redis is None:
             raise RuntimeError("Redis connection not available")
 
-        # CRITICAL: Delivery guarantee is AT-MOST-ONCE.
-        # This XADD runs AFTER the caller's DB transaction has committed.
-        # If Redis is down or XADD fails, the event is lost while the DB
-        # change persists. This is acceptable at current scale.
-        # If exactly-once delivery is ever required (e.g., for financial
-        # transactions), implement a transactional outbox pattern: write
-        # the event to an outbox table inside the same DB transaction,
-        # then have a separate worker poll and publish to Redis.
+        # CRITICAL: This direct XADD gives AT-MOST-ONCE delivery and does NOT
+        # enforce ordering relative to the caller's DB transaction. The producer
+        # publishes immediately when called; whether that happens before or after
+        # the caller's commit is the CALLER'S responsibility. Calling publish()
+        # before the transaction commits risks a PHANTOM EVENT (event delivered,
+        # business data later rolled back); calling it after commit risks a LOST
+        # EVENT if Redis is down (no in-flight retry). The post-commit, accept-loss
+        # tradeoff is acceptable at current scale.
+        # For AT-LEAST-ONCE with no phantom events, do NOT call this directly —
+        # use DurableEventPublisher (transactional outbox): it writes the event to
+        # an outbox table inside the caller's transaction, and a background drainer
+        # publishes committed rows via this same XADD.
         try:
             await self._redis.xadd(self._stream_name, envelope, maxlen=self._maxlen)
         except RedisError as exc:
