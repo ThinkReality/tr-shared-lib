@@ -66,12 +66,18 @@ class PaginationData(BaseModel, Generic[T]):
     total: int = Field(description="Total number of items across all pages")
     page: int = Field(ge=1, description="Current page number (1-indexed)")
     page_size: int = Field(ge=1, description="Number of items per page")
-    total_pages: int = Field(ge=0, description="Total number of pages")
+    total_pages: int | None = Field(
+        default=None,
+        ge=0,
+        description="Total number of pages; computed from total/page_size when omitted",
+    )
 
     @model_validator(mode="after")
     def _validate_total_pages(self) -> "PaginationData[T]":
         expected = math.ceil(self.total / self.page_size) if self.page_size else 0
-        if self.total_pages != expected:
+        if self.total_pages is None:
+            self.total_pages = expected
+        elif self.total_pages != expected:
             _logger.warning(
                 "PaginationData total_pages auto-corrected",
                 extra={
