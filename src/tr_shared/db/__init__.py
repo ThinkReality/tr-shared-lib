@@ -26,7 +26,13 @@ from tr_shared.db.session import (
     create_session_factory,
     get_db,
 )
-from tr_shared.db.utils import to_migration_url, to_session_mode_url, to_sync_url
+from tr_shared.db.utils import (
+    LIKE_ESCAPE_CHAR,
+    escape_like,
+    to_migration_url,
+    to_session_mode_url,
+    to_sync_url,
+)
 
 __all__ = [
     "AuditMixin",
@@ -34,6 +40,7 @@ __all__ = [
     "BaseModel",
     "BaseRepository",
     "CrossSchemaFKError",
+    "LIKE_ESCAPE_CHAR",
     "PGBOUNCER_CONNECT_ARGS",
     "SoftDeleteMixin",
     "TenantMixin",
@@ -46,6 +53,7 @@ __all__ = [
     "create_async_engine_factory",
     "create_session_factory",
     "dedup_with_table_lock",
+    "escape_like",
     "get_db",
     "make_service_include_object",
     "run_async_migrations",

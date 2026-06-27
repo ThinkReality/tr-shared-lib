@@ -1,6 +1,25 @@
-"""Database URL utilities for Supavisor compatibility."""
+"""Database utilities: Supavisor URL conversion + SQL query helpers."""
 
 from urllib.parse import urlparse, urlunparse
+
+LIKE_ESCAPE_CHAR = "\\"
+
+
+def escape_like(value: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcards (``%`` ``_`` ``\\``) in user search terms.
+
+    Pair with an explicit escape char so the escapes are honoured::
+
+        col.ilike(f"%{escape_like(term)}%", escape="\\\\")
+
+    Without this, a user-supplied ``%`` or ``_`` is treated as a wildcard
+    (e.g. searching ``"50%"`` would match every row).
+    """
+    return (
+        value.replace(LIKE_ESCAPE_CHAR, LIKE_ESCAPE_CHAR * 2)
+        .replace("%", LIKE_ESCAPE_CHAR + "%")
+        .replace("_", LIKE_ESCAPE_CHAR + "_")
+    )
 
 
 def to_session_mode_url(url: str) -> str:
