@@ -1,13 +1,11 @@
 """Typed payloads for lead.* events (tr-lead-management).
 
-``lead.created`` is emitted today by two paths with different shapes (a minimal
-publisher and a rich event_emitter). LeadCreatedV1 is the unified SUPERSET: the
-rich-only fields are optional so the minimal shape still validates, and the
-service-side unification collapses onto the rich emitter. PII (phone/email) is
-ALWAYS hashed before the bus — these fields carry the hashed values only.
+``lead.created`` is emitted by a single durable emitter. PII (phone/email) is
+ALWAYS hashed before the bus — ``hashed_phone``/``hashed_email`` are the only
+PII-derived fields and carry hashed values, never raw.
 
-Field sets mirror app/events/publisher.py:emit_* and
-app/services/leads/event_emitter.py. All ids are str (UUIDs stringified at emit).
+Field sets mirror app/events/publisher.py:build_lead_lifecycle_payload. All ids
+are str (UUIDs stringified at emit).
 """
 
 from typing import Any
@@ -29,8 +27,6 @@ class LeadCreatedV1(LeadEventV1):
 
     hashed_phone: str | None = None
     hashed_email: str | None = None
-    lead_phone: str | None = None  # hashed value (rich emitter key)
-    lead_email: str | None = None  # hashed value (rich emitter key)
     source: str | None = None
     listing_reference: str | None = None
     tenant_id: str | None = None

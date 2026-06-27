@@ -165,8 +165,8 @@ def test_lead_created_minimal_shape_validates():
 def test_lead_created_rich_shape_validates():
     data = {
         **_LEAD_BASE,
-        "lead_phone": "hashed",
-        "lead_email": "hashed",
+        "hashed_phone": "hashed",
+        "hashed_email": "hashed",
         "tenant_id": "t1",
         "stage": "new",
         "status": "open",
