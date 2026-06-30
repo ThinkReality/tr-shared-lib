@@ -1,24 +1,5 @@
-"""
-Standard exception classes for ThinkRealty microservices.
-
-All services should use these as base classes for API exceptions.
-Service-specific exceptions should inherit from these shared classes.
-
-Error code convention: {SERVICE_PREFIX}_{CATEGORY}_{NUMBER}
-  e.g., LISTING_VALIDATION_001, CMS_NOT_FOUND_002, HR_AUTH_001
-
-Usage:
-    from tr_shared.exceptions import (
-        BaseAPIException, ValidationError, NotFoundError, ...
-    )
-
-Subclass contract:
-    Every subclass MUST call ``super().__init__(status_code, error, detail, code)``
-    so that the four public attributes (``status_code``, ``error``,
-    ``detail_message``, ``error_code``) are set. A subclass that skips the
-    super call raises ``TypeError`` at construction time — the bad subclass
-    fails loudly instead of rendering a broken error response in production.
-"""
+# Error code format: {SERVICE_PREFIX}_{CATEGORY}_{NUMBER}
+# e.g. LISTING_VALIDATION_001, CMS_NOT_FOUND_002
 
 from fastapi import HTTPException
 
@@ -26,17 +7,6 @@ _REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "e
 
 
 class BaseAPIException(HTTPException):
-    """Base exception for all API errors.
-
-    Provides standard structure with HTTP status code, error message,
-    optional detail, and service-specific error code.
-
-    Args:
-        status_code: HTTP status code
-        error: Human-readable error message
-        detail: Detailed error description (optional)
-        code: Error code in SERVICE_CATEGORY_NUMBER format (optional)
-    """
 
     def __init__(
         self,
@@ -51,13 +21,7 @@ class BaseAPIException(HTTPException):
         self.error_code = code
 
     def __init_subclass__(cls, **kwargs: object) -> None:
-        """Wrap subclass ``__init__`` to enforce the attribute contract.
-
-        After the subclass constructor runs, every required attribute must
-        exist on the instance. Missing attrs => ``TypeError`` — catches
-        subclasses that forget ``super().__init__(...)`` before the broken
-        exception leaks into a FastAPI handler.
-        """
+        # Wraps __init__ to TypeError-fail loudly when super().__init__ is skipped.
         super().__init_subclass__(**kwargs)
         original_init = cls.__init__
 
@@ -75,25 +39,14 @@ class BaseAPIException(HTTPException):
         cls.__init__ = _verified_init  # type: ignore[method-assign]
 
     def to_dict(self) -> dict:
-        """Serialize to the standard error response shape.
+        """Returns ``{"error": {"message", "code"?, "detail"?}}``."""
+        from tr_shared.schemas.error_envelope import build_error_envelope
 
-        Useful in custom exception handlers that need to build the JSON body::
-
-            @app.exception_handler(BaseAPIException)
-            async def handle(request, exc):
-                return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
-        """
-        body: dict = {"error": self.error}
-        if self.detail_message:
-            body["detail"] = self.detail_message
-        if self.error_code:
-            body["code"] = self.error_code
-        return body
-
-
-# ---------------------------------------------------------------------------
-# Client Errors (4xx)
-# ---------------------------------------------------------------------------
+        return build_error_envelope(
+            message=self.error,
+            code=self.error_code,
+            detail=self.detail_message,
+        )
 
 
 class ValidationError(BaseAPIException):
@@ -138,11 +91,7 @@ class ConflictError(BaseAPIException):
 
 
 class RateLimitError(BaseAPIException):
-    """Rate limit exceeded (429).
-
-    ``retry_after`` (seconds) sets the standard ``Retry-After`` response header
-    so clients can back off; the exception handler must surface ``self.headers``.
-    """
+    """Rate limit exceeded (429). Handler must surface ``self.headers`` to emit ``Retry-After``."""
 
     def __init__(
         self,
@@ -153,11 +102,6 @@ class RateLimitError(BaseAPIException):
         super().__init__(status_code=429, error="Rate limit exceeded", detail=detail, code=code)
         if retry_after is not None:
             self.headers = {"Retry-After": str(retry_after)}
-
-
-# ---------------------------------------------------------------------------
-# Server Errors (5xx)
-# ---------------------------------------------------------------------------
 
 
 class DatabaseError(BaseAPIException):

@@ -1,5 +1,4 @@
-"""Standard response and pagination schemas."""
-
+from tr_shared.schemas.error_envelope import build_error_envelope
 from tr_shared.schemas.responses import (
     ErrorResponse,
     PaginatedResponse,
@@ -13,5 +12,6 @@ __all__ = [
     "PaginatedResponse",
     "PaginationData",
     "SuccessResponse",
+    "build_error_envelope",
     "coerce_enum",
 ]

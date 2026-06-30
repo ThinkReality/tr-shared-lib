@@ -1,5 +1,3 @@
-"""Tests for tr_shared.exceptions."""
-
 import pytest
 
 from tr_shared.exceptions import (
@@ -36,14 +34,14 @@ class TestBaseAPIException:
     def test_to_dict_minimal(self):
         exc = BaseAPIException(status_code=400, error="Bad request")
         d = exc.to_dict()
-        assert d == {"error": "Bad request"}
+        assert d == {"error": {"message": "Bad request"}}
 
     def test_to_dict_full(self):
         exc = BaseAPIException(
             status_code=400, error="Bad", detail="detail", code="CODE_001"
         )
         d = exc.to_dict()
-        assert d == {"error": "Bad", "detail": "detail", "code": "CODE_001"}
+        assert d == {"error": {"message": "Bad", "code": "CODE_001", "detail": "detail"}}
 
 
 class TestClientErrors:
@@ -96,11 +94,6 @@ class TestServerErrors:
         assert exc.status_code == 504
 
 
-# ---------------------------------------------------------------------------
-# Subclass contract freeze
-# ---------------------------------------------------------------------------
-
-
 _REQUIRED_ATTRS = ("status_code", "error", "detail_message", "error_code")
 _ALL_BUILTIN_EXC = (
     ValidationError,
@@ -117,7 +110,6 @@ _ALL_BUILTIN_EXC = (
 
 
 def _construct(cls):
-    """Build a subclass instance honoring its required positional args."""
     if cls is ValidationError:
         return cls(detail="validation failed")
     return cls()
@@ -135,22 +127,19 @@ class TestSubclassContract:
         exc = _construct(cls)
         body = exc.to_dict()
         assert "error" in body
-        for key in ("error", "detail", "code"):
-            if key in body:
-                assert isinstance(body[key], str)
+        assert isinstance(body["error"], dict)
+        assert "message" in body["error"]
 
     def test_to_dict_minimal_has_only_error(self):
         exc = BaseAPIException(status_code=400, error="Bad")
-        assert exc.to_dict() == {"error": "Bad"}
+        assert exc.to_dict() == {"error": {"message": "Bad"}}
 
     def test_to_dict_full_includes_detail_and_code(self):
         exc = BaseAPIException(
             status_code=400, error="Bad", detail="bad thing", code="X_001",
         )
         assert exc.to_dict() == {
-            "error": "Bad",
-            "detail": "bad thing",
-            "code": "X_001",
+            "error": {"message": "Bad", "code": "X_001", "detail": "bad thing"}
         }
 
     def test_subclass_skipping_super_raises_type_error(self):
@@ -169,4 +158,4 @@ class TestSubclassContract:
         exc = GoodExc()
         assert exc.status_code == 418
         assert exc.error == "teapot"
-        assert exc.to_dict() == {"error": "teapot"}
+        assert exc.to_dict() == {"error": {"message": "teapot"}}

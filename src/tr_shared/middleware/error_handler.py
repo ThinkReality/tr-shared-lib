@@ -1,20 +1,4 @@
-"""
-Global error handler middleware with Slack alerts.
-
-Merged from crm-backend (rich Slack blocks, rate limiting, 5xx detection)
-and tr-lead-management (privacy hashing, auth-context extraction).
-
-Usage::
-
-    from tr_shared.middleware import GlobalErrorHandlerMiddleware
-
-    app.add_middleware(
-        GlobalErrorHandlerMiddleware,
-        service_name="tr-listing-service",
-        environment="production",
-        slack_webhook_url=settings.SLACK_ERROR_WEBHOOK_URL,
-    )
-"""
+"""Global error handler middleware with rate-limited Slack alerts."""
 
 import asyncio
 import hashlib
@@ -33,7 +17,6 @@ from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
-# Module-level shared httpx client for Slack webhook calls
 _slack_client: httpx.AsyncClient | None = None
 
 
@@ -66,22 +49,7 @@ _pending_alerts: set[asyncio.Task] = set()
 
 
 class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
-    """
-    Catches all unhandled exceptions and 5xx responses.
-
-    - Logs structured error context
-    - Sends rate-limited Slack alerts (5 per error type per hour)
-    - Returns standardised error JSON
-
-    Args:
-        app: ASGI application.
-        service_name: For Slack alert titles.
-        environment: "development", "staging", "production".
-        slack_webhook_url: Slack incoming-webhook URL (empty = no alerts).
-        alert_on_5xx: Also alert on handled 5xx responses (default True).
-        hash_pii: SHA-256-hash user/tenant IDs in alerts (default True).
-        rate_limit: Max alerts per error type per hour (default 5).
-    """
+    """Catches unhandled exceptions and 5xx responses; logs and sends rate-limited Slack alerts."""
 
     def __init__(
         self,
@@ -108,7 +76,6 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
 
             if self.alert_on_5xx and response.status_code >= 500:
-                # Buffer body to extract error detail for the alert
                 body_bytes = b"".join([chunk async for chunk in response.body_iterator])
                 body_text = body_bytes.decode("utf-8", errors="replace")[:500]
 
@@ -120,10 +87,8 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
                 logger.error("Handled 5xx response", extra=ctx)
                 self._fire_alert(ctx)
 
-                # Re-wrap so the client still receives the body.
-                # Build headers from the raw ASGI scope list to avoid
-                # KeyError in Starlette's MutableHeaders.__getitem__
-                # when duplicate or encoded header keys are present.
+                # Rebuild from raw_headers to avoid MutableHeaders.__getitem__ KeyError
+                # on duplicate or encoded header keys.
                 raw_headers = {
                     k.decode("latin-1"): v.decode("latin-1")
                     for k, v in response.raw_headers
@@ -147,18 +112,16 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             logger.error("Unhandled exception", extra=ctx, exc_info=True)
             self._fire_alert(ctx)
 
+            from tr_shared.schemas.error_envelope import build_error_envelope
+
             return JSONResponse(
                 status_code=500,
-                content={
-                    "error": {
-                        "message": "Internal server error",
-                        "code": "INTERNAL_ERROR",
-                        "correlation_id": ctx.get("correlation_id", "unknown"),
-                    }
-                },
+                content=build_error_envelope(
+                    message="Internal server error",
+                    code="INTERNAL_ERROR",
+                    correlation_id=ctx.get("correlation_id", "unknown"),
+                ),
             )
-
-    # ── Helpers ──────────────────────────────────────────────────────
 
     def _build_context(
         self,
@@ -194,7 +157,6 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _extract_identity(request: Request) -> tuple[str | None, str | None]:
-        """Extract user/tenant from auth_context or legacy request.state.user."""
         if hasattr(request.state, "auth_context") and request.state.auth_context:
             ctx = request.state.auth_context
             return str(getattr(ctx, "user_id", None)), str(
@@ -227,12 +189,10 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             return
         self._error_counts[error_key] += 1
 
-        # Build path display with query string if present
         path_display = f"`{ctx['path']}`"
         if ctx.get("query"):
             path_display = f"`{ctx['path']}?{ctx['query']}`"
 
-        # Build traceback / response body section
         tb = ctx.get("traceback")
         if tb:
             tb_text = f"*Traceback:*\n```{tb[-1500:]}```"
