@@ -215,6 +215,18 @@ def test_wam_qualification_result_nested():
     assert p.qualification_result.buyer_type == "investor"
 
 
+def test_wam_tier_must_be_a_known_tier():
+    for tier in ("hot", "warm", "cold", "low_priority"):
+        WAMLeadQualifiedV1(user_number="971501234567", lead_score=1, tier=tier)
+    with pytest.raises(ValidationError):
+        WAMLeadQualifiedV1(user_number="971501234567", lead_score=1, tier="hott")
+
+
+def test_wam_lead_score_must_be_non_negative():
+    with pytest.raises(ValidationError):
+        WAMLeadQualifiedV1(user_number="971501234567", lead_score=-1, tier="hot")
+
+
 # ---------- Listing audit ----------
 
 _AUDIT = {

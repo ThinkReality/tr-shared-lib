@@ -5,7 +5,9 @@ reads only user_number/lead_score/tier; the remaining fields are advisory
 qualification context. ``qualification_result`` carries a whitelisted key set.
 """
 
-from pydantic import field_validator
+from typing import Literal
+
+from pydantic import Field, field_validator
 
 from tr_shared.events.payloads._base import EventPayload
 
@@ -35,8 +37,8 @@ class WAMLeadQualifiedV1(EventPayload):
     """wam.lead.qualified — a WhatsApp-qualified lead handed to the CRM."""
 
     user_number: str
-    lead_score: int
-    tier: str
+    lead_score: int = Field(ge=0)
+    tier: Literal["hot", "warm", "cold", "low_priority"]
     buyer_type: str | None = None
     budget: str | None = None
     location: str | None = None
