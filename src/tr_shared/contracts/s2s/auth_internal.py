@@ -27,6 +27,22 @@ def user_by_id(user_id: UUID | str) -> str:
     return f"{BASE_PATH}/users/{user_id}"
 
 
+def tenant_status(tenant_id: UUID | str) -> str:
+    return f"{BASE_PATH}/tenant-status/{tenant_id}"
+
+
+class TenantStatusRef(BaseModel):
+    """Caller-facing view of GET /internal/tenant-status/{id} data.
+
+    ``is_active`` folds existence + active flag + soft-delete into one answer:
+    a missing, deactivated, or deleted tenant all read as False.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    is_active: bool
+
+
 class UserDetailRef(BaseModel):
     """Lean caller-facing view of GET /internal/users/{id} data.
 
