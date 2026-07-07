@@ -1,7 +1,5 @@
-"""S2S contract: tr-content-platform listing internal endpoints.
-
-Provider: tr-content-platform (mounted at /api/v1/listing/internal/listings).
-Callers: tr-lead-management, tr-crm-core (activity access-check).
+"""S2S contract: tr-content-platform /api/v1/listing/internal/listings.
+Callers: tr-lead-management, tr-crm-core.
 """
 
 from datetime import datetime
@@ -32,13 +30,13 @@ def access_check(listing_id: UUID | str) -> str:
     return f"{BASE_PATH}/{listing_id}/access-check"
 
 
-class ListingInternalRef(BaseModel):
-    """Lean caller-facing view of the by-reference response.
+def agent_listing_counts_batch() -> str:
+    return f"{BASE_PATH}/agents:batch-count"
 
-    Only the fields S2S callers actually read. The provider's full
-    ``ListingInternalOut`` is a superset (guarded by a provider drift test);
-    ``extra='ignore'`` lets the extra fields pass through harmlessly.
-    """
+
+class ListingInternalRef(BaseModel):
+    """Lean S2S view; extra='ignore' lets provider add fields without breaking callers.
+    Provider superset drift is guarded by a contract test."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -55,14 +53,24 @@ class ListingInternalRef(BaseModel):
 
 
 class ListingLeadCountOut(BaseModel):
-    """Response of POST .../{listing_id}/leads:increment."""
-
     listing_id: UUID
     leads_count: int
     last_lead_at: datetime | None = None
 
 
 class ListingActiveCountOut(BaseModel):
-    """Data payload of GET .../active-count (inside SuccessResponse.data)."""
-
     count: int
+
+
+class AgentListingCountsRequest(BaseModel):
+    tenant_id: UUID
+    agent_ids: list[UUID]
+
+
+class AgentListingCountRow(BaseModel):
+    agent_id: UUID
+    listings_count: int
+
+
+class AgentListingCountsResponse(BaseModel):
+    rows: list[AgentListingCountRow]
