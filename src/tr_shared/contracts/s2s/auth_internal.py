@@ -31,12 +31,12 @@ def tenant_status(tenant_id: UUID | str) -> str:
     return f"{BASE_PATH}/tenant-status/{tenant_id}"
 
 
-class TenantStatusRef(BaseModel):
-    """Caller-facing view of GET /internal/tenant-status/{id} data.
+def portal_agents_resolve() -> str:
+    return f"{BASE_PATH}/portal-agents/resolve"
 
-    ``is_active`` folds existence + active flag + soft-delete into one answer:
-    a missing, deactivated, or deleted tenant all read as False.
-    """
+
+class TenantStatusRef(BaseModel):
+    """``is_active`` folds existence + active flag + soft-delete: missing, deactivated, or deleted tenant → False."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -44,11 +44,7 @@ class TenantStatusRef(BaseModel):
 
 
 class UserDetailRef(BaseModel):
-    """Lean caller-facing view of GET /internal/users/{id} data.
-
-    The provider's full UserDetailResponse is a superset (drift-tested).
-    ``full_name`` is canonical; ``name`` is the provider's alias of it.
-    """
+    """Subset of the provider's UserDetailResponse (drift-tested superset). ``full_name`` is canonical; ``name`` is an alias."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -60,3 +56,20 @@ class UserDetailRef(BaseModel):
     portal_info: dict | None = None
     pf_public_profile_id: str | None = None
     bayut_user_id: int | None = None
+
+
+class PortalAgentRef(BaseModel):
+    """Caller-facing view of one resolved portal agent (POST /internal/portal-agents/resolve)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    crm_user_id: UUID
+    name: str | None = None
+
+
+class PortalAgentResolveRef(BaseModel):
+    """Unmatched/unknown values are absent — caller leaves those leads unassigned."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    resolved: dict[str, PortalAgentRef] = {}
