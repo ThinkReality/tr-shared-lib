@@ -1,10 +1,5 @@
-"""S2S contract: tr-crm-core auth/users internal endpoints.
-
-Provider: tr-crm-core auth module (mounted at /api/v1/internal).
-Callers: tr-content-platform, tr-whatsApp-marketing-agent, tr-people-finance.
-Note: /api/v1/internal/auth-context/* is owned by shared_auth_lib's
-AuthContextClient — NOT duplicated here.
-"""
+"""S2S contract: tr-crm-core /api/v1/internal auth endpoints.
+auth-context/* is owned by shared_auth_lib.AuthContextClient — not duplicated here."""
 
 from uuid import UUID
 
@@ -35,6 +30,10 @@ def portal_agents_resolve() -> str:
     return f"{BASE_PATH}/portal-agents/resolve"
 
 
+def portal_agents_resolve_or_create() -> str:
+    return f"{BASE_PATH}/portal-agents/resolve-or-create"
+
+
 class TenantStatusRef(BaseModel):
     """``is_active`` folds existence + active flag + soft-delete: missing, deactivated, or deleted tenant → False."""
 
@@ -59,8 +58,6 @@ class UserDetailRef(BaseModel):
 
 
 class PortalAgentRef(BaseModel):
-    """Caller-facing view of one resolved portal agent (POST /internal/portal-agents/resolve)."""
-
     model_config = ConfigDict(extra="ignore")
 
     crm_user_id: UUID
@@ -73,3 +70,21 @@ class PortalAgentResolveRef(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     resolved: dict[str, PortalAgentRef] = {}
+
+
+class PortalAgentUpsertRef(BaseModel):
+    """crm_user_id is nullable: unmatched agent has no CRM user yet.
+    Caller stores UUID when present, falls back to portal id otherwise."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    crm_user_id: UUID | None = None
+    name: str | None = None
+
+
+class PortalAgentResolveOrCreateRef(BaseModel):
+    """Every requested ``external_id`` is present (``crm_user_id`` may be null)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    resolved: dict[str, PortalAgentUpsertRef] = {}

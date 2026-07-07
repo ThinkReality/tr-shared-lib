@@ -1,19 +1,10 @@
-"""Canonical event type registry for the ThinkRealty event bus.
+"""Canonical registry for all tr_event_bus event types. Import constants — never raw strings.
 
-All event types published to ``tr_event_bus`` MUST be defined here.
-Services import constants rather than using raw string literals so typos
-are caught at import time and grep/refactor works globally.
-
-Naming convention
------------------
-``{domain}.{action}``                 — simple events  (lead.created)
-``{domain}.{subdomain}.{action}``     — nested domains (cms.blog.published)
+Naming: ``{domain}.{action}`` or ``{domain}.{subdomain}.{action}``
 """
 
 
 class LeadEvents:
-    """Events produced by tr-lead-management."""
-
     CREATED = "lead.created"
     UPDATED = "lead.updated"
     DELETED = "lead.deleted"
@@ -40,8 +31,6 @@ class LeadEvents:
 
 
 class DealEvents:
-    """Events produced by tr-lead-management (deal pipeline)."""
-
     CREATED = "deal.created"
     WON = "deal.won"
     LOST = "deal.lost"
@@ -53,8 +42,6 @@ class DealEvents:
 
 
 class ListingEvents:
-    """Events produced by tr-listing-service."""
-
     CREATED = "listing.created"
     UPDATED = "listing.updated"
     PUBLISHED = "listing.published"
@@ -76,8 +63,6 @@ class ListingEvents:
 
 
 class CMSEvents:
-    """Events produced by tr-cms-service."""
-
     BLOG_CREATED = "cms.blog.created"
     BLOG_UPDATED = "cms.blog.updated"
     BLOG_PUBLISHED = "cms.blog.published"
@@ -95,8 +80,6 @@ class CMSEvents:
 
 
 class ActivityEvents:
-    """Events produced by tr-activity-service and consumed for activity logging."""
-
     COMMENT_ADDED = "activity.comment.added"
     COMMENT_EDITED = "activity.comment.edited"
     COMMENT_DELETED = "activity.comment.deleted"
@@ -106,12 +89,11 @@ class ActivityEvents:
 
 
 class AdminEvents:
-    """Events produced by crm-backend and tr-be-admin-panel."""
-
     USER_CREATED = "admin.user.created"
     USER_UPDATED = "admin.user.updated"
     ROLE_ASSIGNED = "admin.role.assigned"
     INTEGRATION_PLATFORM_CREATED = "admin.integration.platform.created"
+    PORTAL_AGENT_PROMOTED = "admin.portal_agent.promoted"
     INTEGRATION_PLATFORM_UPDATED = "admin.integration.platform.updated"
     INTEGRATION_PLATFORM_DELETED = "admin.integration.platform.deleted"
     MODULE_CONFIGURATION_UPDATED = "admin.module.configuration.updated"
@@ -130,16 +112,12 @@ class AdminEvents:
 
 
 class MediaEvents:
-    """Events produced by tr-media-service."""
-
     UPLOADED = "media.uploaded"
     OCR_COMPLETED = "media.ocr_completed"
     DELETED = "media.deleted"
 
 
 class HREvents:
-    """Events produced by TR-HR-System-be."""
-
     EMPLOYEE_CREATED = "hr.employee.created"
     EMPLOYEE_UPDATED = "hr.employee.updated"
     EMPLOYEE_SYNC_COMPLETED = "hr.employee.sync_completed"
@@ -166,8 +144,6 @@ class HREvents:
 
 
 class LMSEvents:
-    """Events consumed by tr-notification-service (produced by tr-lms-service)."""
-
     COURSE_COMPLETED = "lms.course.completed"
     CERTIFICATE_ISSUED = "lms.certificate.issued"
     QUIZ_GENERATED = "lms.quiz.generated"
@@ -176,8 +152,6 @@ class LMSEvents:
 
 
 class FinanceEvents:
-    """Events consumed by tr-notification-service."""
-
     EXPENSE_CREATED = "finance.expense.created"
     EXPENSE_SUBMITTED = "finance.expense.submitted"
     EXPENSE_APPROVED = "finance.expense.approved"
@@ -195,8 +169,6 @@ class FinanceEvents:
 
 
 class TaskEvents:
-    """Events produced by the task module (tr-crm-core)."""
-
     CREATED = "task.created"
     ASSIGNED = "task.assigned"
     CO_ASSIGNED = "task.co_assigned"
@@ -206,7 +178,7 @@ class TaskEvents:
 
 
 class NotificationEvents:
-    """Cross-module request events consumed by the notification module."""
+    """Cross-module request events — not domain state changes."""
 
     LEAD_REASSIGN_REQUESTED = "notification.lead.reassign_requested"
     LEAD_OVERDUE_REQUESTED = "notification.lead.overdue_requested"
@@ -214,6 +186,4 @@ class NotificationEvents:
 
 
 class WAMEvents:
-    """Events produced by tr-whatsApp-marketing-agent."""
-
     LEAD_QUALIFIED = "wam.lead.qualified"

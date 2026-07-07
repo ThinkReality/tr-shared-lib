@@ -22,9 +22,11 @@ from tr_shared.events.payloads.admin import (
     IntegrationPlatformEventV1,
 )
 from tr_shared.events.payloads.auth import (
+    AdminPortalAgentPromotedV1,
     AdminRoleAssignedV1,
     AdminUserCreatedV1,
     AdminUserUpdatedV1,
+    PortalAgentIdentityV1,
 )
 from tr_shared.events.payloads.cms import (
     CMSBlogEventV1,
@@ -115,11 +117,13 @@ __all__ = [
     "AdminNurtureCampaignCreatedV1",
     "AdminNurtureCampaignUpdatedV1",
     "IntegrationPlatformEventV1",
-    # auth (admin.user.* / admin.role.*)
+    # auth
+    "AdminPortalAgentPromotedV1",
     "AdminRoleAssignedV1",
     "AdminUserCreatedV1",
+    "PortalAgentIdentityV1",
     "AdminUserUpdatedV1",
-    # cms (page + blog lifecycle, landing page)
+    # cms
     "CMSBlogEventV1",
     "CMSBlogUpdatedV1",
     "CMSLandingPageContextV1",
@@ -131,13 +135,13 @@ __all__ = [
     "CMSPageRejectedV1",
     "CMSPageReviewRequestedV1",
     "CMSPageUpdatedV1",
-    # finance (expense lifecycle + invoice + card)
+    # finance
     "FinanceCardTransactionImportedV1",
     "FinanceCardTransactionMatchedV1",
     "FinanceExpenseEventV1",
     "FinanceExpenseRejectedV1",
     "FinanceInvoiceEventV1",
-    # hr (attendance + recruitment)
+    # hr
     "HRApplicationStageChangedV1",
     "HRApplicationSubmittedV1",
     "HRAttendanceCorrectionV1",
@@ -153,7 +157,7 @@ __all__ = [
     "LeadFollowupDueV1",
     "LeadQualifiedV1",
     "LeadStatusChangedV1",
-    # listing (PF-keyed lifecycle + audit)
+    # listing
     "ListingAuditEventV1",
     "ListingDeletedV1",
     "ListingExpiredV1",

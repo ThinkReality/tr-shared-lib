@@ -1,10 +1,5 @@
-"""Typed payloads for the admin.user.* / admin.role.* events the auth module
-produces (tr-crm-core auth module — events are admin.*-namespaced, source=admin).
-
-Field sets mirror the dicts emitted by
-app/modules/auth/services/users/{create_mixin,update_mixin}.py and
-app/modules/auth/api/v1/endpoints/admin/role_routes.py. All ids are str.
-"""
+"""Typed payloads for admin.user.* / admin.role.* events (tr-crm-core auth module).
+Field sets mirror app/modules/auth/services/users/{create_mixin,update_mixin}.py — all ids are str."""
 
 from tr_shared.events.payloads._base import EventPayload
 
@@ -30,3 +25,16 @@ class AdminRoleAssignedV1(EventPayload):
     role_name: str
     assigned_by: str
     recipient_id: str
+
+
+class PortalAgentIdentityV1(EventPayload):
+    portal: str
+    external_id: str
+
+
+class AdminPortalAgentPromotedV1(EventPayload):
+    """Fired when a new user links previously-unmatched portal agents to a CRM user.
+    Portal-data services (e.g. listings) re-point those agent records to crm_user_id."""
+
+    crm_user_id: str
+    agents: list[PortalAgentIdentityV1]
