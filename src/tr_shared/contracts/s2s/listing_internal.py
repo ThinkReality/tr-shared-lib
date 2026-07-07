@@ -5,7 +5,7 @@ Callers: tr-lead-management, tr-crm-core.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 BASE_PATH = "/api/v1/listing/internal/listings"
 
@@ -64,7 +64,7 @@ class ListingActiveCountOut(BaseModel):
 
 class AgentListingCountsRequest(BaseModel):
     tenant_id: UUID
-    agent_ids: list[UUID]
+    agent_ids: list[UUID] = Field(..., max_length=500)
 
 
 class AgentListingCountRow(BaseModel):

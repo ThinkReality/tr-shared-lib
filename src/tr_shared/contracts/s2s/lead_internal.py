@@ -4,7 +4,7 @@ Callers: tr-crm-core. Access-check models: tr_shared.contracts.s2s.access_check.
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 BASE_PATH = "/api/v1/internal/leads"
 
@@ -19,7 +19,7 @@ def agent_lead_counts_batch() -> str:
 
 class AgentLeadCountsRequest(BaseModel):
     tenant_id: UUID
-    agent_ids: list[UUID]
+    agent_ids: list[UUID] = Field(..., max_length=500)
 
 
 class AgentLeadCountRow(BaseModel):
