@@ -6,13 +6,13 @@ from tr_shared.contracts.taxonomy import Feature
 EXPECTED = {
     "auth", "lead", "deal", "contact", "property", "listing", "cms", "lms",
     "task", "activity", "notification", "hr", "finance", "admin", "media",
-    "dld", "wam",
+    "dld", "wam", "recruitment",
 }
 
 
-def test_feature_has_exactly_the_17_locked_members():
+def test_feature_has_exactly_the_18_locked_members():
     assert {f.value for f in Feature} == EXPECTED
-    assert len(list(Feature)) == 17
+    assert len(list(Feature)) == 18
 
 
 def test_feature_is_a_str_enum():
