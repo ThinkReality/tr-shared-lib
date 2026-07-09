@@ -28,3 +28,4 @@ class Feature(StrEnum):
     MEDIA = "media"
     DLD = "dld"
     WAM = "wam"
+    RECRUITMENT = "recruitment"
