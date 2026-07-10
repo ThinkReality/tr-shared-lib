@@ -44,10 +44,6 @@ class AgentLeadCountPair(BaseModel):
 class AgentLeadCountRow(BaseModel):
     agent_id: UUID
     leads_count: int
-    # no lead-outcome model yet
-    converted_leads_count: int = 0
-    # no deal model yet
-    deals_count: int = 0
 
 
 class AgentLeadCountsResponse(BaseModel):
