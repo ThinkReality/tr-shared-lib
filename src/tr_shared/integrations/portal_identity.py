@@ -37,6 +37,7 @@ class PortalSlug(StrEnum):
     BAYUT = "bayut"
     DUBIZZLE = "dubizzle"
     GEMINI = "gemini"
+    META = "meta"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +121,13 @@ PORTAL_REGISTRY: Final[dict[PortalSlug, PortalIdentity]] = {
         is_listing_portal=False,
         is_externally_publishable=False,
     ),
+    PortalSlug.META: PortalIdentity(
+        slug=PortalSlug.META,
+        display_name="Meta",
+        is_connectable_platform=False,
+        is_listing_portal=False,
+        is_externally_publishable=False,
+    ),
 }
 
 
@@ -131,8 +139,6 @@ def get_portal_identity(slug: str | PortalSlug) -> PortalIdentity:
     """
     return PORTAL_REGISTRY[PortalSlug(slug)]
 
-
-# Derived collections — computed from PORTAL_REGISTRY, never hand-maintained. --
 
 KNOWN_PLATFORM_SLUGS: Final[frozenset[str]] = frozenset(
     p.slug.value for p in PORTAL_REGISTRY.values() if p.is_connectable_platform

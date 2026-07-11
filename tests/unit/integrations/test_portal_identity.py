@@ -39,6 +39,19 @@ def test_externally_publishable_excludes_website_and_gemini() -> None:
     )
 
 
+def test_meta_is_webhook_only_lead_portal() -> None:
+    # Meta (Facebook lead ads) is lead-source only — no listing/connect/publish flags.
+    meta = P.PORTAL_REGISTRY[PortalSlug.META]
+    assert meta.slug is PortalSlug.META
+    assert meta.display_name == "Meta"
+    assert meta.is_connectable_platform is False
+    assert meta.is_listing_portal is False
+    assert meta.is_externally_publishable is False
+    assert meta.user_id_key is None
+    assert "meta" not in P.KNOWN_PLATFORM_SLUGS
+    assert "meta" not in P.LISTING_PORTAL_SLUGS
+
+
 def test_user_id_keys_match_portal_info_contract() -> None:
     assert P.PORTAL_USER_ID_KEYS == {
         "propertyfinder": "public_profile_id",
