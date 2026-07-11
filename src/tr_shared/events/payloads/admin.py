@@ -1,8 +1,7 @@
 """Typed payloads for admin.* events (tr-crm-core admin module).
 
 Field sets mirror the dicts emitted by app/modules/admin/services/*.
-``IntegrationPlatformEventV1`` moved here from crm-core (now EventPayload-based,
-str ids — callers stringify UUIDs at emit). All ids are str.
+All ids are str — callers stringify UUIDs at emit.
 """
 
 from pydantic import Field
@@ -27,6 +26,29 @@ class AdminLeadSourceDeletedV1(EventPayload):
 class AdminAssignmentRuleCreatedV1(EventPayload):
     rule_id: str
     rule_name: str
+
+
+class AdminAssignmentRuleUpdatedV1(EventPayload):
+    rule_id: str
+    rule_name: str
+
+
+class AdminAssignmentRuleDeletedV1(EventPayload):
+    rule_id: str
+
+
+class AdminAgentGroupCreatedV1(EventPayload):
+    group_id: str
+    group_name: str
+
+
+class AdminAgentGroupUpdatedV1(EventPayload):
+    group_id: str
+    group_name: str
+
+
+class AdminAgentGroupDeletedV1(EventPayload):
+    group_id: str
 
 
 class AdminLeadScoringCreatedV1(EventPayload):
