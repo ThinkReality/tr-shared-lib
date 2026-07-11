@@ -8,8 +8,6 @@ Field sets mirror app/events/publisher.py:build_lead_lifecycle_payload. All ids
 are str (UUIDs stringified at emit).
 """
 
-from typing import Any
-
 from tr_shared.events.payloads._base import EventPayload
 
 
@@ -32,7 +30,6 @@ class LeadCreatedV1(LeadEventV1):
     tenant_id: str | None = None
     lead_type: str | None = None
     stage: str | None = None
-    status: str | None = None
     lead_score: int | None = None
     lead_quality_tier: str | None = None
     assigned_to: str | None = None
@@ -49,15 +46,6 @@ class LeadAssignedV1(LeadEventV1):
     hashed_phone: str | None = None
     listing_reference: str | None = None
     assignment_reason: str | None = None
-
-
-class LeadStatusChangedV1(LeadEventV1):
-    """lead.status_changed."""
-
-    old_status: str | None = None
-    new_status: str
-    assigned_to: str | None = None
-    changes: dict[str, Any] | None = None
 
 
 class LeadQualifiedV1(LeadEventV1):

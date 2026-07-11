@@ -64,7 +64,6 @@ from tr_shared.events.payloads.lead import (
     LeadEventV1,
     LeadFollowupDueV1,
     LeadQualifiedV1,
-    LeadStatusChangedV1,
 )
 from tr_shared.events.payloads.listing import (
     ListingAuditEventV1,
@@ -100,12 +99,10 @@ from tr_shared.events.payloads.wam import (
 
 __all__ = [
     "EventPayload",
-    # activity
     "ActivityCommentAddedV1",
     "ActivityCommentDeletedV1",
     "ActivityCommentEditedV1",
     "ActivityLogCreatedV1",
-    # admin
     "AdminAssignmentRuleCreatedV1",
     "AdminLeadScoringCreatedV1",
     "AdminLeadScoringDeletedV1",
@@ -117,13 +114,11 @@ __all__ = [
     "AdminNurtureCampaignCreatedV1",
     "AdminNurtureCampaignUpdatedV1",
     "IntegrationPlatformEventV1",
-    # auth
     "AdminPortalAgentPromotedV1",
     "AdminRoleAssignedV1",
     "AdminUserCreatedV1",
     "PortalAgentIdentityV1",
     "AdminUserUpdatedV1",
-    # cms
     "CMSBlogEventV1",
     "CMSBlogUpdatedV1",
     "CMSLandingPageContextV1",
@@ -135,13 +130,11 @@ __all__ = [
     "CMSPageRejectedV1",
     "CMSPageReviewRequestedV1",
     "CMSPageUpdatedV1",
-    # finance
     "FinanceCardTransactionImportedV1",
     "FinanceCardTransactionMatchedV1",
     "FinanceExpenseEventV1",
     "FinanceExpenseRejectedV1",
     "FinanceInvoiceEventV1",
-    # hr
     "HRApplicationStageChangedV1",
     "HRApplicationSubmittedV1",
     "HRAttendanceCorrectionV1",
@@ -150,29 +143,23 @@ __all__ = [
     "HRJobPostingPublishedV1",
     "HRManualEntryCreatedV1",
     "HRSyncFailedV1",
-    # lead
     "LeadAssignedV1",
     "LeadCreatedV1",
     "LeadEventV1",
     "LeadFollowupDueV1",
     "LeadQualifiedV1",
-    "LeadStatusChangedV1",
-    # listing
     "ListingAuditEventV1",
     "ListingDeletedV1",
     "ListingExpiredV1",
     "ListingPfEventV1",
     "ListingRepublishedV1",
     "ListingSaleV1",
-    # lms
     "LMSQuizAssignedV1",
     "LMSQuizExpiredV1",
     "LMSQuizGeneratedV1",
-    # notification
     "NotificationLeadOverdueRequestedV1",
     "NotificationLeadReassignRequestedV1",
     "NotificationSentV1",
-    # task
     "TaskAssignedV1",
     "TaskCoAssignedV1",
     "TaskCreatedV1",
@@ -180,7 +167,6 @@ __all__ = [
     "TaskEventV1",
     "TaskStatusChangedV1",
     "TaskWatcherAddedV1",
-    # wam
     "WAMLeadQualifiedV1",
     "WAMQualificationResultV1",
 ]
