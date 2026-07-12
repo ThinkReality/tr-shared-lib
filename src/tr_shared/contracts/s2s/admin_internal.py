@@ -56,5 +56,4 @@ class AgentGroupRef(BaseModel):
     id: UUID
     group_name: str
     is_active: bool = True
-    version: int = 1
     members: list[AgentGroupMemberRef] = []

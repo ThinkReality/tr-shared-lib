@@ -45,7 +45,6 @@ def test_group_ref_parses_members_sorted_shape():
         {
             "id": str(gid),
             "group_name": "Sales",
-            "version": 2,
             "members": [
                 {"agent_id": str(a1), "sort_order": 0},
                 {"agent_id": str(a2), "sort_order": 1},
