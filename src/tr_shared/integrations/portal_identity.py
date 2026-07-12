@@ -123,7 +123,7 @@ PORTAL_REGISTRY: Final[dict[PortalSlug, PortalIdentity]] = {
     ),
     PortalSlug.META: PortalIdentity(
         slug=PortalSlug.META,
-        display_name="Meta",
+        display_name="Meta (Facebook Lead Ads)",
         is_connectable_platform=False,
         is_listing_portal=False,
         is_externally_publishable=False,

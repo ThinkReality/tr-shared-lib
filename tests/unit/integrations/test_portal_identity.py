@@ -43,7 +43,7 @@ def test_meta_is_webhook_only_lead_portal() -> None:
     # Meta (Facebook lead ads) is lead-source only — no listing/connect/publish flags.
     meta = P.PORTAL_REGISTRY[PortalSlug.META]
     assert meta.slug is PortalSlug.META
-    assert meta.display_name == "Meta"
+    assert meta.display_name == "Meta (Facebook Lead Ads)"
     assert meta.is_connectable_platform is False
     assert meta.is_listing_portal is False
     assert meta.is_externally_publishable is False

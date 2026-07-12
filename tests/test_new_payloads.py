@@ -36,7 +36,6 @@ from tr_shared.events.payloads.lead import (
     LeadCreatedV1,
     LeadFollowupDueV1,
     LeadQualifiedV1,
-    LeadStatusChangedV1,
 )
 from tr_shared.events.payloads.listing import ListingAuditEventV1
 from tr_shared.events.payloads.wam import WAMLeadQualifiedV1
@@ -169,7 +168,6 @@ def test_lead_created_rich_shape_validates():
         "hashed_email": "hashed",
         "tenant_id": "t1",
         "stage": "new",
-        "status": "open",
         "lead_score": 80,
         "lead_quality_tier": "hot",
         "assigned_to": "a1",
@@ -183,7 +181,6 @@ def test_lead_created_rich_shape_validates():
 
 def test_lead_other_events_construct():
     LeadAssignedV1(**_LEAD_BASE, assigned_to="a1", assignment_reason="manual")
-    LeadStatusChangedV1(**_LEAD_BASE, new_status="qualified")
     LeadQualifiedV1(**_LEAD_BASE, qualification_score=90)
     LeadFollowupDueV1(**_LEAD_BASE, followup_date="2026-01-02")
 
