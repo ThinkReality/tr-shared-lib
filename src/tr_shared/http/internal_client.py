@@ -61,7 +61,6 @@ def _translate_status_error(exc: httpx.HTTPStatusError) -> BaseAPIException:
         return ConflictError(detail=detail, code=code)
     if status == 429:
         return RateLimitError(detail=detail, code=code)
-    # 5xx / unexpected status
     return ServiceUnavailableError(detail=detail, code=code)
 
 
@@ -70,6 +69,13 @@ class InternalServiceClient:
 
     def __init__(self, http: ServiceHTTPClient) -> None:
         self._http = http
+
+    async def __aenter__(self) -> InternalServiceClient:
+        await self._http.__aenter__()
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self._http.__aexit__(*args)
 
     async def _get(
         self,
@@ -140,8 +146,7 @@ class InternalServiceClient:
                 code="INTERNAL_CLIENT_TIMEOUT_001",
             ) from exc
         except ConnectionError as exc:
-            # ServiceHTTPClient raises ConnectionError when the breaker is
-            # open or retries are exhausted.
+            # ServiceHTTPClient raises ConnectionError on open breaker or exhausted retries.
             raise ServiceUnavailableError(
                 detail=str(exc),
                 code="INTERNAL_CLIENT_UNAVAILABLE_001",
@@ -152,8 +157,7 @@ class InternalServiceClient:
                 code="INTERNAL_CLIENT_HTTP_001",
             ) from exc
 
-        # DELETE endpoints commonly return 204 → empty dict envelope. Return
-        # None explicitly so callers don't try to unpack a missing ``data``.
+        # 204 responses yield an empty envelope with no ``data`` to unpack.
         if envelope == {}:
             return None
         return _envelope_data(envelope)
