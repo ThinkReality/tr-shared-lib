@@ -1,48 +1,28 @@
-"""
-Shared SQLAlchemy base model with standard mixins.
+"""Shared SQLAlchemy base model + mixins: every table inherits id, tenant_id,
+timestamps, audit, and soft-delete columns."""
 
-Extracted from tr-lead-management (most complete: all four mixins)
-and tr-media-service (soft_delete/restore helpers).
-
-Every table gets: id, tenant_id, created_at, updated_at, created_by,
-updated_by, deleted_at, is_active — by default.
-
-Usage::
-
-    from tr_shared.db import BaseModel
-
-    class Lead(BaseModel):
-        __tablename__ = "lead_leads"
-        name = Column(String(255), nullable=False)
-        # id, tenant_id, timestamps, audit, soft-delete all inherited
-"""
-
+import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime
+from sqlalchemy import Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func, text
 
 
 class Base(DeclarativeBase):
-    """Root declarative base for all services."""
     pass
 
 
 class TimestampMixin:
-    """created_at (auto), updated_at (auto on update)."""
-
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
     )
-    # server_default ensures non-NULL on first insert; onupdate refreshes on changes.
-    # When adding server_default to existing tables, run a backfill migration:
+    # Adding this to an existing table needs a backfill or NOT NULL fails:
     #   UPDATE <table> SET updated_at = created_at WHERE updated_at IS NULL;
-    #   ALTER TABLE <table> ALTER COLUMN updated_at SET DEFAULT now();
-    updated_at = Column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
@@ -51,9 +31,9 @@ class TimestampMixin:
 
 
 class TenantMixin:
-    """Non-nullable tenant_id (UUID, indexed). No FK per microservice isolation."""
+    """No FK — microservice isolation."""
 
-    tenant_id = Column(
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
         index=True,
@@ -61,41 +41,43 @@ class TenantMixin:
 
 
 class AuditMixin:
-    """created_by / updated_by user UUIDs. No FK per microservice isolation."""
+    """No FK — microservice isolation."""
 
-    created_by = Column(UUID(as_uuid=True), nullable=True)
-    updated_by = Column(UUID(as_uuid=True), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
 
 class SoftDeleteMixin:
-    """deleted_at timestamp + is_active boolean. Never hard-DELETE rows."""
+    """Never hard-DELETE rows — soft-delete only."""
 
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
 
 
 class BaseModel(Base, TimestampMixin, TenantMixin, AuditMixin, SoftDeleteMixin):
-    """
-    Abstract base model providing id, tenant_id, timestamps, audit, soft-delete.
-
-    All service models should inherit from this instead of ``Base`` directly.
-    """
+    """Inherit this, not Base — adds id plus every mixin column."""
 
     __abstract__ = True
 
-    id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
 
     def soft_delete(self) -> None:
-        """Mark the record as soft-deleted."""
         self.deleted_at = datetime.now(timezone.utc)
         self.is_active = False
 
     def restore(self) -> None:
-        """Restore a soft-deleted record."""
         self.deleted_at = None
         self.is_active = True
 

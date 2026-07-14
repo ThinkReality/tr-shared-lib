@@ -1,14 +1,8 @@
-"""Tests for BaseModel mixins and soft-delete/restore helpers."""
-
 import uuid
 from datetime import datetime, timezone
 
-import pytest
-from sqlalchemy import inspect
-
 from tr_shared.db.base import (
     AuditMixin,
-    Base,
     BaseModel,
     SoftDeleteMixin,
     TenantMixin,
@@ -16,18 +10,9 @@ from tr_shared.db.base import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 class SampleModel(BaseModel):
-    """Minimal concrete model for testing BaseModel methods."""
     __tablename__ = "test_sample_model"
 
-
-# ---------------------------------------------------------------------------
-# TimestampMixin column definitions
-# ---------------------------------------------------------------------------
 
 class TestTimestampMixin:
     def test_created_at_column_exists(self):
@@ -37,34 +22,26 @@ class TestTimestampMixin:
         assert hasattr(TimestampMixin, "updated_at")
 
     def test_created_at_not_nullable(self):
-        col = TimestampMixin.__dict__["created_at"]
+        col = SampleModel.__table__.columns["created_at"]
         assert col.nullable is False
 
     def test_updated_at_is_nullable(self):
-        col = TimestampMixin.__dict__["updated_at"]
+        col = SampleModel.__table__.columns["updated_at"]
         assert col.nullable is False
 
-
-# ---------------------------------------------------------------------------
-# TenantMixin column definitions
-# ---------------------------------------------------------------------------
 
 class TestTenantMixin:
     def test_tenant_id_column_exists(self):
         assert hasattr(TenantMixin, "tenant_id")
 
     def test_tenant_id_not_nullable(self):
-        col = TenantMixin.__dict__["tenant_id"]
+        col = SampleModel.__table__.columns["tenant_id"]
         assert col.nullable is False
 
     def test_tenant_id_is_indexed(self):
-        col = TenantMixin.__dict__["tenant_id"]
+        col = SampleModel.__table__.columns["tenant_id"]
         assert col.index is True
 
-
-# ---------------------------------------------------------------------------
-# AuditMixin column definitions
-# ---------------------------------------------------------------------------
 
 class TestAuditMixin:
     def test_created_by_column_exists(self):
@@ -74,17 +51,13 @@ class TestAuditMixin:
         assert hasattr(AuditMixin, "updated_by")
 
     def test_created_by_is_nullable(self):
-        col = AuditMixin.__dict__["created_by"]
+        col = SampleModel.__table__.columns["created_by"]
         assert col.nullable is True
 
     def test_updated_by_is_nullable(self):
-        col = AuditMixin.__dict__["updated_by"]
+        col = SampleModel.__table__.columns["updated_by"]
         assert col.nullable is True
 
-
-# ---------------------------------------------------------------------------
-# SoftDeleteMixin column definitions
-# ---------------------------------------------------------------------------
 
 class TestSoftDeleteMixin:
     def test_deleted_at_column_exists(self):
@@ -94,17 +67,13 @@ class TestSoftDeleteMixin:
         assert hasattr(SoftDeleteMixin, "is_active")
 
     def test_deleted_at_is_nullable(self):
-        col = SoftDeleteMixin.__dict__["deleted_at"]
+        col = SampleModel.__table__.columns["deleted_at"]
         assert col.nullable is True
 
     def test_is_active_not_nullable(self):
-        col = SoftDeleteMixin.__dict__["is_active"]
+        col = SampleModel.__table__.columns["is_active"]
         assert col.nullable is False
 
-
-# ---------------------------------------------------------------------------
-# BaseModel.soft_delete()
-# ---------------------------------------------------------------------------
 
 class TestSoftDelete:
     def test_soft_delete_sets_is_active_false(self):
@@ -129,10 +98,6 @@ class TestSoftDelete:
         assert model.deleted_at.tzinfo is not None
 
 
-# ---------------------------------------------------------------------------
-# BaseModel.restore()
-# ---------------------------------------------------------------------------
-
 class TestRestore:
     def test_restore_sets_is_active_true(self):
         model = SampleModel()
@@ -148,14 +113,10 @@ class TestRestore:
 
     def test_restore_on_non_deleted_model_is_safe(self):
         model = SampleModel()
-        model.restore()  # Should not raise
+        model.restore()
         assert model.is_active is True
         assert model.deleted_at is None
 
-
-# ---------------------------------------------------------------------------
-# BaseModel.__repr__
-# ---------------------------------------------------------------------------
 
 class TestRepr:
     def test_repr_contains_class_name(self):
@@ -175,17 +136,20 @@ class TestRepr:
         assert r.startswith("<SampleModel(id=")
 
 
-# ---------------------------------------------------------------------------
-# BaseModel is abstract
-# ---------------------------------------------------------------------------
-
 class TestBaseModelAbstract:
     def test_base_model_is_abstract(self):
-        # BaseModel declares __abstract__ = True; SampleModel inherits it
         assert BaseModel.__abstract__ is True
 
     def test_sample_model_inherits_all_mixins(self):
         attrs = dir(SampleModel)
-        for attr in ["id", "tenant_id", "created_at", "updated_at", "deleted_at",
-                     "is_active", "created_by", "updated_by"]:
+        for attr in [
+            "id",
+            "tenant_id",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "is_active",
+            "created_by",
+            "updated_by",
+        ]:
             assert attr in attrs, f"Expected {attr} in SampleModel"
