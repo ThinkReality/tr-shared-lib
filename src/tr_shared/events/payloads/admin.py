@@ -61,8 +61,7 @@ class AdminLeadScoringUpdatedV1(EventPayload):
 
 class AdminLeadScoringDeletedV1(EventPayload):
     config_id: str | None = None
-    # delete-one emits an int (1); delete-all emits the string "all".
-    deleted_count: int | str
+    deleted_count: int
 
 
 class AdminNurtureCampaignCreatedV1(EventPayload):
