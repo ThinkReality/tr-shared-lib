@@ -78,7 +78,7 @@ async def test_find_by_field_in_empty_short_circuits(tid):
     result = await repo.find_by_field_in("name", [], tid)
 
     assert result == []
-    assert session.calls == 0  # no query issued
+    assert session.calls == 0
 
 
 async def test_find_by_field_in_builds_in_clause(tid):

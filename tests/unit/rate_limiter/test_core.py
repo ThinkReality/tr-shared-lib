@@ -69,7 +69,6 @@ class TestBuildKey:
 
 class TestLazyRedisConnection:
     async def test_no_connection_on_init(self):
-        """Redis client should NOT be created at __init__ time."""
         with patch("redis.asyncio.from_url") as mock_from_url:
             RateLimiter(redis_url="redis://localhost:6379/0")
             mock_from_url.assert_not_called()
@@ -132,7 +131,6 @@ class TestCheck:
         assert len(info.results) == 2
 
     async def test_redis_failure_fail_open(self):
-        """Redis error with FailMode.OPEN should allow the request."""
         mock_redis = AsyncMock()
         mock_redis.eval.side_effect = Exception("Redis connection refused")
         limiter = RateLimiter(redis_client=mock_redis, enable_memory_fallback=False)
@@ -141,7 +139,6 @@ class TestCheck:
         assert info.is_blocked is False
 
     async def test_redis_failure_fail_closed(self):
-        """Redis error with FailMode.CLOSED should block the request."""
         mock_redis = AsyncMock()
         mock_redis.eval.side_effect = Exception("Redis connection refused")
         limiter = RateLimiter(redis_client=mock_redis, enable_memory_fallback=False)
@@ -150,13 +147,11 @@ class TestCheck:
         assert info.is_blocked is True
 
     async def test_memory_fallback_used_when_redis_fails(self):
-        """When Redis fails and enable_memory_fallback=True, uses in-memory counter."""
         mock_redis = AsyncMock()
         mock_redis.eval.side_effect = Exception("Redis down")
         limiter = RateLimiter(redis_client=mock_redis, enable_memory_fallback=True)
         config = RateLimitConfig(fail_mode=FailMode.OPEN)
         info = await limiter.check(key="test:key", config=config)
-        # Memory fallback allows the request (first call)
         assert info.is_blocked is False
 
 
@@ -179,7 +174,7 @@ class TestReset:
         assert result is False
 
     async def test_reset_returns_false_when_no_redis(self):
-        limiter = RateLimiter()  # No redis URL or client
+        limiter = RateLimiter()
         result = await limiter.reset(key="some:key")
         assert result is False
 

@@ -37,24 +37,9 @@ async def resolve_vault_secrets(
 ) -> None:
     """Resolve Vault-backed secrets into a settings instance at startup.
 
-    For each entry ``{field_name: uuid_env_var}`` in *secret_map*:
-
-    1. Read the Vault UUID from the env var named *uuid_env_var*.
-    2. If the env var is empty or absent, skip silently — the field keeps its
-       existing value (plain env var). This is the local-dev fallback.
-    3. Fetch the decrypted secret from ``vault.decrypted_secrets``.
-    4. Overwrite ``settings.<field_name>`` with the plaintext value.
-
-    On any error (bad UUID, DB failure, secret not found) the field is left
-    unchanged and a warning is logged — startup is never blocked.
-
-    Args:
-        settings: The service's Settings instance (pydantic-settings).
-        db_session: An open AsyncSession connected to the Supabase database
-                    that has the Vault extension enabled.
-        secret_map: Mapping of ``{settings_field_name: vault_uuid_env_var}``.
-                    Field names must match the actual attribute names on the
-                    settings instance (case-sensitive).
+    Empty/missing UUID env var skips silently — local-dev fallback keeps the
+    plain env var value. Any error (bad UUID, DB failure, secret not found)
+    leaves the field unchanged and logs a warning; startup is never blocked.
     """
     for field_name, uuid_env_var in secret_map.items():
         vault_uuid = os.environ.get(uuid_env_var, "").strip()

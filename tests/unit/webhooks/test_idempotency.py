@@ -52,7 +52,6 @@ class TestWebhookIdempotencyGuard:
         assert result is True
 
     async def test_mark_processed_empty_event_id(self, guard):
-        # Should not raise
         await guard.mark_processed("propertyfinder", "")
 
     async def test_no_redis_returns_false(self):

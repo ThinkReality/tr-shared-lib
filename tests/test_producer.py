@@ -81,11 +81,11 @@ class TestPublish:
     async def test_strict_mode_passes_with_all_fields(self, producer):
         data = {"entity_id": "e1", "entity_type": "listing", "action": "create"}
         eid = await producer.publish("x", "t1", data, strict_mode=True)
-        assert eid  # returns a UUID string
+        assert eid
 
     async def test_returns_event_id(self, producer):
         eid = await producer.publish("x", "t1", {})
-        assert len(eid) == 36  # UUID format
+        assert len(eid) == 36
 
     async def test_maxlen_passed_to_xadd(self, producer):
         producer._maxlen = 5000

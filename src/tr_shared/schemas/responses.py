@@ -23,16 +23,7 @@ T = TypeVar("T")
 
 
 class SuccessResponse(BaseModel, Generic[T]):
-    """Standard success response envelope.
-
-    Example::
-
-        {
-            "status": "success",
-            "message": "Operation completed",
-            "data": { ... }
-        }
-    """
+    """Standard success response envelope."""
 
     status: str = "success"
     message: str = "Operation completed successfully"
@@ -40,17 +31,7 @@ class SuccessResponse(BaseModel, Generic[T]):
 
 
 class ErrorResponse(BaseModel):
-    """Standard error response envelope.
-
-    Example::
-
-        {
-            "status": "error",
-            "error": "Validation failed",
-            "detail": "Price must be greater than 0",
-            "code": "LISTING_VALIDATION_001"
-        }
-    """
+    """Standard error response envelope."""
 
     status: str = "error"
     error: str
@@ -92,22 +73,7 @@ class PaginationData(BaseModel, Generic[T]):
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    """Paginated response envelope wrapping PaginationData.
-
-    Example::
-
-        {
-            "status": "success",
-            "message": "Items retrieved",
-            "data": {
-                "items": [...],
-                "total": 100,
-                "page": 1,
-                "page_size": 20,
-                "total_pages": 5
-            }
-        }
-    """
+    """Paginated response envelope wrapping PaginationData."""
 
     status: str = "success"
     message: str = "Items retrieved successfully"

@@ -5,16 +5,6 @@ Uses Loki's /loki/api/v1/push HTTP endpoint directly (no Promtail needed).
 Labels are kept low-cardinality (service, environment, level).
 High-cardinality fields (tenant_id, correlation_id, user_id) stay in the
 JSON log line and can be queried via LogQL: {service="..."} | json | tenant_id="..."
-
-Usage::
-
-    from tr_shared.monitoring.loki_handler import LokiHandler
-
-    handler = LokiHandler(
-        url="http://loki.railway.internal:3100/loki/api/v1/push",
-        labels={"service": "tr-crm-core", "environment": "production"},
-    )
-    logging.getLogger().addHandler(handler)
 """
 
 import json
@@ -60,20 +50,14 @@ class LokiHandler(logging.Handler):
         self._buffer: deque[tuple[str, dict[str, str], str]] = deque()
         self._lock = threading.Lock()
 
-        # Background flush thread
         self._flush_thread = threading.Thread(target=self._periodic_flush, daemon=True)
         self._flush_thread.start()
 
     def emit(self, record: logging.LogRecord) -> None:
         """Buffer a log record for sending to Loki."""
         try:
-            # Build the JSON log line (high-cardinality fields stay here)
             log_entry = self._format_record(record)
-
-            # Nanosecond timestamp for Loki
             ts_ns = str(int(record.created * 1e9))
-
-            # Labels: static + level (low-cardinality only)
             labels = {**self.static_labels, "level": record.levelname.lower()}
 
             with self._lock:
@@ -93,7 +77,6 @@ class LokiHandler(logging.Handler):
             "level": record.levelname,
         }
 
-        # Include structured extra fields (tenant_id, correlation_id, etc.)
         if hasattr(record, "tenant_id"):
             entry["tenant_id"] = record.tenant_id
         if hasattr(record, "correlation_id"):
@@ -101,17 +84,15 @@ class LokiHandler(logging.Handler):
         if hasattr(record, "user_id"):
             entry["user_id"] = record.user_id
 
-        # Include any other extra fields from the record
         standard_attrs = logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys()
         for key, value in record.__dict__.items():
             if key not in standard_attrs and key not in entry and not key.startswith("_"):
                 try:
-                    json.dumps(value)  # Only include JSON-serializable values
+                    json.dumps(value)
                     entry[key] = value
                 except (TypeError, ValueError):
                     entry[key] = str(value)
 
-        # Include exception info if present
         if record.exc_info and record.exc_info[1]:
             entry["exception"] = self.format(record) if self.formatter else str(record.exc_info[1])
 
@@ -125,7 +106,6 @@ class LokiHandler(logging.Handler):
             entries = list(self._buffer)
             self._buffer.clear()
 
-        # Group by label set
         streams: dict[str, dict[str, Any]] = {}
         for ts_ns, labels, line in entries:
             label_key = json.dumps(labels, sort_keys=True)

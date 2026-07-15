@@ -5,36 +5,6 @@ These tasks use ``@shared_task`` so any service's Celery worker
 can pick them up.  They accept ``monitoring_db_url`` and ``redis_url``
 as arguments (not from any service's config), making them portable.
 
-Beat schedule (add to each service's ``celery_app.py``)::
-
-    beat_schedule = {
-        "monitoring-flush-buffer": {
-            "task": "monitoring.flush_buffer",
-            "schedule": 60.0,
-            "args": [SERVICE_NAME, MONITORING_DB_URL, REDIS_URL],
-        },
-        "monitoring-aggregate-hourly": {
-            "task": "monitoring.aggregate_hourly",
-            "schedule": crontab(minute=5),
-            "args": [MONITORING_DB_URL],
-        },
-        "monitoring-aggregate-daily": {
-            "task": "monitoring.aggregate_daily",
-            "schedule": crontab(hour=1, minute=0),
-            "args": [MONITORING_DB_URL],
-        },
-        "monitoring-create-partition": {
-            "task": "monitoring.create_partition",
-            "schedule": crontab(hour=23, minute=55),
-            "args": [MONITORING_DB_URL],
-        },
-        "monitoring-cleanup-old-logs": {
-            "task": "monitoring.cleanup_old_logs",
-            "schedule": crontab(hour=2, minute=0),
-            "args": [MONITORING_DB_URL, 90],
-        },
-    }
-
 All imports below are backward-compatible — existing code that imports
 from ``tr_shared.monitoring.tasks`` continues to work unchanged.
 """

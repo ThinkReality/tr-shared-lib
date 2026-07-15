@@ -12,10 +12,6 @@ from tr_shared.middleware.error_handler import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _build_app(raise_exc=None, status_code=200, **middleware_kwargs) -> FastAPI:
     app = FastAPI()
     app.add_middleware(GlobalErrorHandlerMiddleware, **middleware_kwargs)
@@ -44,10 +40,6 @@ def _build_app(raise_exc=None, status_code=200, **middleware_kwargs) -> FastAPI:
     return app
 
 
-# ---------------------------------------------------------------------------
-# _hash_identifier
-# ---------------------------------------------------------------------------
-
 class TestHashIdentifier:
     def test_empty_string_returns_na(self):
         assert _hash_identifier("") == "N/A"
@@ -64,10 +56,6 @@ class TestHashIdentifier:
         assert _hash_identifier("user-a") != _hash_identifier("user-b")
 
 
-# ---------------------------------------------------------------------------
-# Normal request (no exception)
-# ---------------------------------------------------------------------------
-
 class TestNormalRequests:
     def test_200_passes_through(self):
         client = TestClient(_build_app())
@@ -79,10 +67,6 @@ class TestNormalRequests:
         response = client.get("/ok")
         assert response.json() == {"ok": True}
 
-
-# ---------------------------------------------------------------------------
-# Unhandled exceptions → 500
-# ---------------------------------------------------------------------------
 
 class TestUnhandledExceptions:
     def test_unhandled_exception_returns_500(self):
@@ -127,18 +111,13 @@ class TestUnhandledExceptions:
         assert "message" in response.json()["error"]
 
 
-# ---------------------------------------------------------------------------
-# Slack alerts (mocked)
-# ---------------------------------------------------------------------------
-
 class TestSlackAlerts:
     async def test_no_alert_when_no_webhook_url(self):
         """When slack_webhook_url is empty, _fire_alert is a no-op."""
         app = _build_app(raise_exc=RuntimeError("boom"), slack_webhook_url="")
-        # No exception should propagate from slack logic
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/fail")
-        assert response.status_code == 500  # Handler still returns 500
+        assert response.status_code == 500
 
     async def test_slack_failure_does_not_reraise(self):
         """If Slack call fails, the error response is still returned."""
@@ -155,13 +134,8 @@ class TestSlackAlerts:
             )
             client = TestClient(app, raise_server_exceptions=False)
             response = client.get("/fail")
-            # Should still return 500 despite Slack failure
             assert response.status_code == 500
 
-
-# ---------------------------------------------------------------------------
-# alert_on_5xx
-# ---------------------------------------------------------------------------
 
 class TestAlertOn5xx:
     def test_alert_on_5xx_false_does_not_log_5xx_responses(self):
@@ -176,14 +150,9 @@ class TestAlertOn5xx:
             return Response(status_code=503)
 
         client = TestClient(app, raise_server_exceptions=False)
-        # Should pass through without triggering error handler logging
         response = client.get("/server-error")
         assert response.status_code == 503
 
-
-# ---------------------------------------------------------------------------
-# _extract_identity
-# ---------------------------------------------------------------------------
 
 class TestExtractIdentity:
     def test_returns_none_when_no_auth_context(self):
@@ -207,13 +176,8 @@ class TestExtractIdentity:
         assert extracted["tid"] is None
 
 
-# ---------------------------------------------------------------------------
-# New context fields
-# ---------------------------------------------------------------------------
-
 class TestQueryStringInContext:
     def test_query_string_present(self):
-        """query field is populated when query params are present."""
         captured = {}
 
         app = FastAPI()
@@ -233,7 +197,6 @@ class TestQueryStringInContext:
         assert captured["query"] == "page=2&sort=name"
 
     def test_query_string_empty_when_no_params(self):
-        """query field is empty string when no query params."""
         captured = {}
 
         app = FastAPI()
@@ -255,7 +218,6 @@ class TestQueryStringInContext:
 
 class TestTimestampInContext:
     def test_timestamp_present_and_iso_format(self):
-        """timestamp field is present and in ISO 8601 format."""
         from datetime import datetime as dt
 
         captured = {}
@@ -275,13 +237,11 @@ class TestTimestampInContext:
             client.get("/ts")
 
         assert "timestamp" in captured
-        # Should parse without error — ISO format with seconds precision
         dt.fromisoformat(captured["timestamp"])
 
 
 class TestHostInContext:
     def test_host_present(self):
-        """host field is present in context."""
         captured = {}
 
         app = FastAPI()
@@ -304,7 +264,6 @@ class TestHostInContext:
 
 class TestUserTenantInSlackBlocks:
     def test_user_tenant_in_slack_fields(self):
-        """Slack blocks include User and Tenant fields."""
         app = FastAPI()
         app.add_middleware(
             GlobalErrorHandlerMiddleware,
@@ -331,7 +290,6 @@ class TestUserTenantInSlackBlocks:
             client = TestClient(app, raise_server_exceptions=False)
             client.get("/ut")
 
-            # Extract the blocks from the Slack POST call
             call_args = mock_http.post.call_args
             blocks = call_args.kwargs["json"]["blocks"]
             fields_block = blocks[1]  # section with fields
@@ -350,8 +308,7 @@ class TestTracebackTailTruncation:
             slack_webhook_url="https://hooks.slack.com/fake",
         )
 
-        # Create a traceback longer than 1500 chars
-        long_tb = "X" * 500 + "Y" * 1500  # 2000 chars total
+        long_tb = "X" * 500 + "Y" * 1500
 
         @app.get("/tb")
         def tb():
@@ -377,14 +334,12 @@ class TestTracebackTailTruncation:
             tb_block = blocks[3]  # traceback section
             tb_text = tb_block["text"]["text"]
 
-            # Should contain the tail (Y's) but NOT the full head (X's)
             assert "Y" * 1500 in tb_text
             assert "X" * 500 not in tb_text
 
 
 class Test5xxResponseBodyInContext:
     def test_response_body_captured(self):
-        """For handled 5xx, response body appears in context."""
         captured = {}
 
         app = _build_app(alert_on_5xx=True)
@@ -415,7 +370,6 @@ class Test5xxResponseBodyStillReturnedToClient:
 
 class Test5xxResponseBodyTruncation:
     def test_long_body_truncated_at_500_chars(self):
-        """Response bodies longer than 500 chars are truncated."""
         captured = {}
 
         app = FastAPI()

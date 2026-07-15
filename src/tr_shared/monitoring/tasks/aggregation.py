@@ -14,11 +14,9 @@ logger = logging.getLogger(__name__)
 
 @shared_task(name="monitoring.aggregate_hourly", ignore_result=True)
 def aggregate_hourly_metrics(monitoring_db_url: str) -> None:
-    """
-    Aggregate request_logs into metrics_hourly for the previous hour.
+    """Aggregate request_logs into metrics_hourly and tenant_usage for the previous hour.
 
-    Also updates tenant_usage for the current day.
-    Runs at :05 past every hour.
+    Runs at :05 past every hour (scheduled via beat_schedule).
     """
     from sqlalchemy import text
 
@@ -128,10 +126,7 @@ def aggregate_hourly_metrics(monitoring_db_url: str) -> None:
 
 @shared_task(name="monitoring.aggregate_daily", ignore_result=True)
 def aggregate_daily_metrics(monitoring_db_url: str) -> None:
-    """
-    Aggregate metrics_hourly into metrics_daily for the previous day.
-    Runs daily at 01:00.
-    """
+    """Aggregate metrics_hourly into metrics_daily for the previous day. Runs daily at 01:00."""
     from datetime import date
     from sqlalchemy import text
 

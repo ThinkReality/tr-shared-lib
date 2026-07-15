@@ -45,7 +45,6 @@ class TestBaseServiceSettings:
             BaseServiceSettings(**{**_PROD_SUPABASE, "JWKS_URL": ""})
 
     def test_production_skips_supabase_validation_without_url(self):
-        """Downstream services (no SUPABASE_URL) pass without JWKS_URL."""
         s = BaseServiceSettings(**_PROD_BASE)
         assert s.ENVIRONMENT == "production"
         assert s.JWKS_URL == ""
@@ -97,12 +96,10 @@ class TestBaseServiceSettings:
         assert s.get_cors_origins() == ["https://a.com", "https://b.com"]
 
     def test_production_valid_config_downstream(self):
-        """Downstream service (no Supabase) passes production validation."""
         s = BaseServiceSettings(**_PROD_BASE)
         assert s.ENVIRONMENT == "production"
 
     def test_production_valid_config_supabase(self):
-        """Supabase-enabled service passes production validation."""
         s = BaseServiceSettings(**_PROD_SUPABASE)
         assert s.ENVIRONMENT == "production"
         assert s.JWKS_URL != ""

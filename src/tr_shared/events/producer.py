@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class EventProducer:
     STREAM_MAXLEN = 100_000
-    DEFAULT_MAX_DATA_BYTES = 1_048_576  # 1 MB
+    DEFAULT_MAX_DATA_BYTES = 1_048_576
 
     def __init__(
         self,

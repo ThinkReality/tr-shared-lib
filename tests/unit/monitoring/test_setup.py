@@ -10,7 +10,6 @@ class TestSetupMonitoring:
         return FastAPI()
 
     def test_adds_metrics_middleware_to_app(self):
-        """setup_monitoring must add MetricsMiddleware to the app."""
         from tr_shared.monitoring.setup import setup_monitoring
 
         app = self._make_app()
@@ -28,7 +27,6 @@ class TestSetupMonitoring:
             with patch("tr_shared.monitoring.middleware.MetricsMiddleware"):
                 setup_monitoring(app, "test-svc", prometheus_port=0)
 
-            # MetricsMiddleware was added to the app's middleware stack
             from tr_shared.monitoring.middleware import MetricsMiddleware
             middleware_types = [m.cls for m in app.user_middleware]
             assert MetricsMiddleware in middleware_types

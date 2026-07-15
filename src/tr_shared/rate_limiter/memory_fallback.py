@@ -1,6 +1,5 @@
 """In-memory rate limiter fallback when Redis is unavailable.
 
-Extracted from tr-lead-management/app/core/rate_limiter.py (lines 113-153).
 Uses asyncio.Lock for thread-safety and auto-cleans expired buckets.
 """
 
@@ -28,11 +27,7 @@ class MemoryFallback:
         self._cleanup_threshold = cleanup_threshold
 
     async def check(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
-        """Check and increment the counter for *key*.
-
-        Returns:
-            A ``RateLimitResult`` reflecting the current window state.
-        """
+        """Check and increment the counter for *key*."""
         now = time.time()
 
         async with self._lock:
@@ -42,7 +37,6 @@ class MemoryFallback:
 
             bucket = self._buckets.get(key)
 
-            # New bucket or expired bucket — start fresh
             if bucket is None or now > bucket["reset_time"]:
                 reset_time = now + window_seconds
                 self._buckets[key] = {"count": 1, "reset_time": reset_time}
@@ -54,7 +48,6 @@ class MemoryFallback:
                     retry_after=0,
                 )
 
-            # Bucket exists and is still active
             if bucket["count"] >= limit:
                 retry_after = max(1, int(bucket["reset_time"] - now))
                 return RateLimitResult(

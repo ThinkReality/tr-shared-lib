@@ -14,10 +14,7 @@ class TestSetupCeleryInstrumentation:
         mod._instrumented = False
 
     def _call_with_mocks(self):
-        """Invoke setup_celery_instrumentation with all external calls mocked.
-
-        Returns a dict with captured signal handlers and instrument mocks.
-        """
+        """Returns a dict with captured signal handlers and instrument mocks."""
         histogram = MagicMock()
         counter = MagicMock()
         up_down = MagicMock()
@@ -58,15 +55,13 @@ class TestSetupCeleryInstrumentation:
         assert len(r["postrun"]) == 1
 
     def test_idempotent_second_call_skipped(self):
-        """A second call should not register additional handlers."""
-        self._call_with_mocks()          # first call registers
-        r2 = self._call_with_mocks()     # second call is no-op (guard is set)
+        self._call_with_mocks()
+        r2 = self._call_with_mocks()
         assert len(r2["prerun"]) == 0
         assert len(r2["failure"]) == 0
         assert len(r2["postrun"]) == 0
 
     def test_successful_task_lifecycle(self):
-        """prerun + postrun: active +1/-1, counter success, duration recorded."""
         r = self._call_with_mocks()
         task = MagicMock()
         task.name = "my_task"
@@ -84,7 +79,6 @@ class TestSetupCeleryInstrumentation:
         assert duration >= 0
 
     def test_failed_task_lifecycle(self):
-        """failure signal causes postrun counter to use status=failure."""
         r = self._call_with_mocks()
         task = MagicMock()
         task.name = "bad_task"
@@ -103,8 +97,7 @@ class TestSetupCeleryInstrumentation:
         task = MagicMock()
         task.name = "orphan_task"
 
-        # postrun fires without a matching prerun
         r["postrun"][0](task_id="no-start", task=task)
 
         r["histogram"].record.assert_not_called()
-        r["counter"].add.assert_called_once()   # counter still recorded
+        r["counter"].add.assert_called_once()

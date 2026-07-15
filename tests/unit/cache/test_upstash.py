@@ -8,10 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-# ---------------------------------------------------------------------------
-# Helpers to inject a fake upstash_redis into sys.modules before loading
-# ---------------------------------------------------------------------------
-
 def _make_fake_upstash_modules() -> dict:
     """Return fake sys.modules entries that satisfy the upstash_redis import."""
     fake_redis_instance = AsyncMock()
@@ -89,10 +85,6 @@ def adapter(upstash_mod, mock_client):
     return a
 
 
-# ---------------------------------------------------------------------------
-# Initialization
-# ---------------------------------------------------------------------------
-
 class TestInitialization:
     def test_not_available_before_init(self, upstash_mod):
         a = upstash_mod.UpstashAdapter(
@@ -128,10 +120,6 @@ class TestInitialization:
             assert a._available is False
 
 
-# ---------------------------------------------------------------------------
-# Ping
-# ---------------------------------------------------------------------------
-
 class TestPing:
     async def test_ping_returns_true_when_available(self, adapter, mock_client):
         mock_client.ping.return_value = "PONG"
@@ -147,10 +135,6 @@ class TestPing:
         mock_client.ping.side_effect = Exception("network error")
         assert await adapter.ping() is False
 
-
-# ---------------------------------------------------------------------------
-# Get
-# ---------------------------------------------------------------------------
 
 class TestGet:
     async def test_get_returns_value(self, adapter, mock_client):
@@ -175,10 +159,6 @@ class TestGet:
         with pytest.raises(Exception, match="GET failed"):
             await adapter.get("key:1")
 
-
-# ---------------------------------------------------------------------------
-# Set / Setex
-# ---------------------------------------------------------------------------
 
 class TestSetAndSetex:
     async def test_setex_returns_true(self, adapter, mock_client):
@@ -217,10 +197,6 @@ class TestSetAndSetex:
         assert result is False
 
 
-# ---------------------------------------------------------------------------
-# Delete
-# ---------------------------------------------------------------------------
-
 class TestDelete:
     async def test_delete_returns_count(self, adapter, mock_client):
         mock_client.delete.return_value = 1
@@ -239,10 +215,6 @@ class TestDelete:
             await a.delete("key")
 
 
-# ---------------------------------------------------------------------------
-# Exists / TTL / Expire
-# ---------------------------------------------------------------------------
-
 class TestExistsTtlExpire:
     async def test_exists_returns_count(self, adapter, mock_client):
         mock_client.exists.return_value = 1
@@ -259,10 +231,6 @@ class TestExistsTtlExpire:
         result = await adapter.expire("key:1", 60)
         assert result is True
 
-
-# ---------------------------------------------------------------------------
-# Mget / Hset / Hgetall
-# ---------------------------------------------------------------------------
 
 class TestMgetHset:
     async def test_mget_returns_list(self, adapter, mock_client):
@@ -289,10 +257,6 @@ class TestMgetHset:
         assert result == {}
 
 
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
-
 class TestPipeline:
     def test_pipeline_raises_when_not_initialized(self, upstash_mod):
         a = upstash_mod.UpstashAdapter(rest_url="u", rest_token="t")
@@ -305,10 +269,6 @@ class TestPipeline:
         results = await pipe_obj.execute()
         assert results == [True, True]
 
-
-# ---------------------------------------------------------------------------
-# Context manager
-# ---------------------------------------------------------------------------
 
 class TestContextManager:
     async def test_context_manager_calls_initialize_and_close(self, upstash_mod):

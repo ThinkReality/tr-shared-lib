@@ -13,7 +13,6 @@ def test_version_matches_pyproject():
 
 
 def test_new_surface_imports():
-    # Payload modules completing P1-8.
     from tr_shared.events.payloads import (  # noqa: F401
         CMSLandingPagePublishedV1,
         CMSPageEventV1,

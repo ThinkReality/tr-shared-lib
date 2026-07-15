@@ -15,12 +15,7 @@ import pytest
 from tr_shared.celery.async_runner import run_async_in_celery
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _make_engine() -> MagicMock:
-    """Return a mock AsyncEngine whose dispose() can be inspected."""
     engine = MagicMock()
     engine.dispose = MagicMock()
     return engine
@@ -32,11 +27,6 @@ async def _returns_value(value):
 
 async def _raises(exc_type):
     raise exc_type("boom")
-
-
-# ---------------------------------------------------------------------------
-# (a) Happy path — no running loop, coroutine completes normally
-# ---------------------------------------------------------------------------
 
 
 class TestHappyPath:
@@ -69,11 +59,6 @@ class TestHappyPath:
 
         result = run_async_in_celery(returns_none(), engine=engine, service_name="svc")
         assert result is None
-
-
-# ---------------------------------------------------------------------------
-# (c) engine.dispose(close=True) is called before loop creation
-# ---------------------------------------------------------------------------
 
 
 class TestEngineDispose:
@@ -112,25 +97,19 @@ class TestEngineDispose:
         assert call_order == ["dispose", "asyncio.run"]
 
 
-# ---------------------------------------------------------------------------
-# (b) Running-loop detection — fallback to manually-created loop
-# ---------------------------------------------------------------------------
-
-
 class TestRunningLoopFallback:
     def test_fallback_loop_used_when_running_loop_detected(self):
         """When a running loop exists, the helper must still execute the
         coroutine and return the result (not raise RuntimeError)."""
         engine = _make_engine()
 
-        # Simulate a running loop by patching get_running_loop to succeed
         mock_loop = MagicMock()
         mock_loop.run_until_complete.return_value = "from-fallback"
         mock_loop.is_closed.return_value = False
 
         # all_tasks() must return an empty iterable so cleanup logic is a no-op
         with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),  # doesn't raise → running loop detected
+            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
             patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop),
             patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
             patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[]),
@@ -176,16 +155,10 @@ class TestRunningLoopFallback:
         mock_loop.close.assert_called_once()
 
 
-# ---------------------------------------------------------------------------
-# (d) Pending tasks are cancelled during fallback-loop cleanup
-# ---------------------------------------------------------------------------
-
-
 class TestPendingTaskCancellation:
     def test_pending_tasks_cancelled_during_cleanup(self):
         engine = _make_engine()
 
-        # Create two fake pending asyncio.Tasks
         task1 = MagicMock()
         task1.done.return_value = False
         task1.cancel = MagicMock()

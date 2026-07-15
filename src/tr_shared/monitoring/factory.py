@@ -2,16 +2,6 @@
 
 Follows the same pattern as ``cache/factory.py``: enum of providers,
 static factory methods, import-on-demand to avoid pulling unused deps.
-
-Usage::
-
-    from tr_shared.monitoring.factory import MonitoringProviderFactory
-
-    metrics = MonitoringProviderFactory.create_metrics_provider("prometheus")
-    reader = metrics.create_metric_reader()
-
-    logs = MonitoringProviderFactory.create_log_provider("loki", loki_url="http://loki:3100/...")
-    handler = logs.create_handler("my-service", {"environment": "prod"})
 """
 
 import logging

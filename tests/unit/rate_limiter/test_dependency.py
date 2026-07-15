@@ -114,7 +114,6 @@ class TestCreateRateLimitDependency:
         dep = create_rate_limit_dependency(limiter, limit=10, window=60)
 
         request = _make_request()
-        # Should not raise
         await dep(request)
 
     async def test_raises_429_when_blocked(self):
@@ -155,7 +154,6 @@ class TestCreateRateLimitDependency:
         assert request.state.rate_limit_info is info
 
     def test_dependency_works_as_fastapi_depends(self):
-        """Smoke-test that the dependency integrates with FastAPI."""
         limiter = RateLimiter()
         limiter.check = AsyncMock(return_value=_allowed_info())
         limiter.build_key = MagicMock(return_value="test:key")
@@ -203,7 +201,6 @@ class TestRateLimitDecorator:
         assert exc_info.value.status_code == 429
 
     async def test_passes_through_when_no_request_found(self):
-        """Decorator should call function normally when no Request is in args."""
         limiter = RateLimiter()
         limiter.check = AsyncMock(return_value=_allowed_info())
 
@@ -211,6 +208,5 @@ class TestRateLimitDecorator:
         async def handler():
             return "no-request"
 
-        # No Request arg — should not raise, just call the function
         result = await handler()
         assert result == "no-request"

@@ -9,10 +9,6 @@ from tr_shared.monitoring.instruments import InstrumentSet
 from tr_shared.monitoring.middleware import DEFAULT_EXCLUDED_PATHS, MetricsMiddleware
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _mock_instruments() -> InstrumentSet:
     return InstrumentSet(
         request_counter=MagicMock(),
@@ -48,10 +44,6 @@ def _build_app(instruments=None, excluded_paths=None, business_domain_classifier
     return app
 
 
-# ---------------------------------------------------------------------------
-# DEFAULT_EXCLUDED_PATHS
-# ---------------------------------------------------------------------------
-
 class TestDefaultExcludedPaths:
     def test_health_excluded(self):
         assert "/health" in DEFAULT_EXCLUDED_PATHS
@@ -63,10 +55,6 @@ class TestDefaultExcludedPaths:
         assert "/metrics" in DEFAULT_EXCLUDED_PATHS
 
 
-# ---------------------------------------------------------------------------
-# Passthrough when no instruments
-# ---------------------------------------------------------------------------
-
 class TestNoInstruments:
     def test_request_succeeds_without_instruments(self):
         app = _build_app(instruments=None)
@@ -75,15 +63,10 @@ class TestNoInstruments:
         assert response.status_code == 200
 
     def test_no_metrics_recorded_without_instruments(self):
-        """When instrument_set is None, all calls pass through unchanged."""
         app = _build_app(instruments=None)
         client = TestClient(app)
         client.get("/api/test")  # Should not raise
 
-
-# ---------------------------------------------------------------------------
-# Excluded paths
-# ---------------------------------------------------------------------------
 
 class TestExcludedPaths:
     def test_health_path_skips_metrics(self):
@@ -110,10 +93,6 @@ class TestExcludedPaths:
         client.get("/api/test")
         instruments.request_counter.add.assert_not_called()
 
-
-# ---------------------------------------------------------------------------
-# Metric recording
-# ---------------------------------------------------------------------------
 
 class TestMetricRecording:
     def test_request_counter_incremented(self):
@@ -190,10 +169,6 @@ class TestMetricRecording:
         duration = call_args[0][0]
         assert duration >= 0
 
-
-# ---------------------------------------------------------------------------
-# Business domain classifier
-# ---------------------------------------------------------------------------
 
 class TestBusinessDomainClassifier:
     def test_classifier_called_with_path(self):

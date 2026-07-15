@@ -11,10 +11,6 @@ from tr_shared.monitoring.factory import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
-
 class TestEnums:
     def test_metrics_provider_prometheus_value(self):
         assert MetricsProvider.PROMETHEUS == "prometheus"
@@ -34,10 +30,6 @@ class TestEnums:
     def test_trace_provider_noop_value(self):
         assert TraceProvider.NOOP == "noop"
 
-
-# ---------------------------------------------------------------------------
-# create_metrics_provider
-# ---------------------------------------------------------------------------
 
 class TestCreateMetricsProvider:
     def test_prometheus_returns_prometheus_adapter(self):
@@ -62,10 +54,6 @@ class TestCreateMetricsProvider:
         assert isinstance(result, NoopMetricsAdapter)
 
 
-# ---------------------------------------------------------------------------
-# create_log_provider
-# ---------------------------------------------------------------------------
-
 class TestCreateLogProvider:
     def test_noop_returns_noop_log_adapter(self):
         from tr_shared.monitoring.adapters.noop import NoopLogAdapter
@@ -88,10 +76,6 @@ class TestCreateLogProvider:
         result = MonitoringProviderFactory.create_log_provider("NOOP")
         assert isinstance(result, NoopLogAdapter)
 
-
-# ---------------------------------------------------------------------------
-# create_trace_provider
-# ---------------------------------------------------------------------------
 
 class TestCreateTraceProvider:
     def test_noop_returns_noop_trace_adapter(self):

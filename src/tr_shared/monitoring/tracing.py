@@ -1,8 +1,6 @@
 """
 Optional distributed tracing via OpenTelemetry → Grafana Tempo.
 
-Extracted from tr-cms-service/app/core/telemetry.py (lines 78-112).
-
 When ``otlp_endpoint`` is provided, spans are exported via OTLP/gRPC
 (e.g. to Grafana Tempo at ``http://tempo:4317``). When empty, the
 TracerProvider is initialised with no exporters — instrumentation still
@@ -36,15 +34,7 @@ def setup_tracing(
     """
     Initialise OpenTelemetry tracing.
 
-    Args:
-        service_name: Attached to every span as ``service.name``.
-        otlp_endpoint: OTLP gRPC collector endpoint (e.g. ``http://tempo:4317``).
-            Empty string disables remote export.
-        span_exporter: Pre-built SpanExporter injected by the monitoring
-            factory.  When provided, *otlp_endpoint* is ignored.
-
-    Returns:
-        TracerProvider — call ``.shutdown()`` on application teardown.
+    When *span_exporter* is provided, *otlp_endpoint* is ignored.
     """
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)

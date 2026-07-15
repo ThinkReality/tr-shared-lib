@@ -1,14 +1,8 @@
 """
 Standard OpenTelemetry instruments for HTTP metrics.
 
-Extracted from tr-cms-service/app/core/telemetry.py (lines 140-172).
 Single source of truth for metric names — no service creates its own.
-
-The four standard instruments follow OpenTelemetry semantic conventions:
-- ``http_server_requests`` (Counter)
-- ``http_server_request_duration_seconds`` (Histogram)
-- ``http_server_errors`` (Counter)
-- ``http_server_active_requests`` (UpDownCounter)
+Instrument names follow OpenTelemetry semantic conventions.
 """
 
 from dataclasses import dataclass
@@ -27,15 +21,7 @@ class InstrumentSet:
 
 
 def create_instruments(meter: Meter) -> InstrumentSet:
-    """
-    Create the standard set of HTTP instruments.
-
-    Args:
-        meter: OpenTelemetry Meter instance.
-
-    Returns:
-        InstrumentSet with all four instruments ready to record.
-    """
+    """Create the standard set of HTTP instruments."""
     return InstrumentSet(
         request_counter=meter.create_counter(
             name="http_server_requests",

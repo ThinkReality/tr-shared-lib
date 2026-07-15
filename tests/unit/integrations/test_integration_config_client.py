@@ -27,9 +27,6 @@ TENANT_B = "22222222-2222-2222-2222-222222222222"
 PF = "PropertyFinder API"
 
 
-# ----- fixture helpers ---------------------------------------------------
-
-
 def _config_response(
     tenant_id: str = TENANT_A,
     *,
@@ -82,9 +79,6 @@ def _make_client(
         transport=httpx.MockTransport(handler),
     )
     return client
-
-
-# ----- tests -------------------------------------------------------------
 
 
 class TestGetConfig:
@@ -214,7 +208,6 @@ class TestGetConfig:
         try:
             await client.get_config(TENANT_A, PF, include_secrets=False)
             await client.get_config(TENANT_A, PF, include_secrets=True)
-            # Two distinct HTTP calls — not a cache hit across the flag
             assert len(calls) == 2
         finally:
             await client.close()
@@ -258,14 +251,8 @@ class TestStampede:
             return httpx.Response(200, json=_config_response())
 
         def handler(request: httpx.Request) -> httpx.Response:
-            # MockTransport can't be async in all httpx versions,
-            # so we simulate async behavior via coroutine scheduling.
-            # Use sleep to let other coroutines race before responding.
             return httpx.Response(200, json=_config_response())
 
-        # Pre-block all requests behind a single resume signal by using
-        # asyncio primitive inside the client's own lock.
-        # Approach: race 10 concurrent calls, then assert exactly 1 HTTP.
         client = _make_client(handler)
         try:
             tasks = [
@@ -274,10 +261,6 @@ class TestStampede:
             results = await asyncio.gather(*tasks)
             assert all(r.tenant_id == TENANT_A for r in results)
 
-            # Count transport hits via handler call tracking
-            # (the handler itself doesn't count above; verify cache size == 1)
-            # By invariant: after all tasks complete, cache has one entry.
-            # Invoke once more — should be pure cache hit.
             captured: list = []
 
             def count_handler(req: httpx.Request) -> httpx.Response:

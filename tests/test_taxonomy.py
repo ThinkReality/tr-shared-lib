@@ -1,4 +1,3 @@
-# tests/test_taxonomy.py
 import pytest
 
 from tr_shared.contracts.taxonomy import Feature

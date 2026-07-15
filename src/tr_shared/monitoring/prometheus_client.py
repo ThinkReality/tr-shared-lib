@@ -3,18 +3,6 @@ Async Prometheus HTTP API client for the admin panel.
 
 Wraps common PromQL queries with typed methods so the admin panel
 can retrieve real-time metrics without building raw query strings.
-
-Usage::
-
-    from tr_shared.monitoring.prometheus_client import PrometheusClient
-
-    client = PrometheusClient("http://tr-prometheus:9090")
-
-    rate = await client.get_request_rate("crm-backend")
-    overview = await client.get_service_overview("crm-backend")
-    all_status = await client.get_all_services_status()
-
-    await client.close()
 """
 
 import logging
@@ -44,8 +32,6 @@ class PrometheusClient:
         """Close the underlying HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-
-    # ── Instant queries ───────────────────────────────────────────────
 
     async def get_request_rate(
         self, service: str, window: str = "5m",
@@ -159,8 +145,6 @@ class PrometheusClient:
                 "request_rate": float(value[1]) if len(value) > 1 else 0.0,
             })
         return endpoints
-
-    # ── Internal helpers ──────────────────────────────────────────────
 
     async def _query(self, promql: str) -> list[dict]:
         """Execute a PromQL instant query, return the result vector."""

@@ -1,18 +1,29 @@
 """Autogenerate filter: keep only objects that belong to the service schema."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 try:  # SQLAlchemy is a peer dependency; keep the import optional.
     from sqlalchemy import MetaData
 except ImportError:  # pragma: no cover — service environments always have it.
     MetaData = Any  # type: ignore[assignment,misc]
 
+if TYPE_CHECKING:
+    from sqlalchemy.sql.schema import SchemaItem
+
+# Matches Alembic's context.configure(include_object=...) parameter type exactly.
+_AlembicObjectType = Literal[
+    "schema", "table", "column", "index", "unique_constraint", "foreign_key_constraint"
+]
+IncludeObject = Callable[
+    ["SchemaItem", str | None, _AlembicObjectType, bool, "SchemaItem | None"], bool
+]
+
 
 def make_service_include_object(
     target_schema: str,
     target_metadata: "MetaData",
-) -> Callable[[Any, str, str, bool, Any], bool]:
+) -> "IncludeObject":
     """Return an ``include_object`` callable for Alembic's ``context.configure``.
 
     Filters every object Alembic considers during autogenerate down to the
@@ -55,15 +66,15 @@ def make_service_include_object(
     )
 
     def include_object(
-        obj: Any,
-        name: str,
-        type_: str,
+        obj: "SchemaItem",
+        name: str | None,
+        type_: _AlembicObjectType,
         reflected: bool,  # noqa: ARG001 — part of Alembic API
-        compare_to: Any,  # noqa: ARG001 — part of Alembic API
+        compare_to: "SchemaItem | None",  # noqa: ARG001 — part of Alembic API
     ) -> bool:
         if type_ == "table":
             schema = getattr(obj, "schema", None)
-            return schema == target_schema and name in own_table_names
+            return bool(schema == target_schema and name in own_table_names)
 
         # Indexes / unique constraints / FKs / CHECKs all carry a .table ref.
         parent_table = getattr(obj, "table", None)
@@ -76,7 +87,7 @@ def make_service_include_object(
         # Sequences expose .schema directly.
         obj_schema = getattr(obj, "schema", None)
         if obj_schema is not None:
-            return obj_schema == target_schema
+            return bool(obj_schema == target_schema)
 
         # Unknown object type with no schema / parent — let Alembic decide.
         return True

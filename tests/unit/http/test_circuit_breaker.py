@@ -68,7 +68,6 @@ class TestOpenState:
     async def test_transitions_to_half_open_after_timeout(self):
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
         await cb.record_failure()
-        # Simulate timeout elapsed
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
         assert await cb.is_open() is False
         assert cb.state == CircuitState.HALF_OPEN
@@ -85,28 +84,25 @@ class TestHalfOpenState:
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
         await cb.record_failure()
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        # First call: transitions to half-open and allows
         is_open = await cb.is_open()
         assert is_open is False
         assert cb.state == CircuitState.HALF_OPEN
 
     async def test_concurrent_probes_rejected(self):
-        """While a probe is in flight, subsequent calls should be rejected."""
+        """Only one probe may be in flight in HALF_OPEN; subsequent calls are rejected
+        until the probe resolves (call 1 transitions+allows, call 2 is the probe, call 3 rejected)."""
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
         await cb.record_failure()
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        # First call: transitions to HALF_OPEN, probe_in_flight=False, allows
         await cb.is_open()
-        # Second call: sets probe_in_flight=True, allows (this is the probe)
         await cb.is_open()
-        # Third call: probe_in_flight=True → rejected
         assert await cb.is_open() is True
 
     async def test_success_in_half_open_closes_breaker(self):
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
         await cb.record_failure()
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()  # transition to half-open
+        await cb.is_open()
         await cb.record_success()
         assert cb.state == CircuitState.CLOSED
 
@@ -114,22 +110,21 @@ class TestHalfOpenState:
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
         await cb.record_failure()
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()  # transition to half-open
+        await cb.is_open()
         await cb.record_failure()
         assert cb.state == CircuitState.OPEN
 
 
 class TestTransition:
     async def test_state_changes_are_logged(self):
-        """_transition should not raise; it logs state changes."""
         cb = CircuitBreaker("svc", failure_threshold=1)
-        await cb.record_failure()  # triggers _transition to OPEN
+        await cb.record_failure()
         assert cb.state == CircuitState.OPEN
 
     def test_same_state_transition_is_noop(self):
         cb = CircuitBreaker("svc")
         old_state = cb.state
-        cb._transition(CircuitState.CLOSED)  # already CLOSED
+        cb._transition(CircuitState.CLOSED)
         assert cb.state == old_state
 
 
@@ -145,7 +140,6 @@ def _mock_redis(state_data: dict | None = None):
 class TestRedisStatePersistence:
     async def test_open_state_loaded_from_redis_on_first_is_open(self):
         """If Redis has state=open with a recent failure, the breaker starts OPEN."""
-        # Use a fresh timestamp so the recovery timeout hasn't elapsed
         recent_ts = str(time.time())
         redis = _mock_redis({"state": "open", "failure_count": "5", "last_failure_time": recent_ts})
         cb = CircuitBreaker("svc", failure_threshold=10, recovery_timeout=9999, redis_client=redis)
@@ -154,7 +148,6 @@ class TestRedisStatePersistence:
         assert cb.state == CircuitState.OPEN
 
     async def test_state_saved_to_redis_on_failure(self):
-        """record_failure() persists updated state to Redis."""
         redis = _mock_redis()
         cb = CircuitBreaker("svc", failure_threshold=3, redis_client=redis)
         await cb.record_failure()
@@ -163,38 +156,33 @@ class TestRedisStatePersistence:
         assert saved["failure_count"] == "1"
 
     async def test_state_saved_to_redis_on_success(self):
-        """record_success() from HALF_OPEN persists closed state to Redis."""
         redis = _mock_redis()
         cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1, redis_client=redis)
-        await cb.record_failure()  # → OPEN
-        # Simulate recovery timeout so is_open() transitions to HALF_OPEN
+        await cb.record_failure()
         cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()         # → HALF_OPEN
+        await cb.is_open()
         redis.hset.reset_mock()
-        await cb.record_success()  # HALF_OPEN → CLOSED
+        await cb.record_success()
         redis.hset.assert_awaited_once()
         saved = redis.hset.call_args.kwargs.get("mapping") or redis.hset.call_args[1].get("mapping")
         assert saved["state"] == "closed"
 
     async def test_redis_load_error_falls_back_to_memory_state(self):
-        """If Redis raises on load, the breaker stays in memory CLOSED state."""
         redis = _mock_redis()
         redis.hgetall.side_effect = ConnectionError("Redis down")
         cb = CircuitBreaker("svc", failure_threshold=5, redis_client=redis)
         result = await cb.is_open()
-        assert result is False            # still CLOSED (memory default)
+        assert result is False
         assert cb.state == CircuitState.CLOSED
 
     async def test_redis_save_error_does_not_raise(self):
-        """If Redis raises on save, the breaker still works in-memory."""
         redis = _mock_redis()
         redis.hset.side_effect = ConnectionError("Redis down")
         cb = CircuitBreaker("svc", failure_threshold=1, redis_client=redis)
-        await cb.record_failure()  # Must not raise
+        await cb.record_failure()
         assert cb.state == CircuitState.OPEN
 
     async def test_state_loaded_only_once(self):
-        """hgetall is called exactly once regardless of how many times is_open() is called."""
         redis = _mock_redis()
         cb = CircuitBreaker("svc", redis_client=redis)
         await cb.is_open()
@@ -203,7 +191,6 @@ class TestRedisStatePersistence:
         redis.hgetall.assert_awaited_once()
 
     async def test_no_redis_uses_memory_only(self):
-        """Without a redis_client, behaviour is unchanged from before."""
         cb = CircuitBreaker("svc", failure_threshold=1)
         await cb.record_failure()
-        assert cb.state == CircuitState.OPEN  # works normally, no Redis calls
+        assert cb.state == CircuitState.OPEN

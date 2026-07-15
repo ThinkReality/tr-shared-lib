@@ -72,7 +72,6 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
 
         redis = await self._get_redis()
         if redis is None:
-            # Fail-open: process normally if Redis unavailable
             return await call_next(request)
 
         cache_key = self._build_key(str(tenant_id), idempotency_key)

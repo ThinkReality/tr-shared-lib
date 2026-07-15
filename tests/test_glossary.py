@@ -1,4 +1,3 @@
-# tests/test_glossary.py
 import importlib
 from enum import Enum
 

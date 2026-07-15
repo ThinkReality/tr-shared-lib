@@ -19,7 +19,6 @@ from tr_shared.webhooks.verifier import WebhookVerifier
 
 logger = logging.getLogger(__name__)
 
-# (provider, headers, payload) -> tenant_id or None
 TenantResolver = Callable[[str, dict[str, str], dict[str, Any]], str | None]
 
 
@@ -161,7 +160,7 @@ def _register_provider_endpoints(
         if tenant_resolver:
             tenant_id = tenant_resolver(pn, headers, payload)
         if not tenant_id:
-            # `headers` keys are lowercased (built at line 181), so match case.
+            # `headers` keys are lowercased, so match case.
             tenant_id = headers.get(HttpHeader.TENANT_ID.value.lower())
 
         if idempotency_guard:

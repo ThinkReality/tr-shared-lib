@@ -10,20 +10,7 @@ from pydantic import BaseModel
 
 @dataclass
 class WebhookEvent:
-    """Parsed webhook event ready for dispatch.
-
-    Attributes:
-        provider: Provider identifier (e.g. ``"propertyfinder"``, ``"meta"``).
-        event_id: Unique event identifier from provider or generated UUID.
-        event_type: Event type string (e.g. ``"listing.published"``).
-        raw_body: Original request body bytes (used for signature verification).
-        payload: Parsed JSON payload dict.
-        headers: Request headers with lowercased keys.
-        tenant_id: Resolved tenant UUID string, or None.
-        correlation_id: Correlation ID from request headers.
-        received_at: ISO 8601 timestamp when the webhook was received.
-        ip_address: Client IP address.
-    """
+    """Parsed webhook event ready for dispatch."""
 
     provider: str
     event_id: str
@@ -40,22 +27,10 @@ class WebhookEvent:
 class ProviderConfig(BaseModel):
     """Per-provider webhook configuration.
 
-    Attributes:
-        name: Provider identifier used in URL paths and logging.
-        secret: HMAC signing secret. Empty string skips verification
-            **unless** ``dynamic_secret`` is True.
-        signature_header: HTTP header containing the signature.
-        signature_format: ``"hex"`` for raw hex digest, ``"sha256={hex}"``
-            for prefixed format (used by Bayut/Meta).
-        event_id_fields: Ordered list of payload field names to extract event ID from.
-        event_type_fields: Ordered list of payload field names to extract event type from.
-        idempotency_ttl_seconds: TTL for the idempotency key in Redis.
-        dynamic_secret: When True, the framework invokes the verifier even
-            if ``secret`` is empty. The verifier is expected to read the
-            HMAC secret from a request header (e.g. ``X-Webhook-Secret``)
-            rather than from ``ProviderConfig.secret``. Added in Batch
-            Pre-4A of the PropertyFinder gateway-injected-secret flow
-            (docs/specs/04-batch-downstream-handlers.md).
+    ``dynamic_secret=True`` invokes the verifier even when ``secret`` is empty;
+    the verifier reads the real HMAC secret from a request header (e.g.
+    ``X-Webhook-Secret``) instead — used by the PropertyFinder
+    gateway-injected-secret flow (Pre-4A).
     """
 
     name: str
@@ -69,13 +44,7 @@ class ProviderConfig(BaseModel):
 
 
 class WebhookResult(BaseModel):
-    """Response returned to the webhook provider.
-
-    Attributes:
-        status: Processing status (``"accepted"``, ``"duplicate"``, ``"error"``).
-        event_id: The event ID assigned to this webhook delivery.
-        message: Human-readable status message.
-    """
+    """Response returned to the webhook provider."""
 
     status: str
     event_id: str | None = None

@@ -76,5 +76,4 @@ class TestCloseRedisClient:
 
     async def test_close_when_no_client_is_noop(self):
         redis_module._client = None
-        # Should not raise
         await close_redis_client()

@@ -75,7 +75,7 @@ def test_extra_key_rejected():
 
 def test_required_keys_enforced():
     with pytest.raises(ValidationError):
-        ListingDeletedV1(listing_id="l1")  # missing pf_listing_id
+        ListingDeletedV1(listing_id="l1")
 
 
 def test_optionals_default_to_none():

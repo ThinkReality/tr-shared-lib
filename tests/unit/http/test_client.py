@@ -7,10 +7,6 @@ from tr_shared.http.client import ServiceHTTPClient
 from tr_shared.http.circuit_breaker import CircuitBreaker
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _client(**kwargs) -> ServiceHTTPClient:
     return ServiceHTTPClient(
         service_name="crm-backend",
@@ -27,10 +23,6 @@ def _mock_response(json_data=None, status_code=200):
     response.raise_for_status = MagicMock()
     return response
 
-
-# ---------------------------------------------------------------------------
-# Initialization
-# ---------------------------------------------------------------------------
 
 class TestInitialization:
     def test_service_name_stored(self):
@@ -53,10 +45,6 @@ class TestInitialization:
         c = _client()
         assert c._client is None
 
-
-# ---------------------------------------------------------------------------
-# _get_client
-# ---------------------------------------------------------------------------
 
 class TestGetClient:
     async def test_creates_httpx_client(self):
@@ -103,10 +91,6 @@ class TestGetClient:
             mock_cls.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# close
-# ---------------------------------------------------------------------------
-
 class TestClose:
     async def test_close_calls_aclose(self):
         c = _client()
@@ -126,12 +110,8 @@ class TestClose:
 
     async def test_close_when_no_client_is_noop(self):
         c = _client()
-        await c.close()  # Should not raise
+        await c.close()
 
-
-# ---------------------------------------------------------------------------
-# _request — circuit breaker open
-# ---------------------------------------------------------------------------
 
 class TestRequestCircuitBreaker:
     async def test_raises_connection_error_when_circuit_open(self):
@@ -141,10 +121,6 @@ class TestRequestCircuitBreaker:
             with pytest.raises(ConnectionError, match="Circuit breaker open"):
                 await c._request("GET", "/test")
 
-
-# ---------------------------------------------------------------------------
-# HTTP verb convenience methods
-# ---------------------------------------------------------------------------
 
 class TestHttpVerbs:
     async def test_get_calls_request_with_get(self):
@@ -178,10 +154,6 @@ class TestHttpVerbs:
             await c.delete("/test")
             assert mock.call_args[0][0] == "DELETE"
 
-
-# ---------------------------------------------------------------------------
-# Context manager
-# ---------------------------------------------------------------------------
 
 class TestContextManager:
     async def test_aenter_returns_self(self):

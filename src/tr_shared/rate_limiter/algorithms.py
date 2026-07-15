@@ -1,6 +1,5 @@
 """Rate limiting algorithm implementations.
 
-Two strategies extracted from existing services:
 - FixedWindowAlgorithm: INCR+EXPIRE (fastest, least memory)
 - SlidingWindowAlgorithm: ZSET-based (more precise distribution)
 """
@@ -23,25 +22,12 @@ class BaseAlgorithm(ABC):
     async def check(
         self, redis_client: Any, key: str, limit: int, window_seconds: int
     ) -> RateLimitResult:
-        """Check and increment the rate limit counter.
-
-        Args:
-            redis_client: An async Redis client with ``eval()`` support.
-            key: The fully-qualified Redis key.
-            limit: Maximum requests allowed in the window.
-            window_seconds: Window duration in seconds.
-
-        Returns:
-            A ``RateLimitResult`` reflecting the current window state.
-        """
+        """Check and increment the rate limit counter."""
         ...
 
 
 class FixedWindowAlgorithm(BaseAlgorithm):
-    """INCR + EXPIRE fixed-window counter.
-
-    Fastest and least memory. Used by: lead-management, HR, admin-panel, crm-backend.
-    """
+    """INCR + EXPIRE fixed-window counter. Fastest and least memory."""
 
     async def check(
         self, redis_client: Any, key: str, limit: int, window_seconds: int
@@ -73,10 +59,7 @@ class FixedWindowAlgorithm(BaseAlgorithm):
 
 
 class SlidingWindowAlgorithm(BaseAlgorithm):
-    """ZSET-based sliding window. More precise distribution.
-
-    Used by: gateway, media-service.
-    """
+    """ZSET-based sliding window. More precise distribution."""
 
     async def check(
         self, redis_client: Any, key: str, limit: int, window_seconds: int

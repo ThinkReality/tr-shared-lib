@@ -14,19 +14,11 @@ from tr_shared.monitoring.models import (
 )
 
 
-# ---------------------------------------------------------------------------
-# MonitoringBase
-# ---------------------------------------------------------------------------
-
 class TestMonitoringBase:
     def test_is_declarative_base(self):
         from sqlalchemy.orm import DeclarativeBase
         assert issubclass(MonitoringBase, DeclarativeBase)
 
-
-# ---------------------------------------------------------------------------
-# MonitoringRequestLog
-# ---------------------------------------------------------------------------
 
 class TestMonitoringRequestLog:
     def test_tablename(self):
@@ -70,7 +62,6 @@ class TestMonitoringRequestLog:
         assert hasattr(MonitoringRequestLog, "correlation_id")
 
     def test_instantiation(self):
-        """Model can be instantiated with basic fields."""
         log = MonitoringRequestLog(
             service_name="test-svc",
             endpoint="/api/v1/test",
@@ -84,10 +75,6 @@ class TestMonitoringRequestLog:
         assert log.service_name == "test-svc"
         assert log.status_code == 200
 
-
-# ---------------------------------------------------------------------------
-# MonitoringMetricsHourly
-# ---------------------------------------------------------------------------
 
 class TestMonitoringMetricsHourly:
     def test_tablename(self):
@@ -122,10 +109,6 @@ class TestMonitoringMetricsHourly:
         assert m.request_count == 100
 
 
-# ---------------------------------------------------------------------------
-# MonitoringMetricsDaily
-# ---------------------------------------------------------------------------
-
 class TestMonitoringMetricsDaily:
     def test_tablename(self):
         assert MonitoringMetricsDaily.__tablename__ == "metrics_daily"
@@ -148,10 +131,6 @@ class TestMonitoringMetricsDaily:
         )
         assert m.service_name == "svc"
 
-
-# ---------------------------------------------------------------------------
-# MonitoringTenantUsage
-# ---------------------------------------------------------------------------
 
 class TestMonitoringTenantUsage:
     def test_tablename(self):

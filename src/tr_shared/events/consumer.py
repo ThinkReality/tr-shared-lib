@@ -100,8 +100,6 @@ class EventConsumer:
         self._delayed_poll_interval = 1.0
         self._delayed_task: asyncio.Task[None] | None = None
 
-    # -- connection --
-
     async def connect(self) -> None:
         if self._redis is None:
             self._redis = redis.from_url(self._redis_url, decode_responses=True)
@@ -123,8 +121,6 @@ class EventConsumer:
             if "BUSYGROUP" not in str(e):
                 raise
 
-    # -- handler registration --
-
     def register_handler(self, event_type: str, handler: EventHandler) -> None:
         self._handlers[event_type] = handler
 
@@ -143,8 +139,6 @@ class EventConsumer:
                 return h
         return None
 
-    # -- parsing --
-
     def _parse(self, message_id: str, data: dict[str, str]) -> EventEnvelope | None:
         try:
             if self._parse_mode == "payload":
@@ -153,8 +147,6 @@ class EventConsumer:
         except Exception:
             logger.exception("Failed to parse message %s", message_id)
             return None
-
-    # -- processing --
 
     async def _process_message(self, message_id: str, data: dict[str, str]) -> bool:
         envelope = self._parse(message_id, data)
@@ -205,8 +197,6 @@ class EventConsumer:
                     except Exception:
                         logger.exception("DLQ move failed for message %s — continuing", message_id)
             return True
-
-    # -- retry / delayed requeue --
 
     async def _requeue(self, message_id: str, data: dict[str, str], retry_count: int) -> None:
         if self._redis is None:
@@ -265,13 +255,9 @@ class EventConsumer:
                 logger.exception("Error in delayed mover loop")
                 await asyncio.sleep(self._delayed_poll_interval)
 
-    # -- ack --
-
     async def _ack(self, message_id: str) -> None:
         if self._redis:
             await self._redis.xack(self._stream_name, self._consumer_group, message_id)
-
-    # -- main loop --
 
     async def start(self) -> None:
         await self.connect()

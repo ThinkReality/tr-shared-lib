@@ -24,5 +24,4 @@ def test_is_sha256_truncated_and_stable():
     value = "user@example.com"
     expected = hashlib.sha256(value.encode()).hexdigest()[:16]
     assert hash_pii(value) == expected
-    # Stable across calls — same input, same token.
     assert hash_pii(value) == hash_pii(value)

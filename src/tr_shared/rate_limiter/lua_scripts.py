@@ -1,14 +1,9 @@
 """Atomic Lua scripts for Redis-based rate limiting.
 
-Extracted and consolidated from:
-- tr-api-gateway/app/core/rate_limiter.py (lines 37-75)
-- tr-lead-management/app/core/rate_limiter.py (lines 81-88)
-
 Both scripts return ``{count, is_over}`` for uniform result parsing.
 """
 
 # Sliding window — ZSET-based (more precise, slightly more memory)
-# Used by: gateway, media-service
 SLIDING_WINDOW_LUA = """
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
@@ -32,7 +27,6 @@ return {count, count > limit and 1 or 0}
 """
 
 # Fixed window — INCR + conditional EXPIRE (fastest, least memory)
-# Used by: lead-management, HR, admin-panel, crm-backend
 FIXED_WINDOW_LUA = """
 local key = KEYS[1]
 local limit = tonumber(ARGV[1])

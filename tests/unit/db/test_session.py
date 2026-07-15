@@ -15,10 +15,6 @@ from tr_shared.db.session import (
 )
 
 
-# ---------------------------------------------------------------------------
-# URL normalisation
-# ---------------------------------------------------------------------------
-
 class TestToAsyncpg:
     def test_already_asyncpg_unchanged(self):
         url = "postgresql+asyncpg://user:pw@localhost/db"
@@ -44,10 +40,6 @@ class TestToAsyncpg:
         assert _to_asyncpg(url) == url
 
 
-# ---------------------------------------------------------------------------
-# PGBOUNCER_CONNECT_ARGS
-# ---------------------------------------------------------------------------
-
 class TestPgbouncerConnectArgs:
     def test_statement_cache_size_is_zero(self):
         assert PGBOUNCER_CONNECT_ARGS["statement_cache_size"] == 0
@@ -58,10 +50,6 @@ class TestPgbouncerConnectArgs:
     def test_jit_is_off(self):
         assert PGBOUNCER_CONNECT_ARGS["server_settings"]["jit"] == "off"
 
-
-# ---------------------------------------------------------------------------
-# _build_connect_args helper
-# ---------------------------------------------------------------------------
 
 class TestBuildConnectArgs:
     def test_no_overrides_matches_defaults(self):
@@ -130,10 +118,6 @@ class TestBuildConnectArgs:
         assert result["prepared_statement_name_func"]() == ""
 
 
-# ---------------------------------------------------------------------------
-# Engine + session factory creation (no actual DB connection)
-# ---------------------------------------------------------------------------
-
 class TestCreateAsyncEngineFactory:
     def test_returns_async_engine(self):
         engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
@@ -150,7 +134,6 @@ class TestCreateAsyncEngineFactory:
         assert engine.echo is True
 
     def test_normalises_postgres_url(self):
-        # Should not raise — _to_asyncpg is applied internally
         engine = create_async_engine_factory("postgres://user:pw@localhost/db")
         assert isinstance(engine, AsyncEngine)
 
@@ -208,15 +191,11 @@ class TestCreateSessionFactory:
         assert factory.kw.get("autoflush") is False
 
 
-# ---------------------------------------------------------------------------
-# get_db dependency
-# ---------------------------------------------------------------------------
-
 class TestGetDb:
     async def test_raises_runtime_error_when_no_factory(self):
         with pytest.raises(RuntimeError, match="session_factory"):
             async for _ in get_db():
-                pass  # Should raise before yielding
+                pass
 
     async def test_yields_session_from_factory(self):
         mock_session = AsyncMock(spec=AsyncSession)

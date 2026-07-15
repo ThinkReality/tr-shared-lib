@@ -54,8 +54,6 @@ def _env(event_type: str, data: dict) -> EventEnvelope:
     )
 
 
-# ---------- CMS ----------
-
 _PAGE_BASE = {
     "entity_type": "cms.page",
     "entity_id": "p1",
@@ -151,8 +149,6 @@ def test_every_cms_page_and_blog_event_has_a_model():
     assert len(mapping) == 14
 
 
-# ---------- Lead ----------
-
 _LEAD_BASE = {"entity_type": "lead", "entity_id": "l1", "lead_id": "l1", "lead_name": "Bob"}
 
 
@@ -190,8 +186,6 @@ def test_lead_extra_key_rejected():
         LeadCreatedV1(**_LEAD_BASE, raw_phone="+9715")  # raw PII never on the bus
 
 
-# ---------- WAM ----------
-
 def test_wam_lead_qualified_minimal():
     p = WAMLeadQualifiedV1(user_number="971501234567", lead_score=80, tier="hot")
     assert p.user_number == "971501234567"
@@ -224,8 +218,6 @@ def test_wam_lead_score_must_be_non_negative():
         WAMLeadQualifiedV1(user_number="971501234567", lead_score=-1, tier="hot")
 
 
-# ---------- Listing audit ----------
-
 _AUDIT = {
     "entity_id": "list1",
     "entity_type": "listing",
@@ -246,8 +238,6 @@ def test_listing_audit_rejects_redundant_event_type_key():
     with pytest.raises(ValidationError):
         ListingAuditEventV1(**{**_AUDIT, "event_type": "listing.updated"})
 
-
-# ---------- Finance invoice + card ----------
 
 def test_finance_invoice_event():
     data = {
@@ -289,8 +279,6 @@ def test_finance_card_imported_and_matched():
     }
     FinanceCardTransactionMatchedV1(**matched)
 
-
-# ---------- HR application ----------
 
 def test_hr_application_events():
     submitted = {

@@ -145,13 +145,11 @@ async def test_handler_swallows_exception() -> None:
     consumer = _FakeConsumer()
     register_integration_cache_handlers(consumer, _ExplodingClient())  # type: ignore[arg-type]
     envelope = _FakeEnvelope(tenant_id="t", data={"tenant_id": "t"})
-    # Must not raise
     await consumer.handlers[AdminEvents.INTEGRATION_PLATFORM_DELETED](envelope)
 
 
 @pytest.mark.asyncio
 async def test_handler_falls_back_to_envelope_tenant_id() -> None:
-    """When data dict omits tenant_id, fall back to envelope.tenant_id."""
     consumer = _FakeConsumer()
     client = _FakeClient()
     register_integration_cache_handlers(consumer, client)  # type: ignore[arg-type]

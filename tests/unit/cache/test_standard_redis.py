@@ -82,7 +82,7 @@ class TestSetAndSetex:
         await async_fake_redis.set("nx:key", "original")
         await adapter.set("nx:key", "new_value", nx=True)
         result = await async_fake_redis.get("nx:key")
-        assert result == "original"  # not overwritten
+        assert result == "original"
 
 
 class TestDelete:

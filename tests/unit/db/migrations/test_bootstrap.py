@@ -27,7 +27,6 @@ class _FakeConnection:
         # stmt is a sqlalchemy.text() object; record its str() form.
         self.executed.append((str(stmt), params))
         if "information_schema.tables" in str(stmt):
-            # Pop next scalar value.
             return _FakeResult(self._scalar_results.pop(0))
         return _FakeResult(None)
 
@@ -44,7 +43,6 @@ class TestBootstrapSchemaAndVersionTable:
             version_table="alembic_version_admin_panel",
         )
         assert result == "absent"
-        # CREATE SCHEMA was emitted first.
         assert "CREATE SCHEMA IF NOT EXISTS" in conn.executed[0][0]
         assert '"admin"' in conn.executed[0][0]
         assert conn.commit_count == 1
@@ -59,12 +57,11 @@ class TestBootstrapSchemaAndVersionTable:
             version_table="alembic_version_admin_panel",
         )
         assert result == "target"
-        # Should NOT have emitted ALTER TABLE SET SCHEMA.
         altered = [s for s, _ in conn.executed if "SET SCHEMA" in s]
         assert altered == []
 
     def test_version_table_in_legacy_is_moved(self):
-        conn = _FakeConnection(scalar_results=[None, 1])  # not target, yes legacy
+        conn = _FakeConnection(scalar_results=[None, 1])
         result = bootstrap_schema_and_version_table(
             conn,
             schema="admin",

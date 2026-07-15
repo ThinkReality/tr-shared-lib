@@ -1,9 +1,6 @@
 """
 Shared structured logging configuration using structlog.
 
-Extracted from crm-backend and tr-notification-service — identical ~80-line
-implementations across 10+ services.
-
 Usage::
 
     from tr_shared.logging import configure_logging, get_logger
@@ -99,7 +96,6 @@ def configure_logging(
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Get a named structlog logger instance."""
     return structlog.get_logger(name)
 
 

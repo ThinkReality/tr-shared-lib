@@ -1,4 +1,3 @@
-# tests/test_contract_enums.py
 import pytest
 
 from tr_shared.contracts.enums import Channel, Priority

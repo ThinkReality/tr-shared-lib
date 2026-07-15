@@ -73,10 +73,6 @@ class CacheService:
         self.key_prefix = key_prefix
         self._max_value_bytes = max_value_bytes
 
-    # ------------------------------------------------------------------
-    # Read
-    # ------------------------------------------------------------------
-
     async def get(self, key: str) -> JSONType | None:
         """Get JSON-deserialized value from cache."""
         try:
@@ -163,10 +159,6 @@ class CacheService:
             logger.error("Cache error for %s: %s", key, e, extra={"cache_status": "error", "key": key})
             return await fetch_func(**fetch_kwargs)
 
-    # ------------------------------------------------------------------
-    # Write
-    # ------------------------------------------------------------------
-
     async def set(self, key: str, value: Any, ttl: int = 3600, *, nx: bool = False) -> bool:
         """Serialize value to JSON and store with TTL.
 
@@ -215,10 +207,6 @@ class CacheService:
             )
             return 0
 
-    # ------------------------------------------------------------------
-    # Delete
-    # ------------------------------------------------------------------
-
     async def delete(self, *keys: str) -> None:
         """Delete one or more cache keys."""
         if not keys:
@@ -254,10 +242,6 @@ class CacheService:
                 extra={"cache_status": "error"},
             )
             return 0
-
-    # ------------------------------------------------------------------
-    # Atomic counter / existence check
-    # ------------------------------------------------------------------
 
     async def increment(self, key: str, amount: int = 1, ttl: int | None = None) -> int:
         """Atomically increment a counter. Optionally set TTL on first creation.
@@ -335,10 +319,6 @@ class CacheService:
             logger.error("Cache scan_keys error for pattern %s: %s", pattern, e, extra={"cache_status": "error"})
             return []
 
-    # ------------------------------------------------------------------
-    # Sorted-set operations
-    # ------------------------------------------------------------------
-
     async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         """Add/update members with scores in a sorted set.
 
@@ -411,10 +391,6 @@ class CacheService:
             logger.error("Cache zrem error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
             return 0
 
-    # ------------------------------------------------------------------
-    # Set operations
-    # ------------------------------------------------------------------
-
     async def sadd(self, key: str, *members: str) -> int:
         """Add one or more members to a Redis set.
 
@@ -439,10 +415,6 @@ class CacheService:
         except Exception as e:
             logger.error("Cache srem error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
             return 0
-
-    # ------------------------------------------------------------------
-    # Key building
-    # ------------------------------------------------------------------
 
     def build_key(self, *parts: Any) -> str:
         """Build a cache key using the standard prefix."""

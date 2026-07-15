@@ -69,7 +69,6 @@ class TestEnsurePartition:
         engine = MagicMock()
         conn = engine.begin.return_value.__enter__.return_value
         _ensure_partition(engine, date(2026, 3, 15))
-        # The SQL text should reference the partition name
         sql_str = str(conn.execute.call_args[0][0])
         assert "2026_03_15" in sql_str
 
@@ -130,7 +129,6 @@ class TestFlushMonitoringBuffer:
             mock_engine.dispose.assert_called_once()
 
     def test_handles_flush_error_gracefully(self):
-        """Exceptions inside the flush loop are caught and logged."""
         with patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn, \
              patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"), \
              patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync") as mock_flush:

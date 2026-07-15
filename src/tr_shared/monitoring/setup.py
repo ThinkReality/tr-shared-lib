@@ -9,36 +9,6 @@ Provider selection is config-driven via the ``metrics_provider``,
 ``log_provider``, and ``trace_provider`` parameters.  Defaults match
 the current Grafana Stack (Prometheus + Loki + OTLP), so **zero service
 changes are required** when upgrading to this version.
-
-Usage::
-
-    from tr_shared.monitoring import setup_monitoring
-
-    # Current behavior — unchanged
-    setup_monitoring(
-        app=app,
-        service_name=settings.SERVICE_NAME,
-        prometheus_port=settings.PROMETHEUS_PORT,
-    )
-
-    # Disable metrics export (e.g. for tests)
-    setup_monitoring(
-        app=app,
-        service_name="test",
-        metrics_provider="noop",
-    )
-
-    # With optional business domain classification
-    def classify(path: str) -> str | None:
-        if path.startswith("/api/v1/blogs"):
-            return "blogs"
-        return None
-
-    setup_monitoring(
-        app=app,
-        service_name="tr-cms-service",
-        business_domain_classifier=classify,
-    )
 """
 
 import logging
@@ -65,13 +35,10 @@ def setup_monitoring(
     otlp_endpoint: str = "",
     excluded_paths: frozenset[str] | None = None,
     business_domain_classifier: Callable[[str], str | None] | None = None,
-    # ── Layer 2: persistence to central monitoring DB ──
     enable_persistence: bool = False,
     redis_url: str = "",
-    # ── Log shipping ──
     loki_url: str = "",
     environment: str = "",
-    # ── Provider selection (defaults = current Grafana Stack behavior) ──
     metrics_provider: str = "prometheus",
     log_provider: str = "loki",
     trace_provider: str = "otlp",
@@ -83,30 +50,13 @@ def setup_monitoring(
     (typically in the lifespan startup handler).
 
     Args:
-        app: FastAPI application instance.
-        service_name: Identifies this service in metrics and traces.
-        prometheus_port: Port for the standalone metrics HTTP server.
-            Set to 0 to skip starting the server (use ``create_metrics_router``
-            instead for same-port serving).
-        enable_tracing: Enable distributed tracing export.
-        otlp_endpoint: OTLP gRPC endpoint (e.g. ``http://tempo:4317``).
-            Only used when *enable_tracing* is True.
-        excluded_paths: Paths to skip (defaults to health/docs/metrics).
-        business_domain_classifier: Optional ``(path) -> domain | None`` hook
-            for recording business-domain-specific metrics.
+        prometheus_port: Set to 0 to skip starting the standalone server
+            (use ``create_metrics_router`` instead for same-port serving).
         enable_persistence: Enable Layer 2 request persistence to Redis
             buffer (flushed to central monitoring DB by Celery tasks).
-        redis_url: Redis URL for the persistence buffer.
-            Required when *enable_persistence* is True.
-        loki_url: Log shipping URL. For Loki this is the push API URL
-            (e.g. ``http://loki:3100/loki/api/v1/push``).
-            When set, a log handler is attached to the root logger.
-        environment: Environment name (dev, staging, prod) used as a log label.
-        metrics_provider: Metrics backend — ``"prometheus"`` (default) or ``"noop"``.
-        log_provider: Log shipping backend — ``"loki"`` (default) or ``"noop"``.
-        trace_provider: Trace export backend — ``"otlp"`` (default) or ``"noop"``.
+        redis_url: Required when *enable_persistence* is True.
+        loki_url: When set, a log handler is attached to the root logger.
     """
-    # 1. Metrics: create reader via factory + MeterProvider
     metrics_adapter = MonitoringProviderFactory.create_metrics_provider(
         provider=metrics_provider
     )
@@ -120,11 +70,9 @@ def setup_monitoring(
     )
     metrics.set_meter_provider(meter_provider)
 
-    # 2. Create standard HTTP instruments
     meter = metrics.get_meter("tr_shared.monitoring")
     instrument_set = create_instruments(meter)
 
-    # 3. Add metrics middleware
     app.add_middleware(
         MetricsMiddleware,
         service_name=service_name,
@@ -133,11 +81,9 @@ def setup_monitoring(
         business_domain_classifier=business_domain_classifier,
     )
 
-    # 4. Start metrics HTTP server (unless port=0)
     if prometheus_port > 0:
         metrics_adapter.start_server(port=prometheus_port, service_name=service_name)
 
-    # 5. Optional distributed tracing via factory
     if enable_tracing:
         trace_adapter = MonitoringProviderFactory.create_trace_provider(
             provider=trace_provider,
@@ -150,7 +96,6 @@ def setup_monitoring(
             span_exporter=span_exporter,
         )
 
-    # 6. Optional Layer 2 persistence (Redis buffer -> central DB)
     if enable_persistence and redis_url:
         from tr_shared.monitoring.persistence import PersistenceMiddleware
 
@@ -161,7 +106,6 @@ def setup_monitoring(
             excluded_paths=excluded_paths,
         )
 
-    # 7. Optional log shipping via factory
     if loki_url:
         log_adapter = MonitoringProviderFactory.create_log_provider(
             provider=log_provider,

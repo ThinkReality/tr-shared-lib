@@ -1,4 +1,3 @@
-# tests/test_event_payload_base.py
 import pytest
 from pydantic import ValidationError
 

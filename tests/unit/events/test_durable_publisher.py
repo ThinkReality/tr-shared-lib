@@ -27,7 +27,6 @@ class TestDurableEventPublisher:
             actor_id="11111111-1111-1111-1111-111111111111",
         )
         session.execute.assert_awaited_once()
-        # Returns a UUID
         assert str(rid)
         call_args = session.execute.call_args
         stmt = str(call_args[0][0])

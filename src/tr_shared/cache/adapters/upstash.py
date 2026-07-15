@@ -40,7 +40,6 @@ class UpstashPipeline(PipelineInterface):
         self._pipe = pipe
 
     def setex(self, key: str, ttl: int, value: str) -> "PipelineInterface":
-        """Queue SETEX command."""
         self._pipe.setex(key, ttl, value)
         return self
 
@@ -69,7 +68,6 @@ class UpstashAdapter(BaseRedisAdapter):
         self._available = False
 
     async def initialize(self) -> bool:
-        """Initialize Upstash Redis connection."""
         try:
             self._client = AsyncUpstashRedis(
                 url=self._rest_url,
@@ -113,9 +111,8 @@ class UpstashAdapter(BaseRedisAdapter):
         self._check_initialized("set")
         try:
             if nx:
-                # Atomic SET NX EX — single round-trip, no TTL gap on crash.
-                # upstash-redis supports the same set(nx=True, ex=ttl) signature
-                # as redis-py; returns the stored value on success, None on miss.
+                # upstash-redis supports set(nx=True, ex=ttl) same as redis-py;
+                # returns the stored value on success, None on miss.
                 result = await self._client.set(key, value, nx=True, ex=ttl)
                 return result is not None
             elif ttl:

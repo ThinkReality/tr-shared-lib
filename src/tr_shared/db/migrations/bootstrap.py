@@ -98,10 +98,8 @@ def bootstrap_schema_and_version_table(
         legacy_schema: Schema to check for a pre-existing version table
             and migrate from. Defaults to ``"public"``.
     """
-    # Step 1 — create target schema (idempotent).
     connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
 
-    # Step 2 — detect where the version table lives.
     in_target = connection.execute(
         text(
             "SELECT 1 FROM information_schema.tables "
@@ -123,8 +121,8 @@ def bootstrap_schema_and_version_table(
     if in_target:
         location = "target"
     elif in_legacy:
-        # Move it — ALTER TABLE SET SCHEMA is atomic + carries all
-        # indexes, constraints, sequences, triggers, RLS, privileges.
+        # ALTER TABLE SET SCHEMA is atomic and carries all indexes,
+        # constraints, sequences, triggers, RLS, and privileges.
         connection.execute(
             text(
                 f'ALTER TABLE "{legacy_schema}"."{version_table}" '
@@ -135,8 +133,8 @@ def bootstrap_schema_and_version_table(
     else:
         location = "absent"
 
-    # Step 3 — commit bootstrap so context.begin_transaction() later opens
-    # a clean migration transaction without entangling with DDL above.
+    # Commit bootstrap so context.begin_transaction() later opens a clean
+    # migration transaction without entangling with the DDL above.
     connection.commit()
 
     return location

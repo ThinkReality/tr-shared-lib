@@ -61,8 +61,6 @@ class TestHMACVerifier:
         """Verify we use hmac.compare_digest (constant-time)."""
         verifier = HMACVerifier()
         sig = _sign(BODY, SECRET)
-        # Valid signature should pass
         assert verifier.verify(BODY, {"x-signature": sig}, SECRET) is True
-        # Almost-correct signature should fail
         wrong_sig = sig[:-1] + ("0" if sig[-1] != "0" else "1")
         assert verifier.verify(BODY, {"x-signature": wrong_sig}, SECRET) is False

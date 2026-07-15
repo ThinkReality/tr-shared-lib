@@ -13,10 +13,6 @@ from tr_shared.cache.exceptions import CacheConnectionError, CacheOperationError
 from tr_shared.cache.interface import PipelineInterface
 
 
-# ---------------------------------------------------------------------------
-# Minimal concrete subclass — delegates all abstract methods to fakeredis
-# ---------------------------------------------------------------------------
-
 class _FakeAdapter(BaseRedisAdapter):
     """Thin concrete adapter used only in these tests."""
 
@@ -60,10 +56,6 @@ class _FakeAdapter(BaseRedisAdapter):
         raise NotImplementedError
 
 
-# ---------------------------------------------------------------------------
-# Guard tests — calling methods before initialize() raises CacheConnectionError
-# ---------------------------------------------------------------------------
-
 class TestGuard:
     async def test_get_raises_when_not_initialized(self):
         adapter = _FakeAdapter(pre_initialized=False)
@@ -91,10 +83,6 @@ class TestGuard:
             await adapter.scan()
 
 
-# ---------------------------------------------------------------------------
-# Empty-collection guard — should return early without hitting Redis
-# ---------------------------------------------------------------------------
-
 class TestEmptyCollectionGuard:
     async def test_delete_no_keys_returns_zero(self):
         adapter = _FakeAdapter()
@@ -111,10 +99,6 @@ class TestEmptyCollectionGuard:
         result = await adapter.mget([])
         assert result == []
 
-
-# ---------------------------------------------------------------------------
-# Correct delegation — methods actually call through to Redis
-# ---------------------------------------------------------------------------
 
 class TestDelegation:
     async def test_get_returns_none_on_miss(self):
@@ -167,13 +151,29 @@ class TestDelegation:
         assert await adapter.exists("missing") == 0
 
 
-# ---------------------------------------------------------------------------
-# Context manager
-# ---------------------------------------------------------------------------
-
 class TestContextManager:
     async def test_aenter_aexit_round_trip(self):
         adapter = _FakeAdapter(pre_initialized=False)
         async with adapter as a:
             assert a._available is True
         assert adapter._available is False
+
+
+class TestClientAccessor:
+    async def test_client_returns_underlying_client(self):
+        adapter = _FakeAdapter()
+        assert adapter.client is adapter._client
+        assert adapter.client is not None
+
+    async def test_client_is_none_before_init_and_after_close(self):
+        adapter = _FakeAdapter(pre_initialized=False)
+        assert adapter.client is None
+        await adapter.initialize()
+        assert adapter.client is not None
+        await adapter.close()
+        assert adapter.client is None
+
+    def test_client_is_abstract_on_interface(self):
+        from tr_shared.cache.interface import CacheInterface
+
+        assert "client" in CacheInterface.__abstractmethods__

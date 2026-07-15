@@ -9,11 +9,6 @@ import pytest
 from tr_shared.events.consumer import EventConsumer, InMemoryIdempotencyChecker
 
 
-# ---------------------------------------------------------------------------
-# InMemoryIdempotencyChecker — Fix 4 (OrderedDict FIFO eviction)
-# ---------------------------------------------------------------------------
-
-
 class TestInMemoryIdempotencyChecker:
     async def test_mark_and_check_basic(self):
         checker = InMemoryIdempotencyChecker()
@@ -70,13 +65,7 @@ class TestInMemoryIdempotencyChecker:
         redis.exists.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
-# EventConsumer — Fix 2 (silent drop visibility)
-# ---------------------------------------------------------------------------
-
-
 def _make_consumer(*, with_dlq: bool = True) -> EventConsumer:
-    """Create an EventConsumer with a mocked Redis connection."""
     consumer = EventConsumer(
         redis_url="redis://localhost:6379",
         stream_name="test_stream",
@@ -107,7 +96,6 @@ def _flat_envelope_data(event_type: str = "user.created", event_id: str = "evt-1
 class TestNoHandlerLogsWarning:
     async def test_no_handler_emits_warning(self):
         consumer = _make_consumer()
-        # No handlers registered
         with patch("tr_shared.events.consumer.logger") as mock_logger:
             result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
         assert result is True  # message acknowledged
@@ -120,7 +108,6 @@ class TestNoHandlerLogsWarning:
         consumer.register_handler("user.created", AsyncMock())
         with patch("tr_shared.events.consumer.logger") as mock_logger:
             await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
-        # warning should NOT have been called for no-handler
         for call in mock_logger.warning.call_args_list:
             assert "No handler" not in str(call)
 
@@ -130,7 +117,7 @@ def _malformed_data() -> dict:
     return {
         "event_id": "x",
         "event_type": "user.created",
-        "data": "INVALID_JSON{{{",  # causes json.loads to raise
+        "data": "INVALID_JSON{{{",
         "metadata": "{}",
     }
 
@@ -170,7 +157,6 @@ class TestRequeueFailureDLQFallback:
 
         await consumer._process_message("msg-1", data)
 
-        # DLQ should have received the message as a requeue-failure fallback
         consumer._dlq.move.assert_awaited_once()
         reason = consumer._dlq.move.call_args[0][2]
         assert "Requeue failed" in reason

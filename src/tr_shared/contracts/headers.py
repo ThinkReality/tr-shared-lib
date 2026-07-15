@@ -21,20 +21,20 @@ from enum import StrEnum
 class HttpHeader(StrEnum):
     """Canonical cross-service header names. Reference these, never raw strings."""
 
-    # --- Identity (gateway-signed; shared_auth_lib.SignedHeader derives from these) ---
+    # Identity (gateway-signed; shared_auth_lib.SignedHeader derives from these)
     USER_ID = "X-User-ID"
     USER_ROLE = "X-User-Role"
     TENANT_ID = "X-Tenant-ID"
     CORRELATION_ID = "X-Correlation-ID"
 
-    # --- Gateway → downstream identity context (read by IdentityExtractionMiddleware) ---
+    # Gateway → downstream identity context (read by IdentityExtractionMiddleware)
     USER_EMAIL = "X-User-Email"
     USER_PERMISSIONS = "X-User-Permissions"
     AUTH_PROVIDER = "X-Auth-Provider"
     GATEWAY_SIGNATURE = "X-Gateway-Signature"
     GATEWAY_TIMESTAMP = "X-Gateway-Timestamp"
 
-    # --- Service-to-service auth (bypasses HMAC on /internal/* endpoints) ---
+    # Service-to-service auth (bypasses HMAC on /internal/* endpoints)
     SERVICE_TOKEN = "X-Service-Token"
     # Identifies the calling service on S2S requests (gateway + service clients).
     SERVICE_NAME = "X-Service-Name"
@@ -48,7 +48,7 @@ class HttpHeader(StrEnum):
     FORWARDED_FOR = "X-Forwarded-For"
     REAL_IP = "X-Real-IP"
 
-    # --- Rate limiting (emitted to clients) ---
+    # Rate limiting (emitted to clients)
     RATE_LIMIT_LIMIT = "X-RateLimit-Limit"
     RATE_LIMIT_REMAINING = "X-RateLimit-Remaining"
     RATE_LIMIT_RESET = "X-RateLimit-Reset"

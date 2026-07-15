@@ -16,7 +16,7 @@ def test_all_pf_webhook_events_has_13() -> None:
     """PF API publishes exactly 13 event types — do not add/remove here
     without a matching admin-panel migration."""
     assert len(K.ALL_PF_WEBHOOK_EVENTS) == 13
-    assert len(set(K.ALL_PF_WEBHOOK_EVENTS)) == 13  # unique
+    assert len(set(K.ALL_PF_WEBHOOK_EVENTS)) == 13
 
 
 def test_known_pf_event_prefixes_cover_all_events() -> None:
@@ -37,11 +37,6 @@ def test_frozenset_immutability() -> None:
     assert isinstance(K.KNOWN_PF_EVENT_PREFIXES, frozenset)
     assert isinstance(K.ALL_PF_WEBHOOK_EVENTS, tuple)
     assert isinstance(K.PUBLIC_CONFIG_KEYS, frozenset)
-
-
-# ---------------------------------------------------------------------------
-# GEMINI_PLATFORM_NAME + KNOWN_PLATFORM_NAMES drift guard
-# ---------------------------------------------------------------------------
 
 
 def test_gemini_platform_name_exact_string() -> None:
@@ -69,11 +64,6 @@ def test_known_platform_names_has_all_connectable_platforms() -> None:
             K.GEMINI_PLATFORM_NAME,
         },
     )
-
-
-# ---------------------------------------------------------------------------
-# PUBLIC_CONFIG_KEYS allowlist + sanitize_public_config
-# ---------------------------------------------------------------------------
 
 
 def test_public_config_keys_contains_expected_entries() -> None:

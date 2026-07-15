@@ -42,6 +42,14 @@ class CacheInterface(ABC):
         """Return True if the cache is reachable."""
         ...
 
+    @property
+    @abstractmethod
+    def client(self) -> Any:
+        """Underlying provider client (e.g. redis.Redis). Escape hatch for
+        provider-specific operations the interface does not abstract. May be
+        None before initialize() / after close()."""
+        ...
+
     @abstractmethod
     async def get(self, key: str) -> str | None:
         """Return the value for key, or None if not found."""
@@ -125,8 +133,6 @@ class CacheInterface(ABC):
         """Execute a Lua script server-side."""
         ...
 
-    # ── Sorted-set operations ──
-
     @abstractmethod
     async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         """Add/update members with scores in a sorted set. Returns count of new members added."""
@@ -149,8 +155,6 @@ class CacheInterface(ABC):
     async def zrem(self, key: str, *members: str) -> int:
         """Remove members from sorted set. Returns count removed."""
         ...
-
-    # ── Set operations ──
 
     @abstractmethod
     async def sadd(self, key: str, *members: str) -> int:

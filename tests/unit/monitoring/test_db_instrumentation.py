@@ -85,7 +85,7 @@ class TestSetupDbInstrumentation:
 
     def test_after_handler_records_duration_and_counter(self, captured):
         ctx = MagicMock()
-        ctx._query_start_time = time.perf_counter() - 0.05  # 50 ms ago
+        ctx._query_start_time = time.perf_counter() - 0.05
 
         captured["handlers"]["after_cursor_execute"](None, None, "SELECT 1", None, ctx, False)
 

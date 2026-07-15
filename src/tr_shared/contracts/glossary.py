@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Term:
-    canonical: str  # human-facing canonical name
+    canonical: str
     type: str  # import path of the authoritative enum
     migrations: dict[str, str] = field(default_factory=dict)  # retired alias -> replacement value
 

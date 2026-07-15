@@ -12,14 +12,12 @@ class BaseServiceSettings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Service Identity ──
     SERVICE_NAME: str
     ENVIRONMENT: str = "development"
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"  # "json" in production
 
-    # ── Database ──
     DATABASE_URL: str = ""
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 10
@@ -32,16 +30,13 @@ class BaseServiceSettings(BaseSettings):
     JWKS_URL: str = ""
     SERVICE_TOKEN: str = ""
 
-    # ── Redis ──
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # ── Celery ──
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     CELERY_TASK_TIME_LIMIT: int = 600
     CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
 
-    # ── shared-auth-lib ──
     AUTH_LIB_GATEWAY_SIGNING_SECRET: str = ""
     AUTH_LIB_CRM_CORE_URL: str = "http://tr-crm-core:8000"
     AUTH_LIB_ADMIN_PANEL_URL: str = "http://tr-crm-core:8000"
@@ -53,26 +48,21 @@ class BaseServiceSettings(BaseSettings):
     AUTH_LIB_SERVICE_TOKEN_VAULT_UUID: str = ""
     SERVICE_TOKEN_VAULT_UUID: str = ""  # CRM-backend: UUID for its own incoming SERVICE_TOKEN
 
-    # ── Event Bus ──
     EVENT_STREAM_NAME: str = "tr_event_bus"
     CONSUMER_GROUP_NAME: str = ""
     CONSUMER_NAME: str = "worker_1"
     EVENT_BATCH_SIZE: int = 10
     EVENT_BLOCK_MS: int = 5000
 
-    # ── CORS ──
     CORS_ORIGINS: str = ""
 
-    # ── Slack Alerts ──
     SLACK_ERROR_WEBHOOK_URL: str = ""
 
-    # ── Monitoring (Layer 1: Prometheus/OTel) ──
     METRICS_ENABLED: bool = True
     PROMETHEUS_PORT: int = 9090
     ENABLE_TRACING: bool = False
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
 
-    # ── Monitoring (Layer 2: persistence to central DB) ──
     MONITORING_ENABLED: bool = False
     MONITORING_DB_URL: str = ""
     LOKI_URL: str = ""

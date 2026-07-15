@@ -1,4 +1,3 @@
-# tests/test_event_helpers.py
 import pytest
 from pydantic import ValidationError
 

@@ -41,7 +41,6 @@ class TestCorrelationIDMiddleware:
 
     def test_response_always_has_correlation_id_header(self):
         client = TestClient(_build_app())
-        # No X-Correlation-ID in request
         response = client.get("/test")
         assert "x-correlation-id" in response.headers
 

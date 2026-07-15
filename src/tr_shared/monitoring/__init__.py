@@ -19,7 +19,6 @@ from tr_shared.monitoring.prometheus_client import PrometheusClient
 from tr_shared.monitoring.setup import setup_monitoring
 
 __all__ = [
-    # Provider abstraction
     "LogProvider",
     "LogProviderInterface",
     "MetricsProvider",
@@ -27,7 +26,6 @@ __all__ = [
     "MonitoringProviderFactory",
     "TraceProvider",
     "TraceProviderInterface",
-    # Existing public API
     "LokiHandler",
     "MetricsMiddleware",
     "PersistenceMiddleware",

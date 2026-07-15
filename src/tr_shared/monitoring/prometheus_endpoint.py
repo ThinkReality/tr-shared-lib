@@ -1,8 +1,6 @@
 """
 Prometheus metrics endpoint — two serving strategies.
 
-Extracted from tr-cms-service/app/core/telemetry.py (lines 266-301).
-
 Strategy 1 — Separate HTTP server (standard):
     Prometheus scrapes a dedicated port (e.g. 9090). Used by CMS + CRM.
     Best when your infrastructure can expose multiple ports.
@@ -10,16 +8,6 @@ Strategy 1 — Separate HTTP server (standard):
 Strategy 2 — FastAPI route:
     Mount ``GET /metrics`` on the main app. Useful on Railway where
     extra ports cost extra or are harder to expose.
-
-Usage::
-
-    # Strategy 1
-    from tr_shared.monitoring.prometheus_endpoint import start_prometheus_http_server
-    start_prometheus_http_server(port=9090)
-
-    # Strategy 2
-    from tr_shared.monitoring.prometheus_endpoint import create_metrics_router
-    app.include_router(create_metrics_router())
 """
 
 import errno
@@ -77,13 +65,7 @@ def start_prometheus_http_server(
 
 
 def create_metrics_router():
-    """
-    Return a FastAPI ``APIRouter`` with a ``GET /metrics`` endpoint.
-
-    Usage::
-
-        app.include_router(create_metrics_router())
-    """
+    """Return a FastAPI ``APIRouter`` with a ``GET /metrics`` endpoint."""
     from fastapi import APIRouter
     from fastapi.responses import Response
 

@@ -6,8 +6,6 @@ from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
-    """Basic health/liveness response."""
-
     status: str = Field(description="Service health status", examples=["healthy"])
     service: str = Field(description="Service name")
     version: str = Field(description="Service version")
@@ -15,8 +13,6 @@ class HealthResponse(BaseModel):
 
 
 class ComponentCheck(BaseModel):
-    """Result of a single dependency check (DB, Redis, etc.)."""
-
     name: str
     healthy: bool
     latency_ms: float | None = None
@@ -24,8 +20,6 @@ class ComponentCheck(BaseModel):
 
 
 class ReadinessResponse(BaseModel):
-    """Readiness probe response with dependency checks."""
-
     status: str = Field(description="'ready' or 'not_ready'", examples=["ready"])
     service: str
     checks: dict[str, bool] = Field(
@@ -37,6 +31,4 @@ class ReadinessResponse(BaseModel):
 
 
 class LivenessResponse(BaseModel):
-    """Minimal liveness probe response."""
-
     status: str = Field(default="alive", description="Always 'alive' if process is running")

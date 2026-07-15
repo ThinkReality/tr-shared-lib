@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class CacheProvider(str, Enum):
-    """Supported cache providers."""
-
     STANDARD = "standard"
     UPSTASH = "upstash"
 
@@ -37,12 +35,10 @@ class CacheProviderFactory:
     @staticmethod
     def create(
         provider: str = "standard",
-        # Standard Redis params
         redis_url: str = "redis://localhost:6379/0",
         max_connections: int = 50,
         socket_timeout: int = 5,
         socket_connect_timeout: int = 5,
-        # Upstash params
         upstash_rest_url: str = "",
         upstash_rest_token: str = "",
         upstash_read_your_writes: bool = True,

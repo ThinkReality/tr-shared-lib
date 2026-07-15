@@ -112,7 +112,6 @@ class TestMove:
         await handler.move("msg-1", {}, reason="test")
         entry = client.xadd.call_args[0][1]
         assert "timestamp" in entry
-        # Timestamp should be parseable as float
         float(entry["timestamp"])
 
     async def test_entry_contains_consumer_group(self):
@@ -144,7 +143,6 @@ class TestMove:
         client = AsyncMock()
         client.xadd = AsyncMock(side_effect=Exception("Redis down"))
         handler, _ = _handler(redis_client=client)
-        # Should not raise
         await handler.move("msg-1", {}, reason="test")
 
     async def test_redis_failure_does_not_reraise(self):

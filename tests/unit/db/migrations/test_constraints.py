@@ -89,7 +89,6 @@ class TestAddFKDeferred:
         assert "admin.child" in msg
         assert "public.auth_tenant" in msg
         assert "crosses service schemas" in msg.lower()
-        # No SQL should have been emitted.
         op.execute.assert_not_called()
 
     def test_without_on_delete_omits_clause(self):
@@ -108,5 +107,5 @@ class TestAddFKDeferred:
         assert "ON DELETE" not in first_sql
 
     def test_cross_schema_error_is_value_error(self):
-        # Type invariant so callers can catch ValueError generically if needed.
+        # Callers can catch ValueError generically instead of the specific type.
         assert issubclass(CrossSchemaFKError, ValueError)

@@ -58,11 +58,8 @@ from tr_shared.integrations.registry import (
 )
 
 __all__ = [
-    # Client
     "IntegrationConfigClient",
-    # Model
     "IntegrationConfig",
-    # Exceptions
     "IntegrationConfigError",
     "IntegrationConfigNotFound",
     # Portal error taxonomy (raised by portal adapters; Celery retries on the retryable ones)
@@ -90,16 +87,13 @@ __all__ = [
     "DUBIZZLE_PLATFORM_NAME",
     "GEMINI_PLATFORM_NAME",
     "KNOWN_PLATFORM_NAMES",
-    # PropertyFinder transport constants
     "PF_AUTH_URL",
     "PF_API_BASE_URL",
     "ALL_PF_WEBHOOK_EVENTS",
     "KNOWN_PF_EVENT_PREFIXES",
     "PUBLIC_CONFIG_KEYS",
-    # Helpers
     "fetch_pf_access_token",
     "sanitize_public_config",
-    # DI registry
     "init_integration_config_client",
     "get_integration_config_client",
     "reset_integration_config_client",

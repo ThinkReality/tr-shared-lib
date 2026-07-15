@@ -1,9 +1,7 @@
 """
 Shared async Redis client singleton with connection pooling.
 
-Extracted from tr-lead-management's singleton pattern — the best balance
-of thread-safety, connection pooling, and graceful error handling across
-all 10 service implementations.
+Balances thread-safety, connection pooling, and graceful error handling.
 """
 
 import redis.asyncio as aioredis
@@ -24,12 +22,6 @@ async def get_redis_client(
 
     Uses ConnectionPool for efficient connection reuse across the service.
     Thread-safe via redis-py's internal locking on the pool.
-
-    Args:
-        url: Redis connection URL (e.g., ``redis://host:6379/0``).
-        max_connections: Max pool size. 10 is plenty for most services.
-        decode_responses: Decode bytes to str automatically.
-        socket_connect_timeout: Seconds before connection attempt times out.
     """
     global _client
     if _client is None:

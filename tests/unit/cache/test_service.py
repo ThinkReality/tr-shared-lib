@@ -43,7 +43,7 @@ class TestGet:
         cache.get.side_effect = Exception("Redis unavailable")
         svc = CacheService(cache=cache, key_prefix="dev:svc")
         result = await svc.get("key:error")
-        assert result is None  # silent fail, no exception raised
+        assert result is None
 
     async def test_returns_primitive_types(self):
         cache = _mock_cache()
@@ -136,7 +136,7 @@ class TestSet:
         cache = _mock_cache()
         cache.setex.side_effect = Exception("Redis error")
         svc = CacheService(cache=cache, key_prefix="dev:svc")
-        await svc.set("key:1", {"data": "value"})  # should not raise
+        await svc.set("key:1", {"data": "value"})
 
     async def test_default_ttl_is_3600(self):
         cache = _mock_cache()
@@ -227,7 +227,7 @@ class TestBuildKey:
         svc = CacheService(cache=MagicMock(), key_prefix="dev:svc")
         key1 = svc.build_list_key("listings", filters={"status": "active", "city": "Dubai"})
         key2 = svc.build_list_key("listings", filters={"city": "Dubai", "status": "active"})
-        assert key1 == key2  # same filters in different order → same key
+        assert key1 == key2
 
     def test_build_list_key_different_filters_differ(self):
         svc = CacheService(cache=MagicMock(), key_prefix="dev:svc")

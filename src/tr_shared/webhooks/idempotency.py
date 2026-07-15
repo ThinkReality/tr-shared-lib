@@ -17,12 +17,6 @@ class WebhookIdempotencyGuard:
     """Deduplicates webhook deliveries using Redis SET NX.
 
     Key format: ``{key_prefix}:webhook:{provider}:{event_id}:processed``
-
-    Args:
-        redis_client: An existing async Redis client (preferred).
-        redis_url: Or a Redis URL for lazy connection creation.
-        key_prefix: Prefix for all keys (e.g. ``"dev:listing"``).
-        default_ttl: Default TTL in seconds for idempotency keys.
     """
 
     def __init__(
@@ -38,7 +32,6 @@ class WebhookIdempotencyGuard:
         self._default_ttl = default_ttl
 
     async def _get_redis(self) -> Any | None:
-        """Lazily obtain a Redis client."""
         if self._redis_client is not None:
             return self._redis_client
 
@@ -55,11 +48,7 @@ class WebhookIdempotencyGuard:
             return None
 
     def build_key(self, provider: str, event_id: str) -> str:
-        """Build the idempotency Redis key.
-
-        Returns:
-            Key in format ``{prefix}:webhook:{provider}:{event_id}:processed``
-        """
+        """Build the idempotency Redis key."""
         parts = [p for p in (self._key_prefix, "webhook", provider, event_id, "processed") if p]
         return ":".join(parts)
 
@@ -71,17 +60,8 @@ class WebhookIdempotencyGuard:
     ) -> bool:
         """Check if this webhook event has already been processed.
 
-        Uses atomic ``SET NX EX`` — sets the key only if it does not exist.
-        Returns ``True`` if the key already existed (duplicate).
-        On Redis failure, returns ``False`` (fail-open).
-
-        Args:
-            provider: Provider identifier.
-            event_id: Unique event identifier.
-            ttl: Optional TTL override in seconds.
-
-        Returns:
-            ``True`` if the event is a duplicate.
+        Fail-open: on Redis failure, returns ``False`` (non-duplicate) rather
+        than dropping the webhook.
         """
         if not event_id:
             return False
@@ -115,11 +95,6 @@ class WebhookIdempotencyGuard:
         """Explicitly mark an event as processed.
 
         Useful when idempotency check is deferred (e.g. checked at task level).
-
-        Args:
-            provider: Provider identifier.
-            event_id: Unique event identifier.
-            ttl: Optional TTL override in seconds.
         """
         if not event_id:
             return

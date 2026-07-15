@@ -15,7 +15,6 @@ def _create_sync_engine(db_url: str):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
-    # Convert async URL to sync if needed
     url = db_url.replace("postgresql+asyncpg://", "postgresql://")
     url = url.replace("postgres://", "postgresql://")
 

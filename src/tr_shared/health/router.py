@@ -1,16 +1,4 @@
-"""Shared health router factory for all ThinkRealty services.
-
-Usage:
-    from tr_shared.health import create_health_router
-
-    health_router = create_health_router(
-        service_name="tr-listing-service",
-        version="1.0.0",
-        db_check=my_db_check,
-        redis_check=my_redis_check,
-    )
-    api_router.include_router(health_router, prefix="/health", tags=["Health"])
-"""
+"""Shared health router factory for all ThinkRealty services."""
 
 import time
 from collections.abc import Awaitable, Callable
@@ -32,17 +20,7 @@ def create_health_router(
     db_check: Callable[[], Awaitable[bool]] | None = None,
     redis_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> APIRouter:
-    """Create a standard health router with liveness, readiness, and live endpoints.
-
-    Args:
-        service_name: Name of the service (e.g. "tr-listing-service").
-        version: Service version string.
-        db_check: Optional async callable returning True if DB is reachable.
-        redis_check: Optional async callable returning True if Redis is reachable.
-
-    Returns:
-        FastAPI APIRouter with ``/``, ``/ready``, and ``/live`` endpoints.
-    """
+    """Create a standard health router with liveness, readiness, and live endpoints."""
     router = APIRouter()
 
     @router.get(

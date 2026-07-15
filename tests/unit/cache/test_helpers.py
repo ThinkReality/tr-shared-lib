@@ -121,7 +121,6 @@ class TestInvalidateEntityCache:
         cache.scan = AsyncMock(return_value=(0, ["dev:svc:listings:1"]))
         cache.delete = AsyncMock(return_value=1)
         await invalidate_entity_cache(cache, "listings", prefix="dev:svc")
-        # Should scan+delete, not direct delete
         cache.scan.assert_awaited_once()
 
     async def test_uses_tenant_scope_in_pattern(self):

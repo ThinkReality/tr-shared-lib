@@ -15,5 +15,4 @@ class RetryPolicy:
     max_backoff: int = 30
 
     def delay_for(self, attempt: int) -> float:
-        """Calculate backoff delay in seconds for the given attempt number."""
         return min(self.backoff_base**attempt, self.max_backoff)

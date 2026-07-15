@@ -19,16 +19,7 @@ class WebhookVerifier(Protocol):
     """Protocol for webhook signature verification."""
 
     def verify(self, raw_body: bytes, headers: dict[str, str], secret: str) -> bool:
-        """Verify the webhook signature.
-
-        Args:
-            raw_body: Raw request body bytes.
-            headers: Request headers with **lowercased** keys.
-            secret: The shared secret for HMAC computation.
-
-        Returns:
-            ``True`` if the signature is valid (or verification is skipped).
-        """
+        """Verify the webhook signature. ``headers`` keys must be lowercased."""
         ...  # pragma: no cover
 
 
@@ -40,10 +31,6 @@ class HMACVerifier:
     - ``"sha256={hex}"``: prefixed format (Bayut, Meta)
 
     If *secret* is empty, verification is skipped and ``True`` is returned.
-
-    Args:
-        signature_header: HTTP header name containing the signature (lowercased).
-        signature_format: Expected format of the signature value.
     """
 
     def __init__(

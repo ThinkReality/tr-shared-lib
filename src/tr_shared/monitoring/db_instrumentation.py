@@ -1,23 +1,8 @@
 """
 SQLAlchemy database query instrumentation via OTel.
 
-Attaches ``before_cursor_execute`` and ``after_cursor_execute`` event listeners
-to a SQLAlchemy ``AsyncEngine`` that record two metrics:
-
-- ``db_client_operation_duration_seconds`` — histogram of query wall-clock time.
-- ``db_client_operations`` — counter of queries, labelled by operation type.
-
-**Must be called AFTER** ``setup_monitoring()`` so the global ``MeterProvider``
-is configured.  Calling before ``setup_monitoring()`` results in a no-op
-(noop) meter.
-
-Usage::
-
-    from tr_shared.monitoring import setup_db_instrumentation
-    from app.core.database import async_engine
-
-    # in main.py, after setup_monitoring(...)
-    setup_db_instrumentation(engine=async_engine)
+Must be called AFTER ``setup_monitoring()`` so the global ``MeterProvider``
+is configured — calling before it results in a no-op meter.
 """
 
 import logging

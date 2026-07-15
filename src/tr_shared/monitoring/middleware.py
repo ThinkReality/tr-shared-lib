@@ -1,25 +1,8 @@
 """
 Metrics middleware — records HTTP request metrics via OpenTelemetry.
 
-Extracted from tr-cms-service/app/core/telemetry.py (lines 176-258).
 This is the ONLY existing implementation that correctly follows PRD v2.1
 FR-1.2: tenant_id and user_id are EXCLUDED from Prometheus labels.
-
-Labels (low-cardinality only):
-    - ``service`` — service name (1 value per service)
-    - ``http.route`` — normalized path (UUIDs → ``{id}``)
-    - ``http.method`` — GET, POST, etc.
-    - ``http.status_code`` — 200, 404, 500, etc.
-
-Usage::
-
-    from tr_shared.monitoring import MetricsMiddleware
-
-    app.add_middleware(
-        MetricsMiddleware,
-        service_name="tr-listing-service",
-        instrument_set=instruments,
-    )
 """
 
 import logging
@@ -89,9 +72,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         endpoint_pattern = normalize_path(request.url.path)
         method = request.method
 
-        # Low-cardinality labels — NO tenant_id, NO user_id
-        # Per PRD v2.1 FR-1.2: high-cardinality labels cause Prometheus
-        # memory exhaustion. Use structured logs for per-tenant analysis.
+        # Per PRD v2.1 FR-1.2: no tenant_id/user_id — high-cardinality labels
+        # cause Prometheus memory exhaustion. Use structured logs instead.
         base_labels = {
             "service": self.service_name,
             "http.route": endpoint_pattern,
@@ -116,7 +98,6 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             if status >= 400:
                 self.instruments.error_counter.add(1, labels)
 
-            # Optional business domain metrics
             if self.business_domain_classifier:
                 domain = self.business_domain_classifier(request.url.path)
                 if domain:

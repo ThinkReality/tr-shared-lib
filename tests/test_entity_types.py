@@ -1,4 +1,3 @@
-# tests/test_entity_types.py
 from tr_shared.contracts.entity_types import EntityType
 from tr_shared.contracts.taxonomy import Feature
 

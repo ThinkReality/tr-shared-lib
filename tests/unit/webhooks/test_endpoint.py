@@ -246,7 +246,6 @@ class TestWebhookEndpointIdempotency:
         )
         client = TestClient(app)
 
-        # First request
         resp1 = client.post(
             "/webhooks/propertyfinder",
             content=BODY,
@@ -255,7 +254,6 @@ class TestWebhookEndpointIdempotency:
         assert resp1.status_code == 202
         assert resp1.json()["status"] == "accepted"
 
-        # Second request (duplicate)
         resp2 = client.post(
             "/webhooks/propertyfinder",
             content=BODY,
@@ -362,19 +360,12 @@ class TestMultipleProviders:
         assert resp2.status_code == 202
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Batch Pre-4A — ``dynamic_secret`` flag contract
-#
-# spec: docs/specs/04-batch-downstream-handlers.md §Pre-4A.
-# ──────────────────────────────────────────────────────────────────────
+# dynamic_secret flag contract — spec: docs/specs/04-batch-downstream-handlers.md §Pre-4A.
 
 
 class _StubVerifier:
-    """Verifier that records every call and returns a configurable result.
-
-    Lets us assert whether the framework invokes the verifier under each
-    (secret, dynamic_secret) combination — the whole point of Pre-4A.
-    """
+    """Records each verify() call so tests can assert whether the verifier
+    was invoked for a given (secret, dynamic_secret) combination."""
 
     def __init__(self, result: bool = True) -> None:
         self.calls: list[tuple[bytes, dict, str]] = []

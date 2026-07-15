@@ -33,33 +33,18 @@ class WebhookRouter:
         event_type: str,
         handler: WebhookHandler,
     ) -> None:
-        """Register a handler for a specific provider and event type.
-
-        Args:
-            provider: Provider identifier (e.g. ``"propertyfinder"``).
-            event_type: Event type string (e.g. ``"listing.published"``).
-            handler: Async callable that receives a ``WebhookEvent``.
-        """
+        """Register a handler for a specific provider and event type."""
         self._handlers.setdefault(provider, {})[event_type] = handler
 
     def register_default(self, provider: str, handler: WebhookHandler) -> None:
         """Register a catch-all handler for a provider.
 
         Called when no event-type-specific handler matches.
-
-        Args:
-            provider: Provider identifier.
-            handler: Async callable that receives a ``WebhookEvent``.
         """
         self._default_handlers[provider] = handler
 
     async def dispatch(self, event: WebhookEvent) -> None:
-        """Dispatch a webhook event to the appropriate handler.
-
-        Args:
-            event: The parsed webhook event.
-        """
-        # Try exact match first
+        """Dispatch a webhook event to the appropriate handler."""
         provider_handlers = self._handlers.get(event.provider, {})
         handler = provider_handlers.get(event.event_type)
 

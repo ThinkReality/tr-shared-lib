@@ -32,10 +32,6 @@ class BaseRedisAdapter(CacheInterface):
     _client: Any = None
     _available: bool = False
 
-    # ------------------------------------------------------------------
-    # Provider-specific — must be implemented by each subclass
-    # ------------------------------------------------------------------
-
     @abstractmethod
     async def initialize(self) -> bool: ...
 
@@ -58,9 +54,10 @@ class BaseRedisAdapter(CacheInterface):
     @abstractmethod
     def pipeline(self) -> PipelineInterface: ...
 
-    # ------------------------------------------------------------------
-    # Shared helper
-    # ------------------------------------------------------------------
+    @property
+    def client(self) -> Any:
+        """Underlying provider client — shared across all Redis-compatible adapters."""
+        return self._client
 
     def _check_initialized(self, op: str) -> None:
         """Raise CacheConnectionError if the client has not been initialised."""
@@ -68,10 +65,6 @@ class BaseRedisAdapter(CacheInterface):
             raise CacheConnectionError(
                 f"Cache not initialized — call initialize() before {op}()"
             )
-
-    # ------------------------------------------------------------------
-    # Shared implementations (identical across all Redis-compatible adapters)
-    # ------------------------------------------------------------------
 
     async def get(self, key: str) -> str | None:
         self._check_initialized("get")
@@ -172,8 +165,6 @@ class BaseRedisAdapter(CacheInterface):
         except Exception as e:
             raise CacheOperationError(f"INCRBY failed: {e}") from e
 
-    # ── Sorted-set operations ──
-
     async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         self._check_initialized("zadd")
         try:
@@ -203,8 +194,6 @@ class BaseRedisAdapter(CacheInterface):
             return await self._client.zrem(key, *members)
         except Exception as e:
             raise CacheOperationError(f"ZREM failed: {e}") from e
-
-    # ── Set operations ──
 
     async def sadd(self, key: str, *members: str) -> int:
         self._check_initialized("sadd")

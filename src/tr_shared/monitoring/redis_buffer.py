@@ -9,16 +9,6 @@ Key format: ``monitoring:buffer:{service_name}``
 Each record is a JSON-serialized dict representing one HTTP request.
 A 48-hour TTL acts as a safety net against unbounded growth if the
 Celery consumer stops running.
-
-Usage::
-
-    from tr_shared.monitoring.redis_buffer import push_to_buffer, flush_buffer
-
-    # In middleware (async)
-    await push_to_buffer(redis_client, "crm-backend", record)
-
-    # In Celery task (sync)
-    records = flush_buffer_sync(redis_url, "crm-backend", batch_size=500)
 """
 
 import json
@@ -27,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 BUFFER_KEY_TEMPLATE = "monitoring:buffer:{service_name}"
-BUFFER_TTL_SECONDS = 48 * 3600  # 48 hours
+BUFFER_TTL_SECONDS = 48 * 3600
 
 
 def get_buffer_key(service_name: str) -> str:

@@ -1,9 +1,6 @@
 """
 Async circuit breaker for service-to-service calls.
 
-Extracted from TR-HR-System-be (async, with metrics) and crm-backend
-(state transition logging). Combined into the single best pattern.
-
 Usage::
 
     breaker = CircuitBreaker(name="crm-backend", failure_threshold=5)
@@ -35,14 +32,7 @@ class CircuitState(Enum):
 
 
 class CircuitBreaker:
-    """
-    Async circuit breaker with configurable thresholds.
-
-    Args:
-        name: Identifier for logging/metrics.
-        failure_threshold: Consecutive failures before opening.
-        recovery_timeout: Seconds to wait before probing (half-open).
-    """
+    """Async circuit breaker with configurable thresholds."""
 
     def __init__(
         self,
@@ -84,7 +74,6 @@ class CircuitBreaker:
             )
 
     async def _save_state(self) -> None:
-        """Persist current state to Redis."""
         if self._redis is None:
             return
         try:

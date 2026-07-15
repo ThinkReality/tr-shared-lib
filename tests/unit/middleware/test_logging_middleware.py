@@ -13,10 +13,6 @@ from tr_shared.middleware.logging_middleware import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _build_app(excluded_paths=None, **kwargs) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
@@ -47,10 +43,6 @@ def _build_app(excluded_paths=None, **kwargs) -> FastAPI:
     return app
 
 
-# ---------------------------------------------------------------------------
-# DEFAULT_EXCLUDED_PATHS
-# ---------------------------------------------------------------------------
-
 class TestDefaultExcludedPaths:
     def test_health_is_excluded(self):
         assert "/health" in DEFAULT_EXCLUDED_PATHS
@@ -64,10 +56,6 @@ class TestDefaultExcludedPaths:
     def test_openapi_is_excluded(self):
         assert "/openapi.json" in DEFAULT_EXCLUDED_PATHS
 
-
-# ---------------------------------------------------------------------------
-# Excluded paths — no logging
-# ---------------------------------------------------------------------------
 
 class TestExcludedPaths:
     def test_health_path_not_logged(self):
@@ -92,17 +80,12 @@ class TestExcludedPaths:
             mock_logger.info.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Log level by status code
-# ---------------------------------------------------------------------------
-
 class TestLogLevel:
     def test_2xx_logged_at_info(self):
         app = _build_app()
         with patch("tr_shared.middleware.logging_middleware.logger") as mock_logger:
             client = TestClient(app)
             client.get("/api/test")
-            # "Request completed" at info level (status < 400)
             mock_logger.info.assert_called()
 
     def test_4xx_logged_at_warning(self):
@@ -120,10 +103,6 @@ class TestLogLevel:
             client.get("/api/server-error")
             mock_logger.warning.assert_called()
 
-
-# ---------------------------------------------------------------------------
-# _extract_metadata
-# ---------------------------------------------------------------------------
 
 class TestExtractMetadata:
     def test_includes_method_and_path(self):
@@ -194,7 +173,6 @@ class TestExtractMetadata:
         assert captured["meta"].get("client_ip") == "10.0.0.1"
 
     def test_duration_logged_as_positive(self):
-        """duration_ms in log extra should be > 0."""
         durations = []
         app = _build_app()
         with patch("tr_shared.middleware.logging_middleware.logger") as mock_logger:
@@ -210,6 +188,5 @@ class TestExtractMetadata:
             client = TestClient(app)
             client.get("/api/test")
 
-        # At least one log call with duration_ms
         assert len(durations) > 0
         assert all(d >= 0 for d in durations)

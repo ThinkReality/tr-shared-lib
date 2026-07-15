@@ -35,12 +35,10 @@ class StandardPipeline(PipelineInterface):
         return self._pipe
 
     def setex(self, key: str, ttl: int, value: str) -> "PipelineInterface":
-        """Add SETEX command to pipeline."""
         self._get_pipe().setex(key, ttl, value)
         return self
 
     async def execute(self) -> list[Any]:
-        """Execute all commands in pipeline."""
         if self._pipe is None:
             return []
         return await self._pipe.execute()
@@ -69,7 +67,6 @@ class StandardRedisAdapter(BaseRedisAdapter):
         self._available = False
 
     async def initialize(self) -> bool:
-        """Initialize Redis connection."""
         try:
             retry = Retry(ExponentialBackoff(cap=2, base=0.1), retries=3)
             self._pool = ConnectionPool.from_url(
@@ -94,7 +91,6 @@ class StandardRedisAdapter(BaseRedisAdapter):
             return False
 
     async def close(self) -> None:
-        """Close Redis connection."""
         if self._pool:
             try:
                 await self._pool.disconnect()
@@ -107,7 +103,6 @@ class StandardRedisAdapter(BaseRedisAdapter):
                 self._available = False
 
     async def ping(self) -> bool:
-        """Check Redis connectivity."""
         if not self._client or not self._available:
             return False
         try:

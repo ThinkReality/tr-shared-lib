@@ -42,8 +42,6 @@ class BaseRepository(Generic[T]):
         self.model = model
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    # ── Read ─────────────────────────────────────────────────────────
-
     async def get_by_id(self, id: UUID, tenant_id: UUID) -> T | None:
         """Get a single entity by ID, scoped to tenant."""
         query = select(self.model).where(
@@ -131,17 +129,14 @@ class BaseRepository(Generic[T]):
         if filters:
             query = self._apply_filters(query, filters)
 
-        # Total count
         count_q = select(func.count()).select_from(query.alias())
         total = (await self.db_session.execute(count_q)).scalar() or 0
 
-        # Ordering
         if order_by and hasattr(self.model, order_by):
             query = query.order_by(getattr(self.model, order_by).desc())
         elif hasattr(self.model, "created_at"):
             query = query.order_by(self.model.created_at.desc())
 
-        # Pagination
         offset = (page - 1) * per_page
         query = query.limit(per_page).offset(offset)
 
@@ -162,8 +157,6 @@ class BaseRepository(Generic[T]):
         if filters:
             query = self._apply_filters(query, filters)
         return (await self.db_session.execute(query)).scalar() or 0
-
-    # ── Write ────────────────────────────────────────────────────────
 
     async def create(self, entity: T) -> T:
         """Add a new entity (caller must set tenant_id on the entity)."""
@@ -197,8 +190,6 @@ class BaseRepository(Generic[T]):
             entity.updated_at = datetime.now(timezone.utc)
         await self.db_session.flush()
         return True
-
-    # ── Internal ─────────────────────────────────────────────────────
 
     def _apply_filters(self, query, filters: dict[str, Any]):
         for key, value in filters.items():

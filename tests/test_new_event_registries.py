@@ -1,4 +1,3 @@
-# tests/test_new_event_registries.py
 from tr_shared.events.event_types import NotificationEvents, TaskEvents, WAMEvents
 
 
