@@ -1,6 +1,16 @@
 from uuid import uuid4
 
+import pytest
+from pydantic import ValidationError
+
 from tr_shared.contracts.s2s import admin_internal
+from tr_shared.contracts.s2s.admin_internal import (
+    CONDITION_OPERATORS,
+    ConditionComparison,
+    ConditionName,
+    RuleCondition,
+    RuleConditionLogic,
+)
 
 
 def test_assignment_rules_path():
@@ -11,32 +21,116 @@ def test_agent_groups_path():
     assert admin_internal.agent_groups() == "/api/v1/internal/admin/agent-groups"
 
 
-def test_rule_ref_ignores_extra_and_defaults():
-    rid, gid = uuid4(), uuid4()
+def _valid_rule_payload(**overrides) -> dict:
+    payload = {
+        "id": str(uuid4()),
+        "rule_name": "R1",
+        "priority_number": 3,
+        "is_active": True,
+        "assignment_method": "round_robin",
+        "conditions": [
+            {
+                "condition_name": "Lead Source",
+                "condition_comparison": "In",
+                "condition_value": "bayut,propertyfinder",
+            }
+        ],
+        "rule_condition_logic": "ALL",
+        "active_days": ["Mon", "Tue"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_condition_enum_values():
+    assert ConditionName.BUDGET == "Budget"
+    assert ConditionComparison.GREATER_THAN == "Greater Than"
+    assert RuleConditionLogic.ALL == "ALL"
+
+
+def test_rule_ref_parses_typed_conditions_and_ignores_extra():
+    gid = uuid4()
     ref = admin_internal.AssignmentRuleRef.model_validate(
-        {
-            "id": str(rid),
-            "rule_name": "R1",
-            "priority_number": 3,
-            "assignment_method": "round_robin",
-            "agent_group_id": str(gid),
-            "conditions": [{"field": "source", "operator": "eq", "value": "bayut"}],
-            "rule_condition_logic": "all",
-            "active_days": ["mon", "tue"],
-            "created_at": "2026-07-11T00:00:00",
-        }
+        _valid_rule_payload(agent_group_id=str(gid), created_at="2026-07-11T00:00:00")
     )
-    assert ref.id == rid
     assert ref.agent_group_id == gid
-    assert ref.rule_condition_logic == "all"
+    assert ref.rule_condition_logic is RuleConditionLogic.ALL
+    assert ref.conditions[0].condition_name is ConditionName.LEAD_SOURCE
+    assert ref.conditions[0].condition_comparison is ConditionComparison.IN
     assert ref.max_leads_per_day is None
-    assert ref.active_days == ["mon", "tue"]
+    assert ref.active_days == ["Mon", "Tue"]
 
 
-def test_rule_ref_null_agent_group():
-    ref = admin_internal.AssignmentRuleRef.model_validate({"id": str(uuid4())})
+def test_rule_ref_null_agent_group_and_empty_conditions():
+    ref = admin_internal.AssignmentRuleRef.model_validate(
+        _valid_rule_payload(agent_group_id=None, conditions=[])
+    )
     assert ref.agent_group_id is None
     assert ref.conditions == []
+
+
+def test_rule_ref_requires_is_active():
+    payload = _valid_rule_payload()
+    del payload["is_active"]
+    with pytest.raises(ValidationError):
+        admin_internal.AssignmentRuleRef.model_validate(payload)
+
+
+def test_rule_ref_requires_priority_number():
+    payload = _valid_rule_payload()
+    del payload["priority_number"]
+    with pytest.raises(ValidationError):
+        admin_internal.AssignmentRuleRef.model_validate(payload)
+
+
+def test_rule_condition_rejects_out_of_vocab_name():
+    with pytest.raises(ValidationError):
+        RuleCondition.model_validate(
+            {
+                "condition_name": "Zodiac Sign",
+                "condition_comparison": "Equals",
+                "condition_value": "Leo",
+            }
+        )
+
+
+def test_rule_condition_rejects_out_of_vocab_operator():
+    with pytest.raises(ValidationError):
+        RuleCondition.model_validate(
+            {
+                "condition_name": "Lead Score",
+                "condition_comparison": "Roughly Equals",
+                "condition_value": "80",
+            }
+        )
+
+
+def test_rule_condition_logic_rejects_lowercase():
+    payload = _valid_rule_payload(rule_condition_logic="all")
+    with pytest.raises(ValidationError):
+        admin_internal.AssignmentRuleRef.model_validate(payload)
+
+
+def test_condition_operators_cover_every_field():
+    assert set(CONDITION_OPERATORS) == set(ConditionName)
+
+
+def test_condition_operators_numeric_fields_allow_ordering():
+    assert ConditionComparison.GREATER_THAN in CONDITION_OPERATORS[ConditionName.LEAD_SCORE]
+    assert ConditionComparison.LESS_THAN in CONDITION_OPERATORS[ConditionName.BUDGET]
+
+
+def test_condition_operators_scalar_fields_reject_ordering():
+    for field in (
+        ConditionName.LEAD_SOURCE,
+        ConditionName.LANGUAGE,
+        ConditionName.PROPERTY_TYPE,
+        ConditionName.LOCATION,
+        ConditionName.URGENCY,
+    ):
+        assert ConditionComparison.GREATER_THAN not in CONDITION_OPERATORS[field]
+        assert ConditionComparison.LESS_THAN not in CONDITION_OPERATORS[field]
+        assert ConditionComparison.EQUALS in CONDITION_OPERATORS[field]
 
 
 def test_group_ref_parses_members_sorted_shape():
