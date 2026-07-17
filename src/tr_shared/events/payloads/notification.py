@@ -17,14 +17,6 @@ class NotificationSentV1(EventPayload):
     priority: str
 
 
-class NotificationLeadReassignRequestedV1(EventPayload):
-    notification_id: str | None = None
-    lead_id: str
-    next_agent_id: str
-    expired_agent_id: str | None = None
-    reason: str
-
-
 class NotificationLeadOverdueRequestedV1(EventPayload):
     notification_id: str | None = None
     lead_id: str

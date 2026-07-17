@@ -1,10 +1,6 @@
-"""S2-4-0: the crm-core event payload models round-trip their legacy dicts.
-
-Each legacy dict mirrors the exact keys the live crm-core producer emits. The
-round-trip (ModelV1(**legacy).model_dump(mode="json") == legacy) guards that the
-model is field-exact; extra="forbid" then makes any producer-side drift a
-ValidationError at the consumer edge.
-"""
+"""Each legacy dict mirrors the exact keys the live crm-core producer emits.
+Round-trip equality + extra="forbid" turns producer-side field drift into a
+ValidationError at the consumer edge instead of a silent mismatch."""
 
 import pytest
 from pydantic import ValidationError
@@ -16,7 +12,6 @@ from tr_shared.events.payloads import (
     AdminUserCreatedV1,
     IntegrationPlatformEventV1,
     LMSQuizAssignedV1,
-    NotificationLeadReassignRequestedV1,
     NotificationSentV1,
 )
 
@@ -43,13 +38,6 @@ _CASES = [
         {
             "notification_id": "n1", "recipient_id": "r1", "module": "listing",
             "event": "listing.created", "channels": ["in_app"], "priority": "medium",
-        },
-    ),
-    (
-        NotificationLeadReassignRequestedV1,
-        {
-            "notification_id": "n1", "lead_id": "l1", "next_agent_id": "a2",
-            "expired_agent_id": "a1", "reason": "notification_expired",
         },
     ),
     (

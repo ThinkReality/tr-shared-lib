@@ -183,7 +183,6 @@ class TaskEvents:
 class NotificationEvents:
     """Cross-module request events — not domain state changes."""
 
-    LEAD_REASSIGN_REQUESTED = "notification.lead.reassign_requested"
     LEAD_OVERDUE_REQUESTED = "notification.lead.overdue_requested"
     SENT = "notification.sent"
 

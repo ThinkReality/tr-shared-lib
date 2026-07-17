@@ -85,7 +85,6 @@ from tr_shared.events.payloads.lms import (
 )
 from tr_shared.events.payloads.notification import (
     NotificationLeadOverdueRequestedV1,
-    NotificationLeadReassignRequestedV1,
     NotificationSentV1,
 )
 from tr_shared.events.payloads.task import (
@@ -168,7 +167,6 @@ __all__ = [
     "LMSQuizExpiredV1",
     "LMSQuizGeneratedV1",
     "NotificationLeadOverdueRequestedV1",
-    "NotificationLeadReassignRequestedV1",
     "NotificationSentV1",
     "TaskAssignedV1",
     "TaskCoAssignedV1",

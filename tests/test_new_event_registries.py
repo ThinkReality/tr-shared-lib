@@ -17,7 +17,6 @@ def test_task_events():
 
 
 def test_notification_events():
-    assert NotificationEvents.LEAD_REASSIGN_REQUESTED == "notification.lead.reassign_requested"
     assert NotificationEvents.LEAD_OVERDUE_REQUESTED == "notification.lead.overdue_requested"
     assert NotificationEvents.SENT == "notification.sent"
 
