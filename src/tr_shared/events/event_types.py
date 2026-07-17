@@ -10,6 +10,7 @@ class LeadEvents:
     DELETED = "lead.deleted"
     ASSIGNED = "lead.assigned"
     REASSIGNED = "lead.reassigned"
+    REASSIGN_ESCALATED = "lead.reassigned.escalated"
     SOURCE_CHANGED = "lead.source_changed"
     PRIORITY_CHANGED = "lead.priority_changed"
     OWNER_CHANGED = "lead.owner_changed"

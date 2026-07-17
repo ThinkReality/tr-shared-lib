@@ -1,4 +1,10 @@
-from tr_shared.events.event_types import NotificationEvents, TaskEvents, WAMEvents
+from tr_shared.events.event_types import LeadEvents, NotificationEvents, TaskEvents, WAMEvents
+
+
+def test_lead_reassign_escalated_event():
+    # Emitted by lead-mgmt's SLA sweep when a reassigned lead is still ignored past
+    # the cap; the crm-core notification consumer resolves tenant admins for it.
+    assert LeadEvents.REASSIGN_ESCALATED == "lead.reassigned.escalated"
 
 
 def test_task_events():
