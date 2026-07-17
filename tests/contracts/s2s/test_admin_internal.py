@@ -133,6 +133,39 @@ def test_condition_operators_scalar_fields_reject_ordering():
         assert ConditionComparison.EQUALS in CONDITION_OPERATORS[field]
 
 
+def test_rule_ref_sla_fields_default_when_absent():
+    ref = admin_internal.AssignmentRuleRef.model_validate(_valid_rule_payload())
+    assert ref.auto_reassign_after_minutes is None
+    assert ref.escalate_to_manager_if_no_response is False
+    assert ref.notifications is None
+
+
+def test_rule_ref_parses_sla_fields():
+    ref = admin_internal.AssignmentRuleRef.model_validate(
+        _valid_rule_payload(
+            auto_reassign_after_minutes=30,
+            escalate_to_manager_if_no_response=True,
+            notifications={
+                "notify_team_leader": True,
+                "notification_channels": ["in_app", "email"],
+            },
+        )
+    )
+    assert ref.auto_reassign_after_minutes == 30
+    assert ref.escalate_to_manager_if_no_response is True
+    assert ref.notifications is not None
+    assert ref.notifications.notify_assigned_agent is True
+    assert ref.notifications.notify_team_leader is True
+    assert ref.notifications.notification_channels == ["in_app", "email"]
+
+
+def test_rule_notifications_defaults():
+    n = admin_internal.RuleNotifications()
+    assert n.notify_assigned_agent is True
+    assert n.notify_team_leader is False
+    assert n.notification_channels == ["in_app"]
+
+
 def test_group_ref_parses_members_sorted_shape():
     gid, a1, a2 = uuid4(), uuid4(), uuid4()
     ref = admin_internal.AgentGroupRef.model_validate(

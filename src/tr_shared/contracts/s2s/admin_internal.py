@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 BASE_PATH = "/api/v1/internal/admin"
 
@@ -41,8 +41,6 @@ class ConditionName(StrEnum):
 
 
 class ConditionComparison(StrEnum):
-    """The 5 operators a condition may apply."""
-
     EQUALS = "Equals"
     NOT_EQUALS = "Not Equals"
     GREATER_THAN = "Greater Than"
@@ -94,6 +92,19 @@ class RuleCondition(BaseModel):
     condition_value: str | int | float
 
 
+class RuleNotifications(BaseModel):
+    """Per-rule notification settings the lead SLA layer honors when a lead is
+    assigned/reassigned. ``notification_channels`` are wire strings (in_app/email/
+    sms/push/whatsapp) — kept as ``str`` so the S2S contract stays decoupled from
+    the notification service's Channel enum; the consumer passes them through."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    notify_assigned_agent: bool = True
+    notify_team_leader: bool = False
+    notification_channels: list[str] = Field(default_factory=lambda: ["in_app"])
+
+
 class AssignmentRuleRef(BaseModel):
     """Fields the routing engine reads. ``agents_team`` is UI-owned JSONB left
     opaque (individually-named agent targets) — validated on write in the admin
@@ -115,6 +126,10 @@ class AssignmentRuleRef(BaseModel):
     start_time: str | None = None
     end_time: str | None = None
     timezone: str | None = None
+    # Lead SLA (no-response reaction) — consumed by lead-mgmt's reassign/escalate sweep.
+    auto_reassign_after_minutes: int | None = None
+    escalate_to_manager_if_no_response: bool = False
+    notifications: RuleNotifications | None = None
 
 
 class AgentGroupMemberRef(BaseModel):
