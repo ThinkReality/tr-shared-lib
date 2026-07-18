@@ -47,6 +47,7 @@ from tr_shared.events.outbox_drainer import (
 )
 from tr_shared.events.producer import EventProducer
 from tr_shared.events.retry_policy import RetryPolicy
+from tr_shared.events.retry_state import RetryStateStore
 
 __all__ = [
     "ActivityEvents",
@@ -79,6 +80,7 @@ __all__ = [
     "MediaEvents",
     "NotificationEvents",
     "RetryPolicy",
+    "RetryStateStore",
     "TaskEvents",
     "WAMEvents",
     "create_outbox_drainer_task",

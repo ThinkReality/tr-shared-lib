@@ -17,15 +17,42 @@ jobs:
           enable-cache: true
       - name: Sync deps
         run: uv sync --locked
-      # Baseline/ratchet mypy gate. tr-shared-lib carries ~118 legacy type errors
-      # (mostly no-untyped-def / no-any-return on internal code, tracked in
-      # mypy-baseline.txt). This step fails only on NEW type errors a change
-      # introduces, so type debt can't grow while the baseline shrinks over time.
-      # Public-signature regressions (like the include_object return type) are
-      # caught here before they reach consumers. `set +o pipefail` because mypy
-      # exits non-zero whenever any baselined error exists — filter's exit is the
-      # real gate.
+      # Ratchet gate: fails only on NEW errors, baselined ones tracked in mypy-baseline.txt.
+      # set +o pipefail — mypy always exits non-zero on baselined errors; filter's exit is the real gate.
       - name: Mypy (baseline ratchet)
         run: |
           set +o pipefail
           uv run mypy src/tr_shared/ | uv run mypy-baseline filter
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Enables @pytest.mark.integration tests against the real Redis service.
+      TEST_REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version-file: ".python-version"
+          enable-cache: true
+      - name: Sync deps
+        run: uv sync --locked
+      # Scoped to event-bus consumer suite — full suite has pre-existing failures
+      # in unrelated modules (tests/unit/celery, tests/unit/integrations/pf).
+      - name: Pytest (event consumer — unit + real-Redis integration)
+        run: >-
+          uv run pytest
+          tests/unit/events tests/integration
+          tests/test_consumer.py tests/test_version_parity.py
+          --no-cov

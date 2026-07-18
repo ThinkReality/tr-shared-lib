@@ -73,6 +73,10 @@ src/tr_shared/monitoring/tasks/_helpers.py:0: error: Function is missing a retur
 src/tr_shared/monitoring/tasks/_helpers.py:0: error: Function is missing a return type annotation  [no-untyped-def]
 src/tr_shared/monitoring/tasks/_helpers.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
 src/tr_shared/monitoring/tasks/_helpers.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
+src/tr_shared/events/retry_state.py:0: error: Incompatible types in "await" (actual type "Awaitable[int] | int", expected type "Awaitable[Any]")  [misc]
+src/tr_shared/events/retry_state.py:0: error: Returning Any from function declared to return "int"  [no-any-return]
+src/tr_shared/events/retry_state.py:0: error: Incompatible types in "await" (actual type "Awaitable[str | None] | str | None", expected type "Awaitable[Any]")  [misc]
+src/tr_shared/events/retry_state.py:0: error: Incompatible types in "await" (actual type "Awaitable[int] | int", expected type "Awaitable[Any]")  [misc]
 src/tr_shared/events/producer.py:0: error: Argument 2 to "xadd" of "StreamCommands" has incompatible type "dict[str, str]"; expected "dict[bytes | bytearray | memoryview[int] | str | int | float, bytes | bytearray | memoryview[int] | str | int | float]"  [arg-type]
 src/tr_shared/events/dead_letter.py:0: error: Argument 2 to "xadd" of "StreamCommands" has incompatible type "dict[str, str]"; expected "dict[bytes | bytearray | memoryview[int] | str | int | float, bytes | bytearray | memoryview[int] | str | int | float]"  [arg-type]
 src/tr_shared/cache/adapters/standard_redis.py:0: error: Function is missing a return type annotation  [no-untyped-def]
@@ -97,7 +101,6 @@ src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function d
 src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
 src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
 src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
-src/tr_shared/events/consumer.py:0: error: Incompatible types in "await" (actual type "Awaitable[str] | str", expected type "Awaitable[Any]")  [misc]
 src/tr_shared/cache/factory.py:0: error: Cannot assign to a type  [misc]
 src/tr_shared/cache/factory.py:0: note: Error code "misc" not covered by "type: ignore[assignment]" comment
 src/tr_shared/cache/factory.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]

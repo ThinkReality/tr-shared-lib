@@ -2,11 +2,12 @@
 
 import json
 from collections import OrderedDict
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from tr_shared.events.consumer import EventConsumer, InMemoryIdempotencyChecker
+from tr_shared.events.dead_letter import DeadLetterHandler, dead_letter_stream_name
+from tr_shared.events.retry_policy import RetryPolicy
+from tr_shared.events.retry_state import RetryStateStore
 
 
 class TestInMemoryIdempotencyChecker:
@@ -98,7 +99,7 @@ class TestNoHandlerLogsWarning:
         consumer = _make_consumer()
         with patch("tr_shared.events.consumer.logger") as mock_logger:
             result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
-        assert result is True  # message acknowledged
+        assert result == (True, True)  # acknowledged, no retry
         mock_logger.warning.assert_called_once()
         warning_msg = mock_logger.warning.call_args[0][0]
         assert "No handler" in warning_msg or "handler" in warning_msg.lower()
@@ -126,7 +127,7 @@ class TestParseFailureDLQRouting:
     async def test_malformed_message_goes_to_dlq_when_configured(self):
         consumer = _make_consumer(with_dlq=True)
         result = await consumer._process_message("msg-bad", _malformed_data())
-        assert result is True
+        assert result == (True, True)
         consumer._dlq.move.assert_awaited_once()
         args = consumer._dlq.move.call_args[0]
         assert args[2] == "Malformed message"
@@ -135,28 +136,172 @@ class TestParseFailureDLQRouting:
         consumer = _make_consumer(with_dlq=False)
         with patch("tr_shared.events.consumer.logger") as mock_logger:
             result = await consumer._process_message("msg-bad", _malformed_data())
-        assert result is True
+        assert result == (True, True)
         mock_logger.error.assert_called_once()
         error_msg = mock_logger.error.call_args[0][0]
         assert "no DLQ" in error_msg or "DLQ" in error_msg
 
 
-class TestRequeueFailureDLQFallback:
-    async def test_requeue_failure_falls_back_to_dlq(self):
+class TestHandlerFailureReturnsAckSignal:
+    """The (handler_ok, should_ack) contract driving the PEL retry path."""
+
+    def _failing_consumer(self, *, max_retries: int) -> EventConsumer:
         consumer = _make_consumer(with_dlq=True)
-        consumer._retry_policy = MagicMock()
-        consumer._retry_policy.max_retries = 5
-        consumer._retry_policy.delay_for = MagicMock(return_value=10)
+        consumer._retry_policy = RetryPolicy(max_retries=max_retries)
+        consumer._retry_state = AsyncMock()
+        consumer.register_handler("user.created", AsyncMock(side_effect=Exception("boom")))
+        return consumer
 
-        # Make zadd (the requeue operation) fail
-        consumer._redis.zadd = AsyncMock(side_effect=ConnectionError("Redis unavailable"))
+    async def test_below_max_retries_leaves_in_pel(self):
+        consumer = self._failing_consumer(max_retries=3)
+        consumer._retry_state.increment = AsyncMock(return_value=1)
+        result = await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        assert result == (False, False)  # not acked → stays in PEL
+        consumer._dlq.move.assert_not_awaited()
 
-        data = _flat_envelope_data("user.created")
-        handler = AsyncMock(side_effect=Exception("handler blew up"))
-        consumer.register_handler("user.created", handler)
-
-        await consumer._process_message("msg-1", data)
-
+    async def test_at_max_retries_moves_to_dlq_and_acks(self):
+        consumer = self._failing_consumer(max_retries=3)
+        consumer._retry_state.increment = AsyncMock(return_value=3)
+        result = await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        assert result == (False, True)  # acked → leaves PEL
         consumer._dlq.move.assert_awaited_once()
-        reason = consumer._dlq.move.call_args[0][2]
-        assert "Requeue failed" in reason
+        assert "Max retries exceeded" in consumer._dlq.move.call_args[0][2]
+        consumer._retry_state.clear.assert_awaited_once()
+
+    async def test_retry_state_failure_routes_to_dlq(self):
+        consumer = self._failing_consumer(max_retries=3)
+        consumer._retry_state.increment = AsyncMock(side_effect=ConnectionError("redis down"))
+        result = await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        assert result == (False, True)  # fail-safe: straight to DLQ
+        consumer._dlq.move.assert_awaited_once()
+
+    async def test_success_clears_retry_state_and_acks(self):
+        consumer = _make_consumer(with_dlq=True)
+        consumer._retry_state = AsyncMock()
+        consumer.register_handler("user.created", AsyncMock())
+        result = await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        assert result == (True, True)
+        consumer._retry_state.clear.assert_awaited_once_with("msg-1")
+
+
+# ── PEL retry + crash-orphan recovery (fakeredis-backed, real stream engine) ──
+
+STREAM = "s"
+GROUP = "g"
+
+
+async def _stream_consumer(fake_redis, *, max_retries=3, claim_min_idle_ms=0, zombie_idle_ms=86_400_000):
+    consumer = EventConsumer(
+        redis_url="redis://unused",
+        stream_name=STREAM,
+        consumer_group=GROUP,
+        consumer_name="c1",
+        retry_policy=RetryPolicy(max_retries=max_retries),
+        claim_min_idle_ms=claim_min_idle_ms,
+        zombie_idle_ms=zombie_idle_ms,
+    )
+    consumer._redis = fake_redis
+    consumer._dlq = DeadLetterHandler(fake_redis, STREAM, GROUP)
+    consumer._retry_state = RetryStateStore(fake_redis, STREAM, GROUP)
+    await consumer._ensure_consumer_group()
+    return consumer
+
+
+async def _read_and_process(consumer, fake_redis, consumer_name="c1"):
+    """One `>` read + process pass (mirrors _consume_loop body)."""
+    msgs = await fake_redis.xreadgroup(
+        groupname=GROUP, consumername=consumer_name, streams={STREAM: ">"}, count=10
+    )
+    for _stream, entries in msgs or []:
+        for msg_id, msg_data in entries:
+            _ok, should_ack = await consumer._process_message(msg_id, msg_data)
+            if should_ack:
+                await consumer._ack(msg_id)
+
+
+class TestPelRetryAndOrphanRecovery:
+    async def test_failed_handler_keeps_message_in_pel(self, async_fake_redis):
+        consumer = await _stream_consumer(async_fake_redis, max_retries=3)
+        consumer.register_handler("user.created", AsyncMock(side_effect=Exception("boom")))
+        await async_fake_redis.xadd(STREAM, _flat_envelope_data("user.created"))
+
+        await _read_and_process(consumer, async_fake_redis)
+
+        pending = await async_fake_redis.xpending(STREAM, GROUP)
+        assert pending["pending"] == 1  # left in PEL, not acked
+
+    async def test_no_new_stream_entry_on_retry(self, async_fake_redis):
+        consumer = await _stream_consumer(async_fake_redis, max_retries=3)
+        consumer.register_handler("user.created", AsyncMock(side_effect=Exception("boom")))
+        await async_fake_redis.xadd(STREAM, _flat_envelope_data("user.created"))
+
+        await _read_and_process(consumer, async_fake_redis)
+        await consumer._claim_once()  # a retry cycle
+
+        assert await async_fake_redis.xlen(STREAM) == 1  # no XADD storm
+
+    async def test_claimer_reclaims_and_succeeds_on_retry(self, async_fake_redis):
+        consumer = await _stream_consumer(async_fake_redis, max_retries=3, claim_min_idle_ms=0)
+        handler = AsyncMock(side_effect=[Exception("boom"), None])  # fail once, then succeed
+        consumer.register_handler("user.created", handler)
+        await async_fake_redis.xadd(STREAM, _flat_envelope_data("user.created"))
+
+        await _read_and_process(consumer, async_fake_redis)  # attempt 1 fails → PEL
+        claimed = await consumer._claim_once()  # attempt 2 succeeds → acked
+
+        assert claimed == 1
+        assert handler.await_count == 2
+        pending = await async_fake_redis.xpending(STREAM, GROUP)
+        assert pending["pending"] == 0
+
+    async def test_claimer_recovers_crash_orphan(self, async_fake_redis):
+        consumer = await _stream_consumer(async_fake_redis, max_retries=3, claim_min_idle_ms=0)
+        handler = AsyncMock()  # succeeds
+        consumer.register_handler("user.created", handler)
+        await async_fake_redis.xadd(STREAM, _flat_envelope_data("user.created"))
+
+        # A now-dead consumer reads it and never acks (crash between read and ack).
+        await async_fake_redis.xreadgroup(
+            groupname=GROUP, consumername="dead-worker", streams={STREAM: ">"}, count=10
+        )
+        pending_before = await async_fake_redis.xpending(STREAM, GROUP)
+        assert pending_before["pending"] == 1
+
+        claimed = await consumer._claim_once()  # c1 reclaims from dead-worker
+
+        assert claimed == 1
+        handler.assert_awaited_once()
+        pending_after = await async_fake_redis.xpending(STREAM, GROUP)
+        assert pending_after["pending"] == 0
+
+    async def test_max_retries_moves_to_dlq_and_acks(self, async_fake_redis):
+        consumer = await _stream_consumer(async_fake_redis, max_retries=1, claim_min_idle_ms=0)
+        consumer.register_handler("user.created", AsyncMock(side_effect=Exception("always")))
+        await async_fake_redis.xadd(STREAM, _flat_envelope_data("user.created"))
+
+        await _read_and_process(consumer, async_fake_redis)  # attempt 1 == max → DLQ + ack
+
+        pending = await async_fake_redis.xpending(STREAM, GROUP)
+        assert pending["pending"] == 0
+        assert await async_fake_redis.xlen(dead_letter_stream_name(STREAM)) == 1
+
+    async def test_sweep_deletes_only_empty_idle_others(self):
+        """Sweep decision logic — deterministic (mocked xinfo, no sub-ms timing).
+        Real-timing behaviour is covered by the real-Redis integration test."""
+        consumer = _make_consumer()
+        consumer._consumer_name = "c1"
+        consumer._zombie_idle_ms = 1_000
+        consumer._redis.xinfo_consumers = AsyncMock(
+            return_value=[
+                {"name": "zombie", "pending": 0, "idle": 5_000},   # empty + idle → swept
+                {"name": "busy", "pending": 3, "idle": 9_999},     # has pending → kept
+                {"name": "fresh", "pending": 0, "idle": 100},      # too recent → kept
+                {"name": "c1", "pending": 0, "idle": 9_999},       # self → kept
+            ]
+        )
+        consumer._redis.xgroup_delconsumer = AsyncMock()
+
+        await consumer._sweep_zombie_consumers()
+
+        deleted = [c.args[2] for c in consumer._redis.xgroup_delconsumer.call_args_list]
+        assert deleted == ["zombie"]

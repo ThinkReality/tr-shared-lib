@@ -1,7 +1,7 @@
 """Tests for tr_shared.events.consumer."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -93,34 +93,37 @@ class TestProcessMessage:
         handler = AsyncMock()
         consumer.register_handler("listing.created", handler)
         result = await consumer._process_message("msg-1", _flat_msg())
-        assert result is True
+        assert result == (True, True)  # processed + ack
         handler.assert_awaited_once()
 
-    async def test_no_handler_returns_true(self, consumer):
+    async def test_no_handler_returns_ack(self, consumer):
         result = await consumer._process_message("msg-1", _flat_msg("unknown.event"))
-        assert result is True
+        assert result == (True, True)
 
     async def test_malformed_goes_to_dlq(self, consumer):
         result = await consumer._process_message("msg-1", {"data": "bad{"})
-        assert result is True
+        assert result == (True, True)
         consumer._dlq.move.assert_awaited_once()
 
-    async def test_handler_failure_requeues(self, consumer):
+    async def test_handler_failure_stays_in_pel(self, consumer):
+        """Below max_retries → (False, False): not acked, left in PEL for the claimer."""
+        consumer._retry_state = AsyncMock()
+        consumer._retry_state.increment = AsyncMock(return_value=1)
         handler = AsyncMock(side_effect=RuntimeError("boom"))
         consumer.register_handler("listing.created", handler)
-        consumer._requeue = AsyncMock()
 
-        result = await consumer._process_message("msg-1", _flat_msg(retries=0))
-        assert result is True
-        consumer._requeue.assert_awaited_once()
+        result = await consumer._process_message("msg-1", _flat_msg())
+        assert result == (False, False)
+        consumer._dlq.move.assert_not_awaited()
 
     async def test_max_retries_goes_to_dlq(self, consumer):
+        consumer._retry_state = AsyncMock()
+        consumer._retry_state.increment = AsyncMock(return_value=3)  # == max_retries
         handler = AsyncMock(side_effect=RuntimeError("boom"))
         consumer.register_handler("listing.created", handler)
 
-        msg = _flat_msg(retries=2)  # retry_count=2, max=3, so this is attempt 3 (last)
-        result = await consumer._process_message("msg-1", msg)
-        assert result is True
+        result = await consumer._process_message("msg-1", _flat_msg())
+        assert result == (False, True)  # DLQ + ack
         consumer._dlq.move.assert_awaited_once()
 
 
@@ -135,7 +138,7 @@ class TestIdempotency:
         c.register_handler("listing.created", handler)
 
         result = await c._process_message("msg-1", _flat_msg())
-        assert result is True
+        assert result == (True, True)
         handler.assert_not_awaited()
 
     async def test_marks_processed_on_success(self):
