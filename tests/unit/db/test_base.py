@@ -75,6 +75,36 @@ class TestSoftDeleteMixin:
         assert col.nullable is False
 
 
+class TestSoftDeleteMixinMethods:
+    """Methods live on the mixin itself, not only on BaseModel — so
+    schema-isolated models inheriting the mixin directly get them."""
+
+    def test_mixin_has_soft_delete(self):
+        assert callable(SoftDeleteMixin.soft_delete)
+
+    def test_mixin_has_restore(self):
+        assert callable(SoftDeleteMixin.restore)
+
+    def test_mixin_soft_delete_sets_fields(self):
+        class _M(SoftDeleteMixin):
+            pass
+
+        m = _M()
+        m.soft_delete()
+        assert m.is_active is False
+        assert m.deleted_at is not None
+
+    def test_mixin_restore_clears_fields(self):
+        class _M(SoftDeleteMixin):
+            pass
+
+        m = _M()
+        m.soft_delete()
+        m.restore()
+        assert m.is_active is True
+        assert m.deleted_at is None
+
+
 class TestSoftDelete:
     def test_soft_delete_sets_is_active_false(self):
         model = SampleModel()

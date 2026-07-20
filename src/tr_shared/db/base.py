@@ -61,6 +61,14 @@ class SoftDeleteMixin:
         Boolean, nullable=False, server_default=text("true")
     )
 
+    def soft_delete(self) -> None:
+        self.deleted_at = datetime.now(timezone.utc)
+        self.is_active = False
+
+    def restore(self) -> None:
+        self.deleted_at = None
+        self.is_active = True
+
 
 class BaseModel(Base, TimestampMixin, TenantMixin, AuditMixin, SoftDeleteMixin):
     """Inherit this, not Base — adds id plus every mixin column."""
@@ -72,14 +80,6 @@ class BaseModel(Base, TimestampMixin, TenantMixin, AuditMixin, SoftDeleteMixin):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-
-    def soft_delete(self) -> None:
-        self.deleted_at = datetime.now(timezone.utc)
-        self.is_active = False
-
-    def restore(self) -> None:
-        self.deleted_at = None
-        self.is_active = True
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}(id={self.id})>"
