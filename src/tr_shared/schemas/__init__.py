@@ -1,6 +1,7 @@
 from tr_shared.schemas.error_envelope import build_error_envelope
 from tr_shared.schemas.responses import (
-    ErrorResponse,
+    ErrorDetail,
+    ErrorEnvelope,
     PaginatedResponse,
     PaginationData,
     SuccessResponse,
@@ -8,7 +9,8 @@ from tr_shared.schemas.responses import (
 from tr_shared.schemas.validators import coerce_enum
 
 __all__ = [
-    "ErrorResponse",
+    "ErrorDetail",
+    "ErrorEnvelope",
     "PaginatedResponse",
     "PaginationData",
     "SuccessResponse",

@@ -6,7 +6,7 @@ consistent response envelopes across the platform.
 
 Usage:
     from tr_shared.schemas import (
-        SuccessResponse, ErrorResponse,
+        SuccessResponse, ErrorEnvelope,
         PaginatedResponse, PaginationData,
     )
 """
@@ -15,7 +15,7 @@ import logging
 import math
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _logger = logging.getLogger(__name__)
 
@@ -30,14 +30,30 @@ class SuccessResponse(BaseModel, Generic[T]):
     data: T | None = None
 
 
-class ErrorResponse(BaseModel):
-    """Standard error response envelope."""
+class ErrorDetail(BaseModel):
+    """Inner object of the canonical error envelope.
 
-    status: str = "error"
-    error: str
-    detail: str | None = None
+    Mirrors ``build_error_envelope`` output: ``message`` is always present;
+    ``code`` / ``correlation_id`` are set on nearly every path; category-specific
+    extras (``detail``, ``fields`` for 422, ``retry_after`` for 429, ...) arrive
+    via ``**extra`` — hence ``extra="allow"`` so the schema documents the stable
+    core without lying about the dynamic keys.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    message: str
     code: str | None = None
-    fields: dict[str, list[str]] | None = None
+    correlation_id: str | None = None
+
+
+class ErrorEnvelope(BaseModel):
+    """Canonical error response — SSOT for the wire shape produced by
+    ``build_error_envelope`` and all handlers registered by
+    ``register_exception_handlers``. ``error`` is ALWAYS an object.
+    """
+
+    error: ErrorDetail
 
 
 class PaginationData(BaseModel, Generic[T]):
