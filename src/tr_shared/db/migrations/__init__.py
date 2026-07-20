@@ -6,6 +6,7 @@ Consolidates production-safe DDL patterns every service needs:
 - dedup_with_table_lock: lock-protected row dedup
 - bootstrap_schema_and_version_table: one-shot schema + version-table setup
 - make_service_include_object: autogenerate filter by service schema
+- make_service_include_name: autogenerate schema-reflection filter (quiets shared-DB noise)
 """
 
 from tr_shared.db.migrations.bootstrap import (
@@ -19,7 +20,10 @@ from tr_shared.db.migrations.constraints import (
     add_fk_deferred,
 )
 from tr_shared.db.migrations.dedup import dedup_with_table_lock
-from tr_shared.db.migrations.include_object import make_service_include_object
+from tr_shared.db.migrations.include_object import (
+    make_service_include_name,
+    make_service_include_object,
+)
 from tr_shared.db.migrations.runner import run_async_migrations
 
 __all__ = [
@@ -30,6 +34,7 @@ __all__ = [
     "bootstrap_schema_and_version_table",
     "concurrent_index_context",
     "dedup_with_table_lock",
+    "make_service_include_name",
     "make_service_include_object",
     "run_async_migrations",
 ]

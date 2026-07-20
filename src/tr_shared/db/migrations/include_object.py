@@ -18,6 +18,7 @@ _AlembicObjectType = Literal[
 IncludeObject = Callable[
     ["SchemaItem", str | None, _AlembicObjectType, bool, "SchemaItem | None"], bool
 ]
+IncludeName = Callable[[str | None, str, dict[str, str]], bool]
 
 
 def make_service_include_object(
@@ -93,3 +94,47 @@ def make_service_include_object(
         return True
 
     return include_object
+
+
+def make_service_include_name(*allowed_schemas: str | None) -> "IncludeName":
+    """Return an ``include_name`` callable for Alembic's ``context.configure``.
+
+    Restricts which *schemas* autogenerate reflects. With ``include_schemas=True``
+    Alembic reflects every schema in the database; on a shared dev Postgres that
+    means foreign services' schemas pollute the log with sequence/type warnings.
+    Limiting reflection to the service's own schema(s) keeps ``check``/autogenerate
+    scoped and quiet.
+
+    This only bounds *reflection*; ``make_service_include_object`` still filters the
+    actual diff. The two are complementary — configure both.
+
+    Args:
+        *allowed_schemas: Schema names to reflect. Pass ``None`` to allow the
+            default (``public``) schema — needed by services (e.g. auth) that
+            manage a few tables outside their own named schema.
+
+    Usage in env.py::
+
+        from tr_shared.db.migrations import make_service_include_name
+
+        include_name = make_service_include_name("admin")
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_schemas=True,
+            include_name=include_name,
+            ...
+        )
+    """
+    allowed: frozenset[str | None] = frozenset(allowed_schemas)
+
+    def include_name(
+        name: str | None,
+        type_: str,
+        parent_names: dict[str, str],  # noqa: ARG001 — part of Alembic API
+    ) -> bool:
+        if type_ == "schema":
+            return name in allowed
+        return True
+
+    return include_name

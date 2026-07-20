@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 from sqlalchemy import Column, Integer, MetaData, Table
 
-from tr_shared.db.migrations import make_service_include_object
+from tr_shared.db.migrations import (
+    make_service_include_name,
+    make_service_include_object,
+)
 
 
 def _build_metadata() -> MetaData:
@@ -76,3 +79,32 @@ class TestMakeServiceIncludeObject:
         # No .schema, no .table — helper lets Alembic decide.
         obj = SimpleNamespace()
         assert inc(obj, "???", "mystery", False, None) is True
+
+
+class TestMakeServiceIncludeName:
+    def test_own_schema_reflected(self):
+        inc = make_service_include_name("admin")
+        assert inc("admin", "schema", {}) is True
+
+    def test_foreign_schema_rejected(self):
+        inc = make_service_include_name("admin")
+        assert inc("hr", "schema", {}) is False
+        assert inc("lead", "schema", {}) is False
+
+    def test_default_schema_rejected_when_not_allowed(self):
+        inc = make_service_include_name("admin")
+        assert inc(None, "schema", {}) is False
+
+    def test_variadic_allow_list_for_auth(self):
+        # auth manages auth_schema plus two public tables → default + public allowed.
+        inc = make_service_include_name(None, "public", "auth_schema")
+        assert inc("auth_schema", "schema", {}) is True
+        assert inc("public", "schema", {}) is True
+        assert inc(None, "schema", {}) is True
+        assert inc("hr", "schema", {}) is False
+
+    def test_non_schema_type_passes_through(self):
+        inc = make_service_include_name("admin")
+        # Table/index/etc. names are gated by include_object, not include_name.
+        assert inc("foreign_table", "table", {}) is True
+        assert inc("some_index", "index", {}) is True
