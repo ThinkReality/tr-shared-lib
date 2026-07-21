@@ -1,11 +1,56 @@
 """Tests for configure_logging and get_logger."""
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import structlog
 
-from tr_shared.logging.setup import configure_logging, get_logger
+from tr_shared.logging.setup import (
+    _mask_sensitive_fields,
+    configure_logging,
+    get_logger,
+)
+
+
+class TestMaskSensitiveFields:
+    def _mask(self, event: dict) -> dict:
+        return _mask_sensitive_fields(None, "info", event)
+
+    def test_redacts_known_and_widened_field_names(self):
+        for field in (
+            "token",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "api_key",
+            "apikey",
+            "x-api-key",
+            "authorization",
+            "auth",
+            "credential",
+            "private_key",
+            "database_url",
+            "redis_url",
+        ):
+            out = self._mask({field: "supersecretvalue"})
+            assert out[field] == "[REDACTED]", f"{field} not redacted"
+
+    def test_full_redaction_not_partial(self):
+        out = self._mask({"password": "abcdefghij"})
+        assert out["password"] == "[REDACTED]"
+        assert "abc" not in out["password"]
+
+    def test_short_secret_still_fully_redacted(self):
+        assert self._mask({"token": "ab"})["token"] == "[REDACTED]"
+
+    def test_non_sensitive_fields_untouched(self):
+        out = self._mask({"tenant_id": "t-1", "event": "created", "count": 5})
+        assert out == {"tenant_id": "t-1", "event": "created", "count": 5}
+
+    def test_non_str_and_empty_values_untouched(self):
+        out = self._mask({"password": "", "secret_count": 3})
+        assert out["password"] == ""
+        assert out["secret_count"] == 3
 
 
 class TestGetLogger:

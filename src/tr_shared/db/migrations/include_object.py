@@ -1,6 +1,6 @@
 """Autogenerate filter: keep only objects that belong to the service schema."""
 
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from typing import TYPE_CHECKING, Any, Literal
 
 try:  # SQLAlchemy is a peer dependency; keep the import optional.
@@ -18,7 +18,11 @@ _AlembicObjectType = Literal[
 IncludeObject = Callable[
     ["SchemaItem", str | None, _AlembicObjectType, bool, "SchemaItem | None"], bool
 ]
-IncludeName = Callable[[str | None, str, dict[str, str]], bool]
+# Matches Alembic's context.configure(include_name=...) parameter type exactly.
+_AlembicParentNames = MutableMapping[
+    Literal["schema_name", "table_name", "schema_qualified_table_name"], str | None
+]
+IncludeName = Callable[[str | None, _AlembicObjectType, _AlembicParentNames], bool]
 
 
 def make_service_include_object(
@@ -130,8 +134,8 @@ def make_service_include_name(*allowed_schemas: str | None) -> "IncludeName":
 
     def include_name(
         name: str | None,
-        type_: str,
-        parent_names: dict[str, str],  # noqa: ARG001 — part of Alembic API
+        type_: _AlembicObjectType,
+        parent_names: _AlembicParentNames,  # noqa: ARG001 — part of Alembic API
     ) -> bool:
         if type_ == "schema":
             return name in allowed

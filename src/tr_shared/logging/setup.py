@@ -22,21 +22,21 @@ import structlog
 
 # Field names whose values should be masked in log output.
 _SENSITIVE_PATTERNS = re.compile(
-    r"(token|secret|password|key|authorization|credential)",
+    r"(token|secret|password|passwd|pwd|api_?key|key|authorization|auth"
+    r"|credential|private_key|database_url|redis_url)",
     re.IGNORECASE,
 )
+
+_REDACTED = "[REDACTED]"
 
 
 def _mask_sensitive_fields(
     logger: Any, method: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
-    """Structlog processor that masks values of sensitive fields."""
+    """Structlog processor that fully redacts values of sensitive fields."""
     for field_name, value in event_dict.items():
-        if isinstance(value, str) and _SENSITIVE_PATTERNS.search(field_name):
-            if len(value) > 6:
-                event_dict[field_name] = value[:3] + "***" + value[-3:]
-            elif value:
-                event_dict[field_name] = "***"
+        if isinstance(value, str) and value and _SENSITIVE_PATTERNS.search(field_name):
+            event_dict[field_name] = _REDACTED
     return event_dict
 
 
