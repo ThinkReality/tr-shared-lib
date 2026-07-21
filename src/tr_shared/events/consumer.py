@@ -156,7 +156,7 @@ class EventConsumer:
             name = consumer.get("name")
             if not name or name == self._consumer_name:
                 continue
-            if int(consumer.get("pending", 0)) == 0 and int(consumer.get("idle", 0)) > self._zombie_idle_ms:
+            if int(consumer.get("pending", 0)) == 0 and int(consumer.get("idle", 0)) >= self._zombie_idle_ms:
                 try:
                     await self._redis.xgroup_delconsumer(self._stream_name, self._consumer_group, name)
                     logger.info("Swept idle empty consumer '%s' from group '%s'", name, self._consumer_group)
