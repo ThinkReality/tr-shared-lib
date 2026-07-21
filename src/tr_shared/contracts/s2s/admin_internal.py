@@ -55,6 +55,20 @@ class RuleConditionLogic(StrEnum):
     ANY = "ANY"
 
 
+class AssignmentMethod(StrEnum):
+    """Canonical lead-assignment methods (v1 scope) — SSOT for the admin
+    rule-builder (producer), the lead-mgmt routing engine (consumer), and the
+    frontend via OpenAPI. Attribute-routing (``by_*``) was removed: never
+    implemented, ran as silent round-robin."""
+
+    ROUND_ROBIN = "round_robin"
+    SPECIFIC_AGENT = "specific_agent"
+    SPECIFIC_AGENT_TEAM = "specific_agent_team"
+    SPECIFIC_USER = "specific_user"
+    TEAM_BASED = "team_based"
+    LEAD_LOAD_QUEUE = "lead_load_queue"
+
+
 # Which operators the routing engine actually supports per field (mirrors
 # condition_evaluator: numeric fields order, everything else is scalar/list
 # membership only). SSOT the admin rule-builder validates writes against, so it
@@ -118,7 +132,7 @@ class AssignmentRuleRef(BaseModel):
     is_active: bool
     conditions: list[RuleCondition] = []
     rule_condition_logic: RuleConditionLogic | None = None
-    assignment_method: str | None = None
+    assignment_method: AssignmentMethod | None = None
     agent_group_id: UUID | None = None
     agents_team: Any = None
     max_leads_per_day: int | None = None

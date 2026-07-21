@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from tr_shared.contracts.s2s import admin_internal
 from tr_shared.contracts.s2s.admin_internal import (
     CONDITION_OPERATORS,
+    AssignmentMethod,
     ConditionComparison,
     ConditionName,
     RuleCondition,
@@ -46,6 +47,30 @@ def test_condition_enum_values():
     assert ConditionName.BUDGET == "Budget"
     assert ConditionComparison.GREATER_THAN == "Greater Than"
     assert RuleConditionLogic.ALL == "ALL"
+
+
+def test_assignment_method_values():
+    assert {m.value for m in AssignmentMethod} == {
+        "round_robin",
+        "specific_agent",
+        "specific_agent_team",
+        "specific_user",
+        "team_based",
+        "lead_load_queue",
+    }
+
+
+def test_rule_ref_coerces_assignment_method_to_enum():
+    ref = admin_internal.AssignmentRuleRef.model_validate(
+        _valid_rule_payload(assignment_method="specific_agent_team")
+    )
+    assert ref.assignment_method is AssignmentMethod.SPECIFIC_AGENT_TEAM
+
+
+def test_rule_ref_rejects_out_of_vocab_assignment_method():
+    payload = _valid_rule_payload(assignment_method="group_round_robin")
+    with pytest.raises(ValidationError):
+        admin_internal.AssignmentRuleRef.model_validate(payload)
 
 
 def test_rule_ref_parses_typed_conditions_and_ignores_extra():
