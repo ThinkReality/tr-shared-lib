@@ -48,11 +48,11 @@ jobs:
           enable-cache: true
       - name: Sync deps
         run: uv sync --locked
-      # Scoped to event-bus consumer suite — full suite has pre-existing failures
-      # in unrelated modules (tests/unit/celery, tests/unit/integrations/pf).
-      - name: Pytest (event consumer — unit + real-Redis integration)
+      # Hand-picked scope — the full suite has pre-existing failures in
+      # unrelated modules (tests/unit/celery, tests/unit/integrations/pf).
+      - name: Pytest (event consumer + S2S contracts)
         run: >-
           uv run pytest
-          tests/unit/events tests/integration
+          tests/unit/events tests/integration tests/contracts
           tests/test_consumer.py tests/test_version_parity.py
           --no-cov
