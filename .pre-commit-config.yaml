@@ -1,0 +1,27 @@
+# Runs on `git push` only. Setup: uv run pre-commit install --hook-type pre-push
+# Hooks call `uv run` to match uv.lock-pinned versions, same as CI (.github/workflows/ci.yml).
+# Mirrors the CI gates exactly. NOTE: tr-shared-lib CI gates only the lockfile + a mypy
+# baseline ratchet (no ruff gate upstream), so this config omits ruff hooks to avoid
+# blocking pushes CI accepts. The uv-lock-check hook guards the self-version bump that
+# broke CI before (version bumped without `uv lock` → `uv sync --locked` fails).
+default_install_hook_types: [pre-push]
+default_stages: [pre-push]
+
+repos:
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: uv lock --locked (lockfile in sync with pyproject)
+        entry: uv lock --locked
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      # Baseline ratchet: fails only on NEW errors vs mypy-baseline.txt (matches CI).
+      # Pipe needs a shell; set +o pipefail so mypy-baseline's exit is the real gate.
+      - id: mypy-ratchet
+        name: mypy src/tr_shared/ (baseline ratchet)
+        entry: bash -c 'set +o pipefail; uv run mypy src/tr_shared/ | uv run mypy-baseline filter'
+        language: system
+        types: [python]
+        pass_filenames: false
