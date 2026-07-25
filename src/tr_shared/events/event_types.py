@@ -110,6 +110,9 @@ class AdminEvents:
     LEAD_SOURCE_CREATED = "admin.lead_source.created"
     LEAD_SOURCE_UPDATED = "admin.lead_source.updated"
     LEAD_SOURCE_DELETED = "admin.lead_source.deleted"
+    TENANT_SITE_CREATED = "admin.tenant_site.created"
+    TENANT_SITE_UPDATED = "admin.tenant_site.updated"
+    TENANT_SITE_DELETED = "admin.tenant_site.deleted"
 
 
 class MediaEvents:

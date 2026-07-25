@@ -78,6 +78,31 @@ class AdminModuleConfigurationUpdatedV1(EventPayload):
     module_count: int
 
 
+class AdminTenantSiteCreatedV1(EventPayload):
+    site_id: str
+    key_hash: str = Field(
+        ...,
+        description="SHA-256 hex of the site key — cache invalidation key, never the key itself",
+    )
+
+
+class AdminTenantSiteUpdatedV1(EventPayload):
+    site_id: str
+    key_hash: str
+    previous_key_hash: str | None = Field(
+        None,
+        description=(
+            "Set on rotation. The gateway must evict THIS hash — the old key is "
+            "still cached and would otherwise keep working until its 30-min TTL."
+        ),
+    )
+
+
+class AdminTenantSiteDeletedV1(EventPayload):
+    site_id: str
+    key_hash: str
+
+
 class IntegrationPlatformEventV1(EventPayload):
     schema_version: str = Field(default="1.0", pattern=r"^1\.\d+$")
     platform_id: str

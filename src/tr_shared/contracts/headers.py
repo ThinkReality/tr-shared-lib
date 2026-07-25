@@ -30,6 +30,9 @@ class HttpHeader(StrEnum):
     # Gateway → downstream identity context (read by IdentityExtractionMiddleware)
     USER_EMAIL = "X-User-Email"
     USER_PERMISSIONS = "X-User-Permissions"
+    # Public site-key routes: the gateway resolves X-Site-Key -> site, then signs
+    # this. Downstream never sees the key itself.
+    SITE_ID = "X-Site-Id"
     AUTH_PROVIDER = "X-Auth-Provider"
     GATEWAY_SIGNATURE = "X-Gateway-Signature"
     GATEWAY_TIMESTAMP = "X-Gateway-Timestamp"

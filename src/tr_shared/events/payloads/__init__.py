@@ -24,6 +24,9 @@ from tr_shared.events.payloads.admin import (
     AdminModuleConfigurationUpdatedV1,
     AdminNurtureCampaignCreatedV1,
     AdminNurtureCampaignUpdatedV1,
+    AdminTenantSiteCreatedV1,
+    AdminTenantSiteDeletedV1,
+    AdminTenantSiteUpdatedV1,
     IntegrationPlatformEventV1,
 )
 from tr_shared.events.payloads.auth import (
@@ -119,6 +122,9 @@ __all__ = [
     "AdminModuleConfigurationUpdatedV1",
     "AdminNurtureCampaignCreatedV1",
     "AdminNurtureCampaignUpdatedV1",
+    "AdminTenantSiteCreatedV1",
+    "AdminTenantSiteDeletedV1",
+    "AdminTenantSiteUpdatedV1",
     "IntegrationPlatformEventV1",
     "AdminPortalAgentPromotedV1",
     "AdminRoleAssignedV1",
