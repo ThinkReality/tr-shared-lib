@@ -43,6 +43,7 @@ _CASES = [
     (
         AdminUserCreatedV1,
         {
+            "entity_type": "admin.user", "entity_id": "u1",
             "user_id": "u1", "user_name": "Jo",
             "role_names": ["AGENT"], "recipient_id": "r1",
         },
