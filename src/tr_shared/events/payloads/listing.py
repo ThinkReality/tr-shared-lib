@@ -1,7 +1,8 @@
 """Typed payloads for listing.* events (tr-content-platform listing module).
 
-Two emitters, one file: the audit path (status changes) and the permit-expiry
-beat. All ids are str (UUIDs stringified at emit); dates are ISO str.
+Three emitters, one file: the audit path (status changes), the permit-expiry beat,
+and the portal sync writer. All ids are str (UUIDs stringified at emit); dates are
+ISO str.
 """
 
 from typing import Any
@@ -29,6 +30,27 @@ class ListingPermitEventV1(EventPayload):
     permit_type: str | None = None
     expires_at: str
     days_until_expiry: int
+    notification_recipient_id: str | None = None
+
+
+class ListingPortalSyncFailedV1(EventPayload):
+    """listing.portal_sync_failed — one portal rejected or could not take a listing.
+
+    Emitted once per failing (listing, portal) by the portal sync writer. Distinct
+    from the audit events: the listing's own status may not change at all (another
+    portal can still hold it live), so what matters here is which portal failed and
+    why, not a status transition.
+
+    Field set mirrors
+    app/modules/listing/tasks/propertyfinder/sync_db.py:update_portal_publication_status.
+    """
+
+    entity_id: str
+    entity_type: str
+    listing_id: str
+    listing_title: str | None = None
+    portal_name: str
+    error_message: str | None = None
     notification_recipient_id: str | None = None
 
 

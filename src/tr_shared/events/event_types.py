@@ -57,6 +57,7 @@ class ListingEvents:
     REFRESHED = "listing.refreshed"
     PERMIT_EXPIRED = "listing.permit_expired"
     PERMIT_EXPIRING = "listing.permit_expiring"
+    PORTAL_SYNC_FAILED = "listing.portal_sync_failed"
 
 
 class CMSEvents:

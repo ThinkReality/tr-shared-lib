@@ -1,6 +1,8 @@
 """Typed payloads for admin.user.* / admin.role.* events (tr-crm-core auth module).
 Field sets mirror app/modules/auth/services/users/{create_mixin,update_mixin}.py — all ids are str."""
 
+from typing import Any
+
 from tr_shared.contracts.entity_types import EntityType
 from tr_shared.events.payloads._base import EventPayload
 
@@ -12,6 +14,8 @@ class AdminUserCreatedV1(EventPayload):
     user_name: str
     role_names: list[str]
     recipient_id: str
+    # Editor/creator display name — surfaced as the activity actor ("who").
+    actor_name: str | None = None
 
 
 class AdminUserUpdatedV1(EventPayload):
@@ -19,8 +23,11 @@ class AdminUserUpdatedV1(EventPayload):
     entity_id: str
     user_id: str
     user_name: str
-    changed_fields: list[str]
+    # SSOT for "what changed": field name -> new value (JSON-safe). Drives the activity log.
+    changes: dict[str, Any]
     recipient_id: str
+    # Editor display name — surfaced as the activity actor ("who").
+    actor_name: str | None = None
 
 
 class AdminRoleAssignedV1(EventPayload):

@@ -11,7 +11,10 @@ from pydantic import ValidationError
 from tr_shared.events.envelope import EventEnvelope
 from tr_shared.events.event_types import ListingEvents
 from tr_shared.events.helpers import parse_payload
-from tr_shared.events.payloads.listing import ListingPermitEventV1
+from tr_shared.events.payloads.listing import (
+    ListingPermitEventV1,
+    ListingPortalSyncFailedV1,
+)
 
 
 def _env(event_type: str, data: dict) -> EventEnvelope:
@@ -50,6 +53,39 @@ _EXPIRING = {**_EXPIRED, "days_until_expiry": 7}
 def test_roundtrip_matches_emitted_dict(event_type, data):
     parsed = parse_payload(_env(event_type, data), ListingPermitEventV1)
     assert parsed.model_dump() == data
+
+
+_SYNC_FAILED = {
+    "entity_id": "l1",
+    "entity_type": "listing",
+    "listing_id": "l1",
+    "listing_title": "2BR in Marina",
+    "portal_name": "propertyfinder",
+    "error_message": "permit rejected",
+    "notification_recipient_id": "u1",
+}
+
+
+def test_portal_sync_failed_roundtrip():
+    parsed = parse_payload(
+        _env(ListingEvents.PORTAL_SYNC_FAILED, _SYNC_FAILED), ListingPortalSyncFailedV1
+    )
+    assert parsed.model_dump() == _SYNC_FAILED
+
+
+def test_portal_sync_failed_optionals_default_to_none():
+    payload = ListingPortalSyncFailedV1(
+        entity_id="l1", entity_type="listing", listing_id="l1", portal_name="bayut"
+    )
+    assert payload.listing_title is None
+    assert payload.error_message is None
+    assert payload.notification_recipient_id is None
+
+
+def test_portal_sync_failed_requires_a_portal():
+    """Which portal failed is the whole point of the event."""
+    with pytest.raises(ValidationError):
+        ListingPortalSyncFailedV1(entity_id="l1", entity_type="listing", listing_id="l1")
 
 
 def test_extra_key_rejected():

@@ -45,7 +45,7 @@ _CASES = [
         {
             "entity_type": "admin.user", "entity_id": "u1",
             "user_id": "u1", "user_name": "Jo",
-            "role_names": ["AGENT"], "recipient_id": "r1",
+            "role_names": ["AGENT"], "recipient_id": "r1", "actor_name": None,
         },
     ),
     (
