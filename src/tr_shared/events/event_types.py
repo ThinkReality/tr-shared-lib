@@ -55,11 +55,8 @@ class ListingEvents:
     PRICE_CHANGED = "listing.price_changed"
     OWNER_CHANGED = "listing.owner_changed"
     REFRESHED = "listing.refreshed"
-    REPUBLISHED = "listing.republished"
-    EXPIRED = "listing.expired"
-    SOLD = "listing.sold"
-    RENTED = "listing.rented"
-    DELETED = "listing.deleted"
+    PERMIT_EXPIRED = "listing.permit_expired"
+    PERMIT_EXPIRING = "listing.permit_expiring"
 
 
 class CMSEvents:

@@ -72,11 +72,7 @@ from tr_shared.events.payloads.lead import (
 )
 from tr_shared.events.payloads.listing import (
     ListingAuditEventV1,
-    ListingDeletedV1,
-    ListingExpiredV1,
-    ListingPfEventV1,
-    ListingRepublishedV1,
-    ListingSaleV1,
+    ListingPermitEventV1,
 )
 from tr_shared.events.payloads.lms import (
     LMSQuizAssignedV1,
@@ -158,11 +154,7 @@ __all__ = [
     "LeadFollowupDueV1",
     "LeadQualifiedV1",
     "ListingAuditEventV1",
-    "ListingDeletedV1",
-    "ListingExpiredV1",
-    "ListingPfEventV1",
-    "ListingRepublishedV1",
-    "ListingSaleV1",
+    "ListingPermitEventV1",
     "LMSQuizAssignedV1",
     "LMSQuizExpiredV1",
     "LMSQuizGeneratedV1",
