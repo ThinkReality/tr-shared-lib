@@ -42,8 +42,20 @@ class BaseRepository(Generic[T]):
         self.model = model
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    def _require_tenant(self, tenant_id: UUID) -> None:
+        """Reject a missing tenant loudly instead of rendering ``IS NULL``.
+
+        ``tenant_id`` is NOT NULL on every tenant-scoped table, so ``None``
+        would silently match zero rows. Fail closed *and* audibly.
+        """
+        if tenant_id is None:
+            raise ValueError(
+                f"{self.model.__name__}: tenant_id is required and must not be None"
+            )
+
     async def get_by_id(self, id: UUID, tenant_id: UUID) -> T | None:
         """Get a single entity by ID, scoped to tenant."""
+        self._require_tenant(tenant_id)
         query = select(self.model).where(
             self.model.id == id,
             self.model.tenant_id == tenant_id,
@@ -65,6 +77,7 @@ class BaseRepository(Generic[T]):
         ``order_by`` names a model column to sort on; ``descending`` picks the
         direction. Unknown ``order_by`` values are ignored (no ordering).
         """
+        self._require_tenant(tenant_id)
         query = select(self.model).where(self.model.tenant_id == tenant_id)
         if hasattr(self.model, "deleted_at"):
             query = query.where(self.model.deleted_at.is_(None))
@@ -84,6 +97,7 @@ class BaseRepository(Generic[T]):
         Generic single-column lookup (e.g. by ``name`` or ``slug``). Respects
         soft-delete. Raises ``ValueError`` if the model has no such column.
         """
+        self._require_tenant(tenant_id)
         column = self._column(field_name)
         query = select(self.model).where(
             column == value,
@@ -102,6 +116,7 @@ class BaseRepository(Generic[T]):
         Empty ``values`` short-circuits to ``[]`` (no query issued). Respects
         soft-delete. Raises ``ValueError`` if the model has no such column.
         """
+        self._require_tenant(tenant_id)
         if not values:
             return []
         column = self._column(field_name)
@@ -123,6 +138,7 @@ class BaseRepository(Generic[T]):
         order_by: str | None = None,
     ) -> tuple[list[T], int]:
         """Return ``(items, total_count)`` with pagination."""
+        self._require_tenant(tenant_id)
         query = select(self.model).where(self.model.tenant_id == tenant_id)
         if hasattr(self.model, "deleted_at"):
             query = query.where(self.model.deleted_at.is_(None))
@@ -149,6 +165,7 @@ class BaseRepository(Generic[T]):
         filters: dict[str, Any] | None = None,
     ) -> int:
         """Count entities for a tenant."""
+        self._require_tenant(tenant_id)
         query = select(func.count()).select_from(self.model).where(
             self.model.tenant_id == tenant_id,
         )
@@ -179,6 +196,7 @@ class BaseRepository(Generic[T]):
 
     async def soft_delete(self, id: UUID, tenant_id: UUID) -> bool:
         """Soft-delete by setting deleted_at. Returns False if not found."""
+        self._require_tenant(tenant_id)
         entity = await self.get_by_id(id, tenant_id)
         if entity is None:
             return False
