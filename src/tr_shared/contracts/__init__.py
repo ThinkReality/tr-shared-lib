@@ -1,5 +1,6 @@
 from tr_shared.contracts.entity_types import EntityType
 from tr_shared.contracts.enums import Channel, CommentAction, Priority
+from tr_shared.contracts.environment import Environment
 from tr_shared.contracts.glossary import GLOSSARY, Term
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.contracts.taxonomy import Feature
@@ -9,6 +10,7 @@ __all__ = [
     "Channel",
     "CommentAction",
     "EntityType",
+    "Environment",
     "Feature",
     "HttpHeader",
     "Priority",

@@ -3,6 +3,8 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tr_shared.contracts.environment import Environment
+
 
 class BaseServiceSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -71,9 +73,22 @@ class BaseServiceSettings(BaseSettings):
         origins = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
         return origins
 
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == Environment.PRODUCTION
+
+    @property
+    def is_development(self) -> bool:
+        return self.ENVIRONMENT == Environment.DEVELOPMENT
+
+    @property
+    def is_local(self) -> bool:
+        """Developer machine or test run — the only place guards may relax."""
+        return self.ENVIRONMENT in (Environment.DEVELOPMENT, Environment.TEST)
+
     @model_validator(mode="after")
     def validate_production_config(self) -> "BaseServiceSettings":
-        if self.ENVIRONMENT == "production":
+        if self.is_production:
             if not self.DATABASE_URL:
                 raise ValueError("DATABASE_URL required in production")
             # Supabase fields are only required when SUPABASE_URL is set
