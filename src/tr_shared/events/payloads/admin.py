@@ -51,29 +51,6 @@ class AdminAgentGroupDeletedV1(EventPayload):
     group_id: str
 
 
-class AdminLeadScoringCreatedV1(EventPayload):
-    config_id: str
-
-
-class AdminLeadScoringUpdatedV1(EventPayload):
-    config_id: str
-
-
-class AdminLeadScoringDeletedV1(EventPayload):
-    config_id: str | None = None
-    deleted_count: int
-
-
-class AdminNurtureCampaignCreatedV1(EventPayload):
-    campaign_id: str
-    campaign_name: str
-
-
-class AdminNurtureCampaignUpdatedV1(EventPayload):
-    campaign_id: str
-    campaign_name: str
-
-
 class AdminModuleConfigurationUpdatedV1(EventPayload):
     module_count: int
 

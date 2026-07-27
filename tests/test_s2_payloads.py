@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from tr_shared.events.payloads import (
     ActivityCommentAddedV1,
     ActivityCommentEditedV1,
-    AdminLeadScoringDeletedV1,
     AdminUserCreatedV1,
     IntegrationPlatformEventV1,
     LMSQuizAssignedV1,
@@ -79,10 +78,3 @@ def test_extra_key_rejected(model, legacy):
 def test_missing_required_key_rejected():
     with pytest.raises(ValidationError):
         NotificationSentV1(notification_id="n1")
-
-
-def test_lead_scoring_deleted_count_is_int_only():
-    assert AdminLeadScoringDeletedV1(config_id="c1", deleted_count=1).deleted_count == 1
-    assert AdminLeadScoringDeletedV1(config_id=None, deleted_count=5).deleted_count == 5
-    with pytest.raises(ValidationError):
-        AdminLeadScoringDeletedV1(config_id=None, deleted_count="all")
