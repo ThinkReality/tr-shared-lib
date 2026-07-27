@@ -1,0 +1,361 @@
+# Changelog
+
+All notable changes to tr-shared-lib will be documented in this file.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.45.0] - 2026-07-28
+
+### Added
+- `tr_shared.testing` — reusable structural guards for service test suites.
+  `tenant_header_guard` exposes an AST scanner (`find_raw_tenant_header_readers`,
+  `scan_source_for_raw_tenant_header_reads`) plus assertion helpers
+  (`assert_no_undocumented_raw_tenant_header_reads`, `assert_no_stale_exemptions`,
+  `assert_exemptions_are_machine_verified`) and an `Exemption` dataclass.
+
+### Notes
+- The invariant guarded is fleet-wide — the raw `X-Tenant-ID` header is identity
+  CONTEXT, never an authorization input — but the code that can break it lives in
+  eight repositories. A private per-service copy guarded one eighth of the risk:
+  running the shared version across the fleet immediately surfaced an unguarded
+  reader in tr-api-gateway and one in tr-lead-management.
+- An `Exemption` must carry a machine-checkable claim (`requires_symbols`, or
+  `must_be_inert`), not prose alone. A prose reason stays true-looking long after
+  the gate it describes is deleted.
+- The matcher handles the forms real code uses, not just literals: normalised keys
+  (`HttpHeader.TENANT_ID.value.lower()`), a headers mapping arriving as a function
+  parameter, `dict(request.headers)` wrappers, module-level key constants,
+  subscript access, `Header(alias=...)` params, and sources carrying a UTF-8 BOM.
+  Outbound client headers are deliberately not flagged.
+- Additive only. No existing module changed; nothing to migrate.
+
+## [0.44.0] - 2026-07-27
+
+### Added
+- `tr_shared.contracts.Environment` — the canonical deployment-environment
+  vocabulary (`development`, `test`, `staging`, `production`) with an `is_local`
+  property. Single source of truth for every service and library.
+- `BaseServiceSettings.is_production`, `.is_development`, `.is_local`.
+
+### Changed
+- `BaseServiceSettings.validate_production_config` now branches on
+  `self.is_production` instead of comparing `ENVIRONMENT` to a string literal.
+
+### Notes
+- Additive and non-breaking. `ENVIRONMENT` is still typed `str`; the strict
+  retype ships in 0.45.0 once every deployed value is canonical.
+
+## [0.43.0] - 2026-07-27
+
+### Changed
+- `db.BaseRepository` now raises `ValueError` when `tenant_id` is `None` on
+  `get_by_id`, `get_all`, `find_by_field`, `find_by_field_in`, `get_paginated`,
+  `count` and `soft_delete`. Previously such a call rendered
+  `tenant_id IS NULL` against a NOT NULL column — failing closed, but silently,
+  so a caller that lost its tenant saw an empty result set instead of an error.
+  Matches the existing guard on `create()`.
+
+## [0.40.1] - 2026-07-24
+
+### Added
+- `tr_shared.logging.safe_log_context`, `sanitize_traceback`, `sanitize_for_logging`,
+  `sanitize_context` — promoted from tr-crm-core's notification module. The shared
+  structlog processor (`_mask_sensitive_fields`) only redacts by key name, missing
+  raw exception text and `exc_info=True` tracebacks (SQL bound parameters, device
+  tokens, emails). `safe_log_context(error)` sanitizes both `str(error)` and the
+  formatted traceback for use in `extra={**ctx, **safe_log_context(e)}` logging
+  calls, available to every service now instead of just tr-crm-core.
+
+## [0.40.0] - 2026-07-24
+
+### Added
+- `contracts.s2s.listing_internal.PortalSyncStatus` — SSOT for
+  `listing_schema.listing_portal_publications.portal_sync_status`
+  (`pending`/`syncing`/`synced`/`error`/`disabled`/`action_required`), the
+  CHECK-constrained vocabulary owned by tr-content-platform. tr-crm-core
+  previously declared its own disagreeing copy (`RecentSyncStatus` =
+  `success`/`failed`/`pending`), which made `status_filter=success|failed`
+  match zero rows and made every sync-activity description fall through to the
+  `"Sync pending"` fallback. Both become structurally impossible once both
+  sides import this.
+- `contracts.s2s.listing_internal.recent_sync_activity()` path builder plus
+  `PortalSyncActivityRow` / `PortalSyncActivityPage` response models — the S2S
+  contract that replaces tr-crm-core's cross-schema raw SQL read of
+  `public.listing_portal_publications`.
+- `contracts.s2s.listing_internal.PORTAL_PUBLICATIONS_BASE_PATH` — second
+  resource prefix under the same provider root.
+- CI now runs `tests/contracts` (it previously ran only the event-bus suites, so
+  no S2S contract test was gated).
+- `contracts.s2s.listing_internal.PortalSyncActivityQuery` — the query vocabulary
+  for that endpoint (`portal_name`, `sync_status`, `limit`, `hours_back`) with
+  `extra="forbid"`, so a drifted parameter name is a 422 rather than an HTTP 200
+  with the filter silently ignored. This is also what lets tr-crm-core delete
+  `RecentSyncStatus` outright — it otherwise survives solely to validate
+  `status_filter`.
+
+### Removed
+- `contracts.s2s.listing_internal.BASE_PATH` removed and replaced by
+  `INTERNAL_ROOT` + `LISTINGS_BASE_PATH` + `PORTAL_PUBLICATIONS_BASE_PATH`. A
+  bare `BASE_PATH` became ambiguous once the module carried two resources. No
+  caller imported the old name (verified across tr-crm-core,
+  tr-content-platform, tr-lead-management); every emitted path is
+  byte-identical, pinned by `test_existing_listing_paths_unchanged_after_prefix_split`.
+
+## [0.33.0] - 2026-07-15
+
+### Added
+- **PEP 561: `py.typed` marker.** `tr_shared` now ships as a typed package, so
+  downstream services' type checkers see its real annotations instead of treating
+  every symbol as `Any`. Notably `BaseRepository.db_session` is now seen as
+  `AsyncSession`, so `.execute(...).scalar_one_or_none()` etc. carry real types.
+
+### Changed
+- `db.base` mixins (`TimestampMixin`, `TenantMixin`, `AuditMixin`,
+  `SoftDeleteMixin`) and `BaseModel.id` converted from bare `Column` to
+  SQLAlchemy 2.0 `Mapped[...]` / `mapped_column(...)`. Type-only, runtime
+  byte-identical — every model inheriting `BaseModel` now has correctly typed
+  `id`/`tenant_id`/`created_at`/`updated_at`/`created_by`/`updated_by`/
+  `deleted_at`/`is_active` for consumers' type checkers.
+
+### Fixed
+- `__version__` realigned to `[project].version` (had drifted to 0.32.1).
+
+## [0.32.2] - 2026-07-15
+
+### Changed
+- `events.payloads.admin.AdminLeadScoringDeletedV1.deleted_count`: tightened from
+  `int | str` to `int`. The `"all"` string sentinel on delete-all is gone — the
+  emitter (tr-crm-core lead-scoring) now reports the real deactivated row count as
+  an int. No consumer read the string form.
+
+## [0.32.1] - 2026-07-02
+
+### Fixed
+- `middleware.register_exception_handlers`: `validation_exception_handler` now
+  wraps `exc.errors()` in `fastapi.encoders.jsonable_encoder`. A Pydantic v2
+  `field_validator` that raises `ValueError` leaves a live `ValueError` object in
+  `ctx.error`, which is not JSON-serializable — the raw `exc.errors()` crashed
+  `JSONResponse` serialization, so `GlobalErrorHandlerMiddleware` turned it into a
+  **500 instead of the intended 422**. Any downstream service with a raising
+  field-validator was affected (e.g. tr-whatsApp-marketing-agent phone validation).
+
+## [0.25.0] - 2026-06-13
+
+### Added
+- `tr_shared.db.run_async_migrations(url, do_run_migrations, *, connect_args=None)`
+  — canonical async-engine runner for Alembic `env.py` online mode. Builds a
+  NullPool asyncpg engine in Supavisor session mode (6543→5432) and drives
+  `do_run_migrations` via `connection.run_sync`. Consolidates the
+  `create_async_engine` + `run_sync` boilerplate each async-migration service
+  hand-rolled. Part of standardising the platform on a single asyncpg driver
+  for both runtime and migrations (no psycopg2/psycopg3).
+
+### Deprecated
+- `to_sync_url` / `to_migration_url` — they force the sync psycopg2 driver.
+  Migrated services should use `run_async_migrations` + `to_session_mode_url`.
+  Retained for services not yet converted.
+
+## [0.24.0] - 2026-06-13
+
+### Changed
+- `CMSBlogEventV1.blog_slug` is now optional — blog lifecycle events (notably the
+  bulk-operations path) don't all carry a slug, so requiring it was wrong. Page
+  events still require `page_slug` (always present).
+
+## [0.23.0] - 2026-06-13
+
+### Changed
+- `CMSPageEventV1` and `CMSBlogEventV1` gained required `entity_type` + `entity_id`
+  fields — they are carried on the wire (the CMS publish task injects them) and
+  read by the notification/activity consumers for entity linking. Brings the CMS
+  payloads in line with the hr/finance/listing-audit/lead models. (Enables the
+  content-platform CMS typed-payload adoption, W1-C2.)
+
+## [0.22.0] - 2026-06-13
+
+### Changed (BREAKING)
+- `EventProducer.__init__` now **requires** `source_service` (keyword-only) and
+  validates it against the `Feature` spine at construction. The old
+  `source_service="unknown"` default is gone — a deployable name or any
+  non-Feature value raises `ValueError`. This closes the permanence hole where
+  the public constructor bypassed `make_event_producer`'s Feature guard. Bare
+  `EventProducer()` now raises `TypeError`. All in-tree service emitters already
+  pass valid Feature values; one WAM site constructing a bare producer must be
+  fixed on adoption.
+
+### Added
+- Typed payload modules completing the P1-8 set:
+  - `payloads/cms.py` — `CMSPageEventV1` (+ Updated/Published/ReviewRequested/
+    Approved/Rejected subclasses), `CMSBlogEventV1` (+ Updated), and
+    `CMSLandingPagePublishedV1` with nested `CMSLandingPageContextV1` /
+    `CMSLandingPageMediaV1`. Canonical redesign: fixed `actor_id`/`recipient_id`
+    replace the legacy dynamic `{action}_by` keys.
+  - `payloads/lead.py` — `LeadCreatedV1` (unified superset of the two emit
+    shapes), `LeadAssignedV1`, `LeadStatusChangedV1`, `LeadQualifiedV1`,
+    `LeadFollowupDueV1`. PII fields carry hashed values only.
+  - `payloads/wam.py` — `WAMLeadQualifiedV1` (+ nested `WAMQualificationResultV1`),
+    `user_number` digits-only validator.
+  - `payloads/listing.py` — `ListingAuditEventV1` (single model for the 13
+    audit-path listing.* events; drops the redundant `event_type`-in-data key,
+    retains `entity_type`).
+  - `payloads/finance.py` — `FinanceInvoiceEventV1`,
+    `FinanceCardTransactionImportedV1`, `FinanceCardTransactionMatchedV1`.
+    (`finance.commission.paid` has no emitter and is intentionally unmodelled.)
+  - `payloads/hr.py` — `HRApplicationSubmittedV1`, `HRApplicationStageChangedV1`
+    (the latter reused for hired/rejected).
+
+### Fixed
+- `pyproject.toml` version synced to `__version__` (was 0.19.0 vs 0.21.0). A new
+  parity test asserts the two never drift again.
+
+## [0.21.0] - 2026-06-12
+
+### Added
+- `FinanceEvents.EXPENSE_APPROVAL_REMINDER` (`finance.expense.approval_reminder`) —
+  emitted by people-finance's approval-reminder task (P5 C2 adoption).
+- `EntityType.FINANCE_EXPENSE` (`finance.expense`) — for people-finance's approval
+  entity-type adoption (P5 D1; replaces the local `ApprovalEntityType.EXPENSE`).
+
+## [0.20.0] - 2026-06-12
+
+### Added
+- `tr_shared.events.payloads.listing`: typed payloads for the PropertyFinder-keyed
+  listing lifecycle events (single-shape, domain-path only) — `ListingPfEventV1`
+  (base), `ListingSaleV1` (sold/rented), `ListingExpiredV1`, `ListingRepublishedV1`,
+  `ListingDeletedV1`. Consumed by tr-content-platform listing adoption (P4 C2 clean
+  subset). The dual-shape status-change events + cms dynamic-key events are NOT
+  modelled yet (need emitter canonicalisation).
+
+## [0.19.0] - 2026-06-10
+
+### Added
+- `tr_shared.events.payloads`: typed `{Feature}{Event}V1` models for every event
+  crm-core produces — `activity` (comment added/edited/deleted, log_created),
+  `admin` (lead_source/assignment_rule/lead_scoring/nurture_campaign/module +
+  `IntegrationPlatformEventV1` moved here from crm-core, now str ids),
+  `notification` (sent, lead_reassign/overdue_requested), `auth`
+  (admin.user.created/updated, admin.role.assigned), `lms` (quiz
+  generated/assigned/expired). All `EventPayload` (`extra="forbid"`), fields
+  field-exact to today's emitted dicts. Publish-side of D-PAYLOAD (P3-S2-4).
+
+### Changed
+- `IntegrationPlatformEventV1`: `platform_id`/`tenant_id` `UUID`→`str` and base
+  `BaseModel`→`EventPayload` (callers stringify ids at emit; wire bytes unchanged).
+
+## [0.18.0] - 2026-06-10
+
+### Added
+- `FinanceEvents`: 11 expense/invoice/card_transaction members (`EXPENSE_CREATED`,
+  `EXPENSE_SUBMITTED`, `EXPENSE_APPROVED`, `EXPENSE_REJECTED`, `EXPENSE_PAID`,
+  `EXPENSE_REIMBURSED`, `INVOICE_CREATED`, `INVOICE_SENT`, `INVOICE_PAYMENT_RECORDED`,
+  `CARD_TRANSACTION_IMPORTED`, `CARD_TRANSACTION_MATCHED`).
+- `DealEvents.AMOUNT_CHANGED`; `HREvents.OFFER_SENT` / `OFFER_ACCEPTED`.
+- Completes the registries the notification + activity-logger consumers match on
+  (P3-S2-3) — closes the last bare-string consume gaps in crm-core.
+
+## [0.17.0] - 2026-06-10
+
+### Added
+- `NotificationEvents.SENT = "notification.sent"` — registry member for the
+  notification-emitted `notification.sent` event (closes the last bare-string gap
+  blocking crm-core's event-registry adoption, P3-S2).
+
+## [0.16.0] - 2026-06-08
+
+### Added
+- `tr_shared.events.payloads`: strict `EventPayload` base (`extra="forbid"`) and
+  the `task` feature's typed payload models (pilot).
+- `tr_shared.events.helpers`: `publish_event` (one standard typed publish path),
+  `parse_payload` (one standard typed consume path), and `make_event_producer`
+  (constructs a producer whose `source` is a `Feature` — invariant guard).
+
+Additive. Other features' payloads are added with each service's adoption.
+
+## [0.15.0] - 2026-06-08
+
+### Added
+- `tr_shared.contracts` package: `Feature` taxonomy spine (17), `EntityType`
+  flat StrEnum with `.feature()`, `Priority`/`Channel` enums, and a structured
+  `GLOSSARY` with a drift-guard test.
+- Event registries: `TaskEvents`, `NotificationEvents`, `WAMEvents`.
+- `CMSEvents`: page-review events (`PAGE_UNPUBLISHED`, `PAGE_REVIEW_REQUESTED`,
+  `PAGE_APPROVED`, `PAGE_REJECTED`).
+
+Purely additive — no existing symbols changed. Service adoption + data
+migrations land in later phases.
+
+## [0.12.0] - 2026-04-21
+
+### Added — Phase 0 foundations for tr-be-admin-panel PR #87 permanent fixes
+
+#### `tr_shared.db.migrations` (NEW sub-package)
+- `concurrent_index_context(op)` — context manager wrapping Alembic's `autocommit_block()` for safe `CREATE INDEX CONCURRENTLY` on populated tables.
+- `add_check_constraint_deferred(op, *, table, schema, constraint_name, predicate)` — adds CHECK via `NOT VALID` + `VALIDATE CONSTRAINT` pattern.
+- `add_fk_deferred(op, ...)` — same deferred pattern for FKs; **refuses cross-schema references** with `CrossSchemaFKError` per TR service-isolation rules.
+- `dedup_with_table_lock(op, *, table, schema, partition_by, order_by, ...)` — LOCK TABLE SHARE ROW EXCLUSIVE + CTE dedup. Prevents concurrent-write race windows during migration dedup.
+- `bootstrap_schema_and_version_table(connection, *, schema, version_table)` — one-shot `CREATE SCHEMA` + optional version-table relocation from legacy schema. Replaces fragile double-commit patterns in service `env.py` files.
+- `make_service_include_object(target_schema, target_metadata)` — Alembic `include_object` filter covering tables, indexes, constraints, FKs, sequences. Previous per-service implementations only filtered tables.
+- `UNDELIVERED_EVENTS_COLUMNS` SQL constant for per-service outbox table migrations.
+
+#### `tr_shared.exceptions`
+- `BaseAPIException` contract freeze: any subclass skipping `super().__init__(...)` now raises `TypeError` at construction time instead of producing a broken response at render time. Enforced via `__init_subclass__` wrapper.
+- Module-level `__all__` frozen.
+
+#### `tr_shared.integrations`
+- `GEMINI_PLATFORM_NAME = "Google Gemini AI"` — canonical string.
+- `KNOWN_PLATFORM_NAMES` extended with `GEMINI_PLATFORM_NAME` — admin-panel CHECK constraint generated from this frozenset prevents drift.
+- `PUBLIC_CONFIG_KEYS` — **allowlist** of non-sensitive platform config keys. Replaces blocklist-based secret redaction across services.
+- `sanitize_public_config(config)` — helper that drops any key not on the allowlist.
+
+#### `tr_shared.events`
+- `DurableEventPublisher` — transactional-outbox publisher. Writes to `{schema}.undelivered_events` via caller's `AsyncSession`, joining caller's transaction. Raises `RuntimeError` when called outside a transaction.
+- `drain_outbox(session_factory, producer, schema, ...)` — drainer that publishes pending rows to Redis Stream, applies `RetryPolicy` with exponential backoff, dead-letters after `max_retries`, fires `on_dead_letter` callback. Events are never silently lost.
+- `create_outbox_drainer_task(celery_app, ...)` — Celery task factory pairing with `drain_outbox`.
+- `DEFAULT_DRAINER_INTERVAL_SECONDS = 30` — recommended beat interval; services override per their own load profile.
+
+#### `tr_shared.http`
+- `InternalServiceClient` — typed wrapper around `ServiceHTTPClient` for `/api/v1/internal/*` consumers. Parses `SuccessResponse` envelope, injects `X-Tenant-ID` header, translates HTTP status + error body into `tr_shared.exceptions.*` (400→`ValidationError`, 401→`AuthenticationError`, 403→`AuthorizationError`, 404→`NotFoundError`, 409→`ConflictError`, 429→`RateLimitError`, 5xx/timeout→`ServiceUnavailableError`/`ServiceTimeoutError`).
+
+### Notes
+- No breaking changes to existing exports. New `BaseAPIException` subclass contract is stricter but all in-library subclasses already comply; external subclasses should be audited before upgrading.
+- `EventProducer` (at-most-once) is **not** deprecated; `DurableEventPublisher` is the new path for reliable delivery.
+- Sibling service `alembic/env.py` files should migrate to `bootstrap_schema_and_version_table` + `make_service_include_object` in Phase 3 of the parent plan.
+
+## [0.6.0] - 2026-03-01
+
+### Added
+- Monitoring module: `setup_monitoring()` single-call setup for Prometheus + Loki + Tempo
+- MetricsMiddleware for automatic HTTP request metrics (counters, histograms, active requests)
+- PersistenceMiddleware (Layer 2) for Redis-buffered request logging to central DB
+- Provider abstraction: MonitoringProviderFactory with Prometheus, Loki, OTLP, and Noop adapters
+- LokiHandler for structured log shipping to Grafana Loki
+- Distributed tracing setup via OpenTelemetry OTLP/gRPC exporter
+- Prometheus endpoint: standalone HTTP server or FastAPI route strategies
+- Rate limiter module: sliding window and fixed window algorithms
+- RateLimitMiddleware and `rate_limit()` FastAPI dependency
+- MemoryFallback for rate limiting when Redis is unavailable
+- Events module: EventProducer and EventConsumer via Redis Streams
+- EventEnvelope canonical format, dead-letter queue, retry policies
+- InMemoryIdempotencyChecker for deduplication
+
+## [0.5.0]
+
+### Added
+- Cache module: CacheService with provider-agnostic JSON serialization
+- CacheProviderFactory with Standard Redis and Upstash adapters
+- CacheInterface abstract base and CacheResult (hit/miss/error distinction)
+- HTTP module: ServiceHTTPClient with exponential backoff retry
+- CircuitBreaker state machine (CLOSED -> OPEN -> HALF_OPEN)
+- Celery module: `create_celery_app()` factory with pre-configured defaults
+
+## [0.4.0]
+
+### Added
+- Database module: BaseModel with TimestampMixin, TenantMixin, AuditMixin, SoftDeleteMixin
+- BaseRepository with mandatory tenant_id scoping on all queries
+- Async engine and session factories (PgBouncer-safe NullPool)
+- Middleware module: CorrelationIDMiddleware, GlobalErrorHandlerMiddleware, LoggingMiddleware
+- Config module: BaseServiceSettings base class for all services
+- Logging module: `configure_logging()` with JSON output (production) and text (development)
+- Redis module: async client singleton with connection pooling
