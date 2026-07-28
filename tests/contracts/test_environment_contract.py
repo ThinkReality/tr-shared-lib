@@ -66,3 +66,17 @@ class TestBaseSettingsPredicates:
         assert _settings("development").is_local is True
         assert _settings("test").is_local is True
         assert _settings("staging").is_local is False
+
+
+class TestInvalidValuesAreRejectedAtStartup:
+    """The whole point of the enum. Before this, ENVIRONMENT='prod' booted a
+    service with every production guard silently skipped."""
+
+    @pytest.mark.parametrize("bad", ["prod", "dev", "local", "stage", "Production", ""])
+    def test_non_canonical_value_raises(self, bad):
+        with pytest.raises(ValueError):
+            BaseServiceSettings(SERVICE_NAME="svc", ENVIRONMENT=bad)
+
+    def test_canonical_values_are_accepted(self):
+        for value in ("development", "test", "staging"):
+            assert BaseServiceSettings(SERVICE_NAME="svc", ENVIRONMENT=value).ENVIRONMENT == value

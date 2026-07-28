@@ -15,7 +15,7 @@ class BaseServiceSettings(BaseSettings):
     )
 
     SERVICE_NAME: str
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Environment = Environment.DEVELOPMENT
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"  # "json" in production

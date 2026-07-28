@@ -5,6 +5,23 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.0] - 2026-07-29
+
+### Changed (BREAKING)
+- `BaseServiceSettings.ENVIRONMENT` is now typed `Environment`, not `str`.
+  Non-canonical values (`dev`, `local`, `prod`, `stage`, `Production`) raise at
+  startup instead of being silently accepted.
+
+### Why
+`ENVIRONMENT=prod` previously booted a service with every production guard
+skipped — empty `DATABASE_URL`, wildcard CORS, blank `SERVICE_TOKEN` and
+localhost Redis all accepted, because the validator matched the exact string
+`"production"`.
+
+### Migration
+Set `ENVIRONMENT` to one of `development`, `test`, `staging`, `production`.
+Replace any local dev-environment set with `settings.is_local`.
+
 ## [0.47.0] - 2026-07-28
 
 ### Added
