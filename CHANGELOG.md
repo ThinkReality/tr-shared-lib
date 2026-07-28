@@ -5,6 +5,33 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0] - 2026-07-28
+
+### Added
+- `tr_shared.testing.transaction_guard` — G6d: catches `.delay()`/`.apply_async()`
+  dispatched while the caller's tracked SQLAlchemy session still has an open,
+  uncommitted transaction, under Celery eager mode. `install_transaction_guard(app)`
+  connects to `task_prerun` (the signal Celery's tracer fires for both eager and
+  real execution — `before_task_publish` does NOT fire in eager mode, since
+  `apply_async()` short-circuits straight to `apply()`); `track_session(session)`
+  opts a session in around the dispatch to check.
+- `tr_shared.testing.stubs` — shared test fakes for the two third-party
+  integrations with real cross-service duplication (PropertyFinder, Bayut — each
+  independently hand-mocked in crm-core, content-platform, and lead-management
+  today, with three different mocking mechanics). `MockTransportBuilder`
+  (`stubs/http_stub.py`) drives the real `httpx.AsyncClient`/`Client` via
+  `httpx.MockTransport`, not patched internals. `PropertyFinderStub`/`BayutStub`
+  wrap it with the endpoints the fleet's clients call, plus
+  `sign_propertyfinder_webhook`/`sign_bayut_webhook`, which sign fake webhook
+  payloads with the same production verifiers (`tr_shared.webhooks.providers.*`)
+  real deliveries are checked against.
+
+### Notes
+- Supabase, Gemini, HikCentral, and SuprSend were investigated for the same
+  treatment and explicitly NOT built: each is either single-service or has no
+  existing stub at all — no real duplication to remove, so a shared fake would be
+  a speculative abstraction with nothing to deduplicate.
+
 ## [0.45.0] - 2026-07-28
 
 ### Added
