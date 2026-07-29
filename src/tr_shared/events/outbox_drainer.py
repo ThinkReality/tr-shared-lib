@@ -188,11 +188,11 @@ def create_outbox_drainer_task(
     Returns the registered Celery task so callers can reference it in
     ``beat_schedule``.
     """
-    import asyncio
+    from tr_shared.celery import run_async_in_celery
 
     @celery_app.task(name=task_name, bind=False)
     def _task() -> dict[str, int]:
-        return asyncio.run(
+        return run_async_in_celery(
             drain_outbox(
                 session_factory=session_factory_getter(),
                 producer=producer_getter(),

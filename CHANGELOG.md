@@ -5,6 +5,23 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.1] - 2026-07-29
+
+### Fixed
+- `tr_shared.events.create_outbox_drainer_task` now runs its drain task via
+  `run_async_in_celery` instead of a raw `asyncio.run()` per tick.
+
+### Why
+`asyncio.run()` opens and closes a fresh event loop on every tick. Services
+that also adopted `run_async_in_celery` (one persistent loop per worker
+process) for their other Celery tasks got `RuntimeError: ... attached to a
+different loop` on the outbox-drainer task specifically, because the two
+loop-management strategies fought over the same async DB engine/redis
+connections inside the same forked worker process.
+
+### Migration
+None — drop-in fix, no signature change. Bump the pin and redeploy.
+
 ## [0.48.0] - 2026-07-29
 
 ### Changed (BREAKING)
