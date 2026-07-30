@@ -12,10 +12,11 @@ deviations dictated by the spec (docs/specs/01-batch-foundation.md §1A):
   4. Cache key includes `include_secrets` so a no-secret entry cannot
      accidentally satisfy a secret-requesting call.
 
-The client caches results in-memory only. Event invalidation (via
-register_integration_cache_handlers) + the 1800s local TTL are the
-freshness mechanisms. There is no Redis tier on the client itself —
-the admin-panel is the single source of truth.
+The client caches results in-memory only. The 1800s local TTL is the
+sole freshness mechanism, bounded further by `warm_all()` on process
+start; `invalidate_cache()` exists for callers that know a config
+changed. There is no Redis tier on the client itself — the admin-panel
+is the single source of truth.
 """
 
 from __future__ import annotations

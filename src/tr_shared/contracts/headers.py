@@ -50,6 +50,13 @@ class HttpHeader(StrEnum):
 
     FORWARDED_FOR = "X-Forwarded-For"
     REAL_IP = "X-Real-IP"
+    # The originating client's IP, as observed by the gateway at the socket. The
+    # gateway strips any inbound copy before re-deriving it, so downstream reads a
+    # gateway-asserted value rather than a caller-supplied one. Deliberately NOT in
+    # shared_auth_lib.SignedHeader: adding a member there changes the canonical
+    # string and forces a lockstep redeploy of every service. Downstream must
+    # therefore use it only for bucketing (rate limits), never for authorization.
+    ORIGINAL_IP = "X-Original-IP"
 
     # Rate limiting (emitted to clients)
     RATE_LIMIT_LIMIT = "X-RateLimit-Limit"
