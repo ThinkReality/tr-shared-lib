@@ -36,7 +36,11 @@ class TestToAsyncpg:
         assert "myhost:5432/mydb" in result
 
     def test_other_scheme_returned_as_is(self):
-        url = "sqlite+aiosqlite:///test.db"
+        # Any non-Postgres scheme proves the passthrough branch. This used to say
+        # `sqlite+aiosqlite://` — the one thing the library's own G2 guard bans
+        # fleet-wide, sitting in the library that ships the guard. The assertion
+        # never cared which scheme it was.
+        url = "mysql+aiomysql://user:pw@localhost/db"
         assert _to_asyncpg(url) == url
 
 
