@@ -41,6 +41,7 @@ from tr_shared.testing.tenant_header_guard import Exemption
 
 __all__ = [
     "Exemption",
+    "assert_environment_vocabulary",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
     "assert_no_infra_skips",
@@ -49,6 +50,7 @@ __all__ = [
     "assert_no_sqlite_dsn",
     "assert_no_testing_flag_in_production",
     "find_violations",
+    "iter_shell_files",
 ]
 
 Detector = Callable[[str], list[int]]
@@ -68,17 +70,42 @@ def iter_python_files(root: Path, *, skip: tuple[str, ...] = ()) -> Iterator[Pat
         yield path
 
 
+def iter_shell_files(root: Path, *, skip: tuple[str, ...] = ()) -> Iterator[Path]:
+    """Shell scripts under ``root``.
+
+    ``.venv`` holds thousands of vendored scripts that are not ours to police.
+    ``.worktrees`` and ``.git`` hold *copies of this same repo* checked out at other
+    revisions — a guard that scans them reports the same violation two or three times
+    and, worse, goes red because of a branch someone else is mid-way through. All three
+    are skipped unconditionally rather than left to each caller to remember.
+    """
+    ignored = {".venv", ".worktrees", ".git", "node_modules"}
+    for path in sorted(root.rglob("*.sh")):
+        if any(part in skip or part in ignored for part in path.parts):
+            continue
+        yield path
+
+
 def find_violations(
     root: Path,
     detector: Detector,
     *,
     skip: tuple[str, ...] = (),
     exclude: tuple[Path, ...] = (),
+    iterator: Callable[..., Iterator[Path]] = iter_python_files,
 ) -> dict[str, list[int]]:
-    """Map of ``root``-relative path -> offending line numbers."""
+    """Map of ``root``-relative path -> offending line numbers.
+
+    ``iterator`` selects which files a guard sees. It defaults to Python because
+    every guard but one is an AST scan; the environment-vocabulary guard passes
+    ``iter_shell_files``. This is a parameter rather than a second copy of the
+    walk-parse-collect loop on purpose — the standard's §1.8 forbids growing a
+    second guard framework, and the ``Exemption`` staleness checks below are the
+    part worth reusing.
+    """
     found: dict[str, list[int]] = {}
     resolved_excludes = {p.resolve() for p in exclude}
-    for path in iter_python_files(root, skip=skip):
+    for path in iterator(root, skip=skip):
         if path.resolve() in resolved_excludes:
             continue
         try:
@@ -104,8 +131,9 @@ def _assert(
     *,
     skip: tuple[str, ...] = (),
     exclude: tuple[Path, ...] = (),
+    iterator: Callable[..., Iterator[Path]] = iter_python_files,
 ) -> None:
-    found = find_violations(root, detector, skip=skip, exclude=exclude)
+    found = find_violations(root, detector, skip=skip, exclude=exclude, iterator=iterator)
 
     undocumented = {m: lines for m, lines in found.items() if m not in allowlist}
     assert not undocumented, f"{message}\n{undocumented}"
@@ -519,4 +547,116 @@ def assert_no_testing_flag_in_production(
         "Production code is branching on being under test. The integration lane "
         "provides the real dependency; delete the flag and test the real path.",
         skip=("alembic",),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# G13 — environment vocabulary in shell
+# --------------------------------------------------------------------------- #
+
+#: The only four values ``ENVIRONMENT`` may take. Defined once in
+#: ``tr_shared.contracts.Environment``; repeated here as plain strings because this
+#: guard reads shell text, not Python, and importing the enum would not help it.
+_CANONICAL_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
+
+#: ``$ENVIRONMENT`` or ``${ENVIRONMENT}`` compared against a literal, either operand
+#: order, with ``=``/``==``/``!=``.
+#:
+#: Deliberately NOT anchored on the variable being immediately followed by the operator:
+#: shell writes ``[ "$ENVIRONMENT" = "dev" ]``, where a quote and a space intervene. The
+#: gateway-local guard this replaces required ``ENVIRONMENT==``/``!=`` with nothing
+#: between, so it matched Python and was structurally blind to every shell script in the
+#: fleet — it reported clean while five real violations sat in the files it scanned.
+#:
+#: **Whitespace around the operator is mandatory**, and that is what separates a
+#: comparison from an assignment. ``ENVIRONMENT="${ENVIRONMENT:-production}"`` is a
+#: default assignment appearing in seven scripts; without ``\s+`` the reverse-operand
+#: branch reads its left-hand side as the literal ``ENVIRONMENT``, flags it as
+#: non-canonical, and the guard fires on all eight services instead of the two that are
+#: actually wrong. POSIX ``test`` requires the spaces, so demanding them costs nothing.
+_ENV_COMPARISON = re.compile(
+    r"""(?:
+          \$\{?ENVIRONMENT\}? ["']? \s+ (?:==|!=|=) \s+ ["']?(?P<rhs>[A-Za-z_][\w-]*)
+        | ["']?(?P<lhs>[A-Za-z_][\w-]*)["']? \s+ (?:==|!=|=) \s+ ["']?\$\{?ENVIRONMENT\}?
+        )""",
+    re.VERBOSE,
+)
+
+#: ``case "$ENVIRONMENT" in`` — the patterns follow on later lines, so the block is
+#: tracked across lines rather than matched in one go.
+_ENV_CASE_OPEN = re.compile(r"""case\s+["']?\$\{?ENVIRONMENT\}?["']?\s+in""")
+_CASE_PATTERN = re.compile(r"""^\s*\(?\s*(?P<pats>[A-Za-z_|\s*?\[\]-]+?)\s*\)""")
+
+
+def detect_environment_vocabulary(source: str) -> list[int]:
+    """Shell comparing ``$ENVIRONMENT`` against a non-canonical literal.
+
+    Encodes the **rule** — anything outside the canonical four — rather than a list
+    of the spellings a past audit happened to find. A guard built from the instance
+    list catches ``dev`` and waves through ``qa``, ``Production`` and ``uat``; the
+    recorded lesson is `guard-the-invariant-not-the-instance-list`.
+
+    Not flagged: ``ENVIRONMENT="${ENVIRONMENT:-production}"``, which appears in seven of
+    the eight services. It is a default assignment, and assignments have no whitespace
+    around ``=`` while ``test`` comparisons must — see ``_ENV_COMPARISON``. An earlier
+    draft of this guard flagged all seven.
+    """
+    hits: list[int] = []
+    in_case = False
+    for number, line in enumerate(source.splitlines(), 1):
+        code = line.split("#", 1)[0]
+        if not code.strip():
+            continue
+
+        if _ENV_CASE_OPEN.search(code):
+            in_case = True
+            continue
+        if in_case:
+            if "esac" in code:
+                in_case = False
+            elif (match := _CASE_PATTERN.match(code)) is not None:
+                patterns = (p.strip() for p in match.group("pats").split("|"))
+                if any(
+                    p and p != "*" and p not in _CANONICAL_ENVIRONMENTS for p in patterns
+                ):
+                    hits.append(number)
+            continue
+
+        for match in _ENV_COMPARISON.finditer(code):
+            literal = match.group("rhs") or match.group("lhs")
+            if literal and literal not in _CANONICAL_ENVIRONMENTS:
+                hits.append(number)
+    return sorted(set(hits))
+
+
+def assert_environment_vocabulary(
+    service_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """G13. Shell scripts may only compare ``$ENVIRONMENT`` against the canonical four.
+
+    ``ENVIRONMENT`` takes exactly ``development | test | staging | production``.
+    ``BaseServiceSettings`` types the field to ``tr_shared.contracts.Environment``, so
+    Python rejects anything else at startup — but shell scripts run *before* Python and
+    were never covered. Two services still accepted ``dev`` and ``local``, and, more
+    importantly, **omitted ``test``**: a container running ``ENVIRONMENT=test`` took the
+    production branch and skipped migrations.
+
+    Accepting a retired spelling is also the dual-format acceptance the development-phase
+    directive bans outright. The canonical form is::
+
+        if [ "$ENVIRONMENT" = "development" ] || [ "$ENVIRONMENT" = "test" ]; then
+
+    Point this at the **service root**, not ``tests/`` — ``deploy.sh`` and
+    ``docker-entrypoint.sh`` live at the top level, which is exactly why the task lists
+    of an earlier programme (scoped to ``app/`` and ``tests/``) never touched them.
+    """
+    _assert(
+        service_root,
+        detect_environment_vocabulary,
+        allowlist or {},
+        "Shell script compares $ENVIRONMENT against a value outside "
+        "{development, test, staging, production}. Do not add the spelling as an "
+        "alias — that is the shim the directive forbids. Note that omitting 'test' "
+        "silently routes test containers down the production branch.",
+        iterator=iter_shell_files,
     )

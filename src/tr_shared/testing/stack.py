@@ -307,6 +307,56 @@ def _database_exists(container: Any, name: str) -> bool:
     return found == "1"
 
 
+def run_migrations(config: TestingConfig, dsn: str) -> subprocess.CompletedProcess[str]:
+    """Run the service's own ``migrate_command`` against ``dsn``.
+
+    Shared by the container path (which builds a template) and the plugin's
+    ``TEST_DATABASE_URL`` override path. It lives here as one function because the
+    override path originally had **no** migration step at all: it returned before
+    ``provision()``, so the database was never migrated, and crm-core's CI stayed red
+    for five runs while every doc claimed the suite was green. Two copies of "how this
+    service migrates" is how that happens again.
+
+    Resolving the executable against the service's own ``.venv/bin`` matters: the
+    command is usually ``alembic`` or a project console script, which is not on PATH in
+    a bare CI shell.
+
+    Returns the completed process rather than raising, because the two callers clean up
+    differently — the container path drops its half-built database first.
+    """
+    executable = shutil.which(
+        config.migrate_command[0],
+        path=os.pathsep.join(
+            [str(Path(config.root) / ".venv" / "bin"), os.environ.get("PATH", "")]
+        ),
+    )
+    command = [executable or config.migrate_command[0], *config.migrate_command[1:]]
+    return subprocess.run(
+        command,
+        cwd=config.root,
+        env={**os.environ, "DATABASE_URL": dsn, "ENVIRONMENT": "test"},
+        capture_output=True,
+        text=True,
+    )
+
+
+def redis_triple(base_url: str, worker_id: str) -> tuple[str, str, str]:
+    """``(cache, broker, results)`` on three consecutive database indexes.
+
+    Any database index already on ``base_url`` is discarded — the caller is naming a
+    server, and the index is this function's to assign.
+
+    Split out so the ``TEST_DATABASE_URL`` override path cannot quietly lose the
+    isolation the container path is careful to provide. It used to set all three to the
+    same ``TEST_REDIS_URL``, which puts Celery's broker, its result backend and the
+    application cache in one database: a ``flushdb`` between tests then wipes queued
+    tasks, and a key collision across the three is indistinguishable from a bug.
+    """
+    server = re.sub(r"/\d+/?$", "", base_url.rstrip("/"))
+    index = _redis_index(worker_id)
+    return (f"{server}/{index}", f"{server}/{index + 1}", f"{server}/{index + 2}")
+
+
 def _build_template(
     container: Any,
     config: TestingConfig,
@@ -327,20 +377,7 @@ def _build_template(
         _psql(container, f"CREATE EXTENSION IF NOT EXISTS {extension}", database=building)
 
     dsn = _dsn(host_port, building)
-    executable = shutil.which(
-        config.migrate_command[0],
-        path=os.pathsep.join(
-            [str(Path(config.root) / ".venv" / "bin"), os.environ.get("PATH", "")]
-        ),
-    )
-    command = [executable or config.migrate_command[0], *config.migrate_command[1:]]
-    result = subprocess.run(
-        command,
-        cwd=config.root,
-        env={**os.environ, "DATABASE_URL": dsn, "ENVIRONMENT": "test"},
-        capture_output=True,
-        text=True,
-    )
+    result = run_migrations(config, dsn)
     if result.returncode != 0:
         _psql(container, f'DROP DATABASE IF EXISTS "{building}" WITH (FORCE)')
         raise StackError(
@@ -411,13 +448,14 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
             ready_probe=["redis-cli", "ping"],
         )
 
-    index = _redis_index(worker_id)
-    redis_base = f"redis://127.0.0.1:{redis_port}"
+    cache_url, broker_url, result_url = redis_triple(
+        f"redis://127.0.0.1:{redis_port}", worker_id
+    )
     return Stack(
         postgres_dsn=_dsn(pg_port, run_db),
-        redis_url=f"{redis_base}/{index}",
-        celery_broker_url=f"{redis_base}/{index + 1}",
-        celery_result_backend=f"{redis_base}/{index + 2}",
+        redis_url=cache_url,
+        celery_broker_url=broker_url,
+        celery_result_backend=result_url,
     )
 
 

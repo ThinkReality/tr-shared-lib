@@ -64,21 +64,17 @@ def pytest_load_initial_conftests(
         )
         return
 
+    run_id = _run_id()
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "main")
+
     override = os.environ.get("TEST_DATABASE_URL")
     if override:
         _assert_local(override)
-        _export(
-            database_url=override,
-            redis_url=os.environ.get("TEST_REDIS_URL", POISON_REDIS_URL),
-            broker_url=os.environ.get("TEST_REDIS_URL", POISON_REDIS_URL),
-            result_backend=os.environ.get("TEST_REDIS_URL", POISON_REDIS_URL),
-        )
+        _use_override(config, override, worker_id)
         return
 
     from tr_shared.testing.stack import provision
 
-    run_id = _run_id()
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "main")
     stack = provision(config, run_id, worker_id)
     _STATE["run_id"] = run_id
     _STATE["worker_id"] = worker_id
@@ -127,6 +123,55 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     from tr_shared.testing.stack import drop_run_databases
 
     drop_run_databases(config, _STATE["run_id"], _STATE["worker_id"])
+
+
+def _use_override(config: TestingConfig, dsn: str, worker_id: str) -> None:
+    """Point the run at a caller-supplied database, and finish the job.
+
+    ``TEST_DATABASE_URL`` is the documented no-Docker escape hatch (D2) for CI runners
+    that provide their own Postgres service. It used to do two things wrong, both of
+    which this function exists to fix:
+
+    **It never migrated.** The branch returned before ``provision()``, and
+    ``provision()`` is what runs the service's ``migrate_command``. The database was
+    therefore empty. crm-core's CI took this branch, had no ``migrate`` step of its own,
+    and stayed red for five consecutive runs with ``relation "..." does not exist``
+    while its workflow comment claimed schema construction was handled elsewhere. The
+    branch reported success by returning early, which is the worst possible failure
+    shape: silent.
+
+    **It collapsed three Redis databases into one.** Cache, Celery broker and Celery
+    result backend were all set to ``TEST_REDIS_URL``. The container path deliberately
+    hands out three consecutive indexes; this path lost that, so a ``flushdb`` between
+    tests could drop queued tasks and a key collision across the three looked like an
+    application bug.
+
+    Migrating is not conditional on the database looking empty. Alembic is idempotent —
+    an already-migrated database is a no-op ``upgrade head`` — and "skip if it looks
+    done" is the heuristic that produced the original bug.
+    """
+    from tr_shared.testing.stack import StackError, redis_triple, run_migrations
+
+    result = run_migrations(config, dsn)
+    if result.returncode != 0:
+        raise StackError(
+            "migrations failed against TEST_DATABASE_URL "
+            f"({' '.join(config.migrate_command)}):\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+
+    base = os.environ.get("TEST_REDIS_URL")
+    if base:
+        cache_url, broker_url, result_backend = redis_triple(base, worker_id)
+    else:
+        cache_url = broker_url = result_backend = POISON_REDIS_URL
+
+    _export(
+        database_url=dsn,
+        redis_url=cache_url,
+        broker_url=broker_url,
+        result_backend=result_backend,
+    )
 
 
 def _export(

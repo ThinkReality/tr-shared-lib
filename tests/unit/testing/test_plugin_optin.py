@@ -184,3 +184,138 @@ class TestRemoteDsnIsRefused:
         assert _recorded(project)["DATABASE_URL"] == (
             f"postgresql+asyncpg://u:p@{host}:5432/db"
         )
+
+
+# --------------------------------------------------------------------------- #
+# The TEST_DATABASE_URL override branch (L-A / D13)
+# --------------------------------------------------------------------------- #
+
+_OVERRIDE_CONFTEST = """
+import json, os, pathlib
+pathlib.Path("env_at_conftest_import.json").write_text(json.dumps({
+    "DATABASE_URL": os.environ.get("DATABASE_URL"),
+    "REDIS_URL": os.environ.get("REDIS_URL"),
+    "CELERY_BROKER_URL": os.environ.get("CELERY_BROKER_URL"),
+    "CELERY_RESULT_BACKEND": os.environ.get("CELERY_RESULT_BACKEND"),
+}))
+"""
+
+
+def _override_project(tmp_path: Path, *, migrate_ok: bool = True) -> Path:
+    """A project whose migrate_command is observable and can be made to fail.
+
+    `migrate_command = ["true"]` in `_project` above cannot distinguish "migrations
+    ran" from "migrations were skipped" — which is exactly the hole this branch had.
+    Here the command writes a marker file, so its absence is a failing assertion
+    rather than an invisible no-op.
+    """
+    script = tmp_path / "fake_migrate.sh"
+    body = 'printf "%s" "$DATABASE_URL" > "$(dirname "$0")/migrated.txt"\n'
+    script.write_text("#!/bin/sh\n" + body + ("exit 0\n" if migrate_ok else "echo 'boom' >&2\nexit 1\n"))
+    script.chmod(0o755)
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0"\n'
+        "[tool.tr_testing]\n"
+        'service = "tr-demo"\n'
+        f'migrate_command = ["{script}"]\n'
+        'migration_globs = ["migrations/*.py"]\n'
+    )
+    integration = tmp_path / "tests" / "integration"
+    integration.mkdir(parents=True)
+    (tmp_path / "tests" / "conftest.py").write_text(textwrap.dedent(_OVERRIDE_CONFTEST))
+    (integration / "test_demo.py").write_text(textwrap.dedent(_TEST))
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "0001.py").write_text("revision = '1'\n")
+    return tmp_path
+
+
+def _run_override(project: Path, **env: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/integration/", "-q", "-p", "no:cacheprovider"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(project), **env},
+    )
+
+
+class TestOverrideBranchMigrates:
+    """N-1: the branch used to return before provision(), so nothing ever migrated.
+
+    crm-core's CI took this path, had no migrate step of its own, and stayed red for
+    five runs with `relation "..." does not exist` — while the workflow comment
+    asserted schema construction happened elsewhere. The branch's early `return` is
+    what made the failure silent.
+    """
+
+    def test_migrations_actually_run(self, tmp_path: Path) -> None:
+        project = _override_project(tmp_path)
+        dsn = "postgresql+asyncpg://u:p@127.0.0.1:5432/db"
+        result = _run_override(project, TEST_DATABASE_URL=dsn)
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        marker = project / "migrated.txt"
+        assert marker.exists(), (
+            "migrate_command never ran — the override branch is skipping migrations again"
+        )
+        assert marker.read_text() == dsn, "migrations ran against the wrong database"
+
+    def test_a_failing_migration_aborts_the_run(self, tmp_path: Path) -> None:
+        """Loud, not silent. An unmigrated database must never reach the tests."""
+        project = _override_project(tmp_path, migrate_ok=False)
+        result = _run_override(
+            project, TEST_DATABASE_URL="postgresql+asyncpg://u:p@127.0.0.1:5432/db"
+        )
+
+        assert result.returncode != 0
+        combined = result.stdout + result.stderr
+        assert "migrations failed against TEST_DATABASE_URL" in combined
+        assert "boom" in combined, "the migration tool's own stderr must be surfaced"
+
+
+class TestOverrideBranchRedisIsolation:
+    """N-10: cache, broker and results were all set to the same TEST_REDIS_URL."""
+
+    def test_three_distinct_consecutive_databases(self, tmp_path: Path) -> None:
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project,
+            TEST_DATABASE_URL="postgresql+asyncpg://u:p@127.0.0.1:5432/db",
+            TEST_REDIS_URL="redis://127.0.0.1:6379",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        env = _recorded(project)
+        urls = [env["REDIS_URL"], env["CELERY_BROKER_URL"], env["CELERY_RESULT_BACKEND"]]
+        assert len(set(urls)) == 3, f"collapsed onto one Redis database: {urls}"
+        assert urls == [
+            "redis://127.0.0.1:6379/0",
+            "redis://127.0.0.1:6379/1",
+            "redis://127.0.0.1:6379/2",
+        ]
+
+    def test_an_index_on_the_supplied_url_is_replaced_not_appended(
+        self, tmp_path: Path
+    ) -> None:
+        """A CI runner naming `redis://host:6379/0` is naming a server, not an index."""
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project,
+            TEST_DATABASE_URL="postgresql+asyncpg://u:p@127.0.0.1:5432/db",
+            TEST_REDIS_URL="redis://127.0.0.1:6379/9",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _recorded(project)["REDIS_URL"] == "redis://127.0.0.1:6379/0"
+
+    def test_no_redis_url_falls_back_to_the_poison_url(self, tmp_path: Path) -> None:
+        """Silently pointing at a real local Redis would be worse than failing."""
+        from tr_shared.testing.lanes import POISON_REDIS_URL
+
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project, TEST_DATABASE_URL="postgresql+asyncpg://u:p@127.0.0.1:5432/db"
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _recorded(project)["REDIS_URL"] == POISON_REDIS_URL

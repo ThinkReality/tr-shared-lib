@@ -5,6 +5,49 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.3] - 2026-07-30
+
+### Added
+- `tr_shared.testing.guards.assert_environment_vocabulary` (G13) — fails a
+  service whose shell scripts compare `$ENVIRONMENT` against anything outside
+  the canonical four (`development`, `test`, `staging`, `production`).
+- `tr_shared.testing.guards.iter_shell_files`, plus an `iterator=` parameter on
+  `find_violations`, so a guard can walk `.sh` files through the same
+  `Exemption`/staleness machinery the Python guards already use.
+
+### Fixed
+- `TEST_DATABASE_URL` (the documented no-Docker escape hatch) never ran the
+  service's `migrate_command`. The branch returned before `provision()`, so the
+  database stayed empty and the run failed with `relation "..." does not exist`.
+- The same branch pointed cache, Celery broker and Celery result backend at a
+  single `TEST_REDIS_URL`, collapsing the three-index isolation the container
+  path deliberately provides.
+
+### Why
+The environment-vocabulary guard this replaces lived in one service and matched
+`ENVIRONMENT==`/`!=` adjacently. Shell writes `[ "$ENVIRONMENT" = "dev" ]` — a
+quote and a space intervene — so it scored **zero hits on four scripts holding
+five real violations**. It also enumerated the wrong spellings (`dev|local|prod
+|stage`) rather than the right ones, so `qa`, `uat` and `Production` passed. G13
+inverts that: anything not in the canonical set is a violation.
+
+The override branch is what crm-core's CI takes. It stayed red for five
+consecutive runs while its workflow comment claimed schema construction was
+handled elsewhere — the branch reported success by returning early, which is the
+worst failure shape available. `run_migrations()` and `redis_triple()` are now
+extracted and shared with `provision()`, because two copies of "how this service
+migrates" is what let the two paths drift apart in the first place.
+
+### Migration
+G13 is opt-in — call `assert_environment_vocabulary(service_root)` from a
+service's guard test. Two services currently fail it (`tr-crm-core`,
+`tr-people-finance`); adopt after fixing their scripts, not before.
+
+Services already setting `TEST_DATABASE_URL` will now have migrations run
+against that database on every session. This is the intended behavior change:
+Alembic `upgrade head` is idempotent, so an already-migrated database is a
+no-op.
+
 ## [0.49.2] - 2026-07-30
 
 ### Fixed

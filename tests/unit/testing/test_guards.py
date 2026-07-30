@@ -12,9 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from tr_shared.testing.guards import (
     Exemption,
+    assert_environment_vocabulary,
     assert_no_auth_chain_bypass,
     assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
@@ -24,6 +24,7 @@ from tr_shared.testing.guards import (
     assert_no_testing_flag_in_production,
     detect_auth_chain_bypass,
     detect_env_mutation,
+    detect_environment_vocabulary,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
@@ -240,3 +241,100 @@ class TestG12TestingFlag:
     def test_migrations_are_not_scanned(self, tmp_path: Path) -> None:
         root = _tree(tmp_path, "alembic/versions/0001.py", "TESTING = 1")
         assert_no_testing_flag_in_production(root)
+
+
+class TestG13EnvironmentVocabulary:
+    """The five real violations, and the seven lines that must not be mistaken for them.
+
+    All samples are literal lines from the fleet. The false-positive cases matter as
+    much as the true ones here: an earlier draft of this guard fired on every service
+    because it read a default assignment as a comparison.
+    """
+
+    def test_catches_the_real_violations(self) -> None:
+        # tr-crm-core/deploy.sh:5 and docker-entrypoint.sh:32,45
+        assert detect_environment_vocabulary(
+            'if [ "$ENVIRONMENT" = "dev" ] || [ "$ENVIRONMENT" = "development" ]; then'
+        )
+        # tr-people-finance/docker-entrypoint.sh:21
+        assert detect_environment_vocabulary(
+            '  if [ "$ENVIRONMENT" = "dev" ] || [ "$ENVIRONMENT" = "development" ] '
+            '|| [ "$ENVIRONMENT" = "local" ]; then'
+        )
+
+    def test_catches_spellings_no_audit_has_seen_yet(self) -> None:
+        """The rule, not the instance list.
+
+        The guard this replaces enumerated dev|local|prod|stage, so it would wave all
+        four of these through. `guard-the-invariant-not-the-instance-list`.
+        """
+        for spelling in ("qa", "uat", "Production", "DEVELOPMENT"):
+            assert detect_environment_vocabulary(
+                f'if [ "$ENVIRONMENT" = "{spelling}" ]; then'
+            ), spelling
+
+    def test_allows_the_canonical_four(self) -> None:
+        assert not detect_environment_vocabulary(
+            'if [ "$ENVIRONMENT" = "development" ] || [ "$ENVIRONMENT" = "test" ]; then'
+        )
+        assert not detect_environment_vocabulary('elif [ "$ENVIRONMENT" = "staging" ]; then')
+        assert not detect_environment_vocabulary('[ "$ENVIRONMENT" != "production" ]')
+
+    def test_ignores_the_default_assignment(self) -> None:
+        """Seven of eight services carry this line; an early draft flagged all seven.
+
+        An assignment has no whitespace around `=`; a POSIX `test` comparison must.
+        """
+        assert not detect_environment_vocabulary('ENVIRONMENT="${ENVIRONMENT:-production}"')
+        assert not detect_environment_vocabulary('export ENVIRONMENT="${ENVIRONMENT:-test}"')
+
+    def test_ignores_interpolation_in_messages(self) -> None:
+        assert not detect_environment_vocabulary(
+            'echo "FATAL: migrations failed — refusing to start in \'${ENVIRONMENT}\'."'
+        )
+
+    def test_ignores_comments(self) -> None:
+        assert not detect_environment_vocabulary('# was: [ "$ENVIRONMENT" = "dev" ]')
+
+    def test_handles_the_bracket_and_reverse_forms(self) -> None:
+        assert detect_environment_vocabulary('if [[ $ENVIRONMENT == dev ]]; then')
+        assert detect_environment_vocabulary('if [ "dev" = "$ENVIRONMENT" ]; then')
+        assert not detect_environment_vocabulary('if [[ $ENVIRONMENT == staging ]]; then')
+
+    def test_catches_a_case_block(self) -> None:
+        source = '''case "$ENVIRONMENT" in
+  dev|local) run_migrations ;;
+  production) ;;
+esac'''
+        assert detect_environment_vocabulary(source) == [2]
+
+    def test_allows_a_canonical_case_block(self) -> None:
+        source = '''case "$ENVIRONMENT" in
+  development|test) run_migrations ;;
+  *) ;;
+esac'''
+        assert not detect_environment_vocabulary(source)
+
+    def test_assert_helper_fails(self, tmp_path: Path) -> None:
+        root = _tree(tmp_path, "deploy.sh", 'if [ "$ENVIRONMENT" = "dev" ]; then\n  :\nfi')
+        with pytest.raises(AssertionError, match="outside"):
+            assert_environment_vocabulary(root)
+
+    def test_assert_helper_passes_on_the_canonical_form(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "deploy.sh",
+            'if [ "$ENVIRONMENT" = "development" ] || [ "$ENVIRONMENT" = "test" ]; then\n  :\nfi',
+        )
+        assert_environment_vocabulary(root)
+
+    def test_scans_shell_not_python(self, tmp_path: Path) -> None:
+        """The guard exists because the fleet's Python-only checker could not see .sh."""
+        root = _tree(tmp_path, "app/config.py", 'ENVIRONMENT = "dev"')
+        assert_environment_vocabulary(root)
+
+    def test_vendored_and_worktree_copies_are_skipped(self, tmp_path: Path) -> None:
+        bad = 'if [ "$ENVIRONMENT" = "dev" ]; then\n  :\nfi'
+        _tree(tmp_path, ".venv/bin/activate.sh", bad)
+        _tree(tmp_path, ".worktrees/other-branch/deploy.sh", bad)
+        assert_environment_vocabulary(tmp_path)
