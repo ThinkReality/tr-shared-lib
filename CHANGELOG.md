@@ -5,6 +5,30 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.2] - 2026-07-30
+
+### Fixed
+- `tr_shared.events.EventConsumer._process_message` now routes events with no
+  registered handler to the dead-letter queue (when one is configured),
+  instead of silently ACKing and discarding them with only a WARNING log.
+
+### Why
+Every consumer group on the shared `tr_event_bus` stream receives every event
+type published by every module — a consumer registering a handler for one
+event type still receives all the others. Discarding unknowns with no DLQ
+trail meant a real production bug (missing handler registration, wrong event
+type name, etc.) was invisible — the event was just gone. The malformed-
+message and retries-exhausted paths already route to DLQ; the no-handler path
+was the one gap. `tr-crm-core`'s notification module had already independently
+patched around this exact gap with a `NotificationEventConsumer` subclass
+override — this fix makes that override redundant (see `tr-crm-core`'s
+`2026-07-30-event-consumer-dlq-routing.md` plan for its removal).
+
+### Migration
+None — drop-in fix, no signature change. Bump the pin and redeploy. Consumers
+that previously relied on unknown events vanishing silently will now see them
+in `{stream_name}_dead_letter` — this is the intended behavior change.
+
 ## [0.48.1] - 2026-07-29
 
 ### Fixed

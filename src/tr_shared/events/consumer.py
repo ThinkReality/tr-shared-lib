@@ -218,14 +218,34 @@ class EventConsumer:
 
         handler = self._resolve_handler(envelope.event_type)
         if handler is None:
-            logger.warning(
-                "No handler registered for event type — event discarded",
-                extra={
-                    "event_type": envelope.event_type,
-                    "event_id": envelope.event_id,
-                    "stream": self._stream_name,
-                },
-            )
+            if self._dlq:
+                try:
+                    await self._dlq.move(
+                        message_id,
+                        data,
+                        f"No handler registered for event type: {envelope.event_type}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "DLQ move failed for unhandled event type %s — continuing", message_id
+                    )
+                logger.warning(
+                    "No handler registered for event type — moved to DLQ",
+                    extra={
+                        "event_type": envelope.event_type,
+                        "event_id": envelope.event_id,
+                        "stream": self._stream_name,
+                    },
+                )
+            else:
+                logger.warning(
+                    "No handler registered for event type — no DLQ configured, discarding",
+                    extra={
+                        "event_type": envelope.event_type,
+                        "event_id": envelope.event_id,
+                        "stream": self._stream_name,
+                    },
+                )
             return True, True
 
         try:
