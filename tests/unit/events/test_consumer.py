@@ -94,15 +94,38 @@ def _flat_envelope_data(event_type: str = "user.created", event_id: str = "evt-1
     }
 
 
-class TestNoHandlerLogsWarning:
-    async def test_no_handler_emits_warning(self):
-        consumer = _make_consumer()
-        with patch("tr_shared.events.consumer.logger") as mock_logger:
-            result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
+class TestNoHandlerDLQRouting:
+    async def test_no_handler_moves_to_dlq_when_configured(self):
+        consumer = _make_consumer(with_dlq=True)
+        result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
         assert result == (True, True)  # acknowledged, no retry
+        consumer._dlq.move.assert_awaited_once()
+        args = consumer._dlq.move.call_args[0]
+        assert args[0] == "msg-1"
+        assert "No handler registered for event type: order.created" in args[2]
+
+    async def test_no_handler_logs_warning_when_dlq_configured(self):
+        consumer = _make_consumer(with_dlq=True)
+        with patch("tr_shared.events.consumer.logger") as mock_logger:
+            await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
         mock_logger.warning.assert_called_once()
         warning_msg = mock_logger.warning.call_args[0][0]
-        assert "No handler" in warning_msg or "handler" in warning_msg.lower()
+        assert "handler" in warning_msg.lower()
+
+    async def test_no_handler_logs_warning_when_no_dlq_configured(self):
+        consumer = _make_consumer(with_dlq=False)
+        with patch("tr_shared.events.consumer.logger") as mock_logger:
+            result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
+        assert result == (True, True)
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "no dlq" in warning_msg.lower() or "handler" in warning_msg.lower()
+
+    async def test_registered_handler_does_not_move_to_dlq(self):
+        consumer = _make_consumer(with_dlq=True)
+        consumer.register_handler("user.created", AsyncMock())
+        await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        consumer._dlq.move.assert_not_awaited()
 
     async def test_registered_handler_does_not_warn(self):
         consumer = _make_consumer()
