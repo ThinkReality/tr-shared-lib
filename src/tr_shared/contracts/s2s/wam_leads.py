@@ -1,12 +1,16 @@
 """S2S contract: tr-whatsApp-marketing-agent lead endpoints.
 
-Provider: tr-whatsApp-marketing-agent (mounted at /api/v1/leads).
+Provider: tr-whatsApp-marketing-agent (mounted at /api/v1/internal/leads).
 Caller: tr-lead-management (WAMClient).
+
+The /internal prefix is load-bearing, not cosmetic: WAM mounts
+GatewayHMACMiddleware, which 403s any unsigned request outside its skip list,
+and /api/v1/internal/ is that skip list's only business-route entry.
 """
 
 from uuid import UUID
 
-BASE_PATH = "/api/v1/leads"
+BASE_PATH = "/api/v1/internal/leads"
 
 
 def link() -> str:

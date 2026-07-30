@@ -2,6 +2,32 @@
 
 Follows the same pattern as ``cache/factory.py``: enum of providers,
 static factory methods, import-on-demand to avoid pulling unused deps.
+
+Adding a provider (worked example: a BetterStack log backend)
+-------------------------------------------------------------
+No core changes are needed — that is what this factory exists for:
+
+1. Create ``monitoring/adapters/betterstack_log.py`` implementing
+   ``LogProviderInterface`` (one method, ``create_handler``).
+2. Add ``BETTERSTACK = "betterstack"`` to the ``LogProvider`` enum below.
+3. Add an import-on-demand branch in ``create_log_provider`` — mirror the
+   ``LogProvider.LOKI`` branch exactly; the import must stay inside the branch
+   so the dependency is never pulled for services that do not use it.
+4. Declare the optional extra in ``pyproject.toml``:
+   ``monitoring-betterstack = ["betterstack-sdk>=..."]``.
+5. Callers pass ``setup_monitoring(log_provider="betterstack")``.
+
+The same five steps apply to a metrics or trace provider via
+``MetricsProviderInterface`` / ``TraceProviderInterface``.
+
+One caveat step 5 hides: a provider needing its own configuration (the way
+Loki needs ``loki_url`` and OTLP needs ``otlp_endpoint``) also requires new
+kwargs on both ``create_*_provider`` here and ``setup_monitoring``. Only a
+provider configured purely by environment is truly zero-touch.
+
+Note the ``provider`` arguments are typed ``str``, not these enums, so a typo
+is not caught at the call site — it raises from the factory's terminal
+``ValueError``.
 """
 
 import logging
