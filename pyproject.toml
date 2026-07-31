@@ -99,6 +99,25 @@ fail_under = 80
 show_missing = true
 skip_covered = false
 
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+# E501 (line length) is advisory — the formatter owns layout, and it cannot always
+# break a long string or URL. Unlike the services, E712/E711 are NOT ignored here:
+# there is no `== False` / `== None` in this repo (the db layer uses `.is_(None)`,
+# which is the correct SQLAlchemy form anyway), so exempting them would be
+# pre-emptively allowing a mistake nothing here makes.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401", "F403"]  # re-exports are the point of these files
+
+[tool.ruff.lint.isort]
+known-first-party = ["tr_shared"]
+
 [tool.mypy]
 python_version = "3.13"
 plugins = ["pydantic.mypy"]
@@ -127,4 +146,5 @@ dev = [
     "mypy>=2.3.0",
     "mypy-baseline>=0.7.4",
     "pre-commit>=4.6.0",
+    "ruff>=0.8.6",
 ]

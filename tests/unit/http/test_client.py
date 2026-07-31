@@ -1,10 +1,11 @@
 """Tests for ServiceHTTPClient."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from tr_shared.http.client import ServiceHTTPClient
+import pytest
+
 from tr_shared.http.circuit_breaker import CircuitBreaker
+from tr_shared.http.client import ServiceHTTPClient
 
 
 def _client(**kwargs) -> ServiceHTTPClient:
@@ -51,31 +52,33 @@ class TestGetClient:
         c = _client()
         with patch("tr_shared.http.client.httpx.AsyncClient") as mock_httpx:
             mock_httpx.return_value = MagicMock(is_closed=False)
-            http = await c._get_client()
+            await c._get_client()
             mock_httpx.assert_called_once()
 
     async def test_includes_service_token_header(self):
         c = _client()
         created_headers = {}
+
         def fake_client(**kwargs):
             created_headers.update(kwargs.get("headers", {}))
             m = MagicMock()
             m.is_closed = False
             return m
+
         with patch("tr_shared.http.client.httpx.AsyncClient", side_effect=fake_client):
             await c._get_client()
         assert created_headers.get("X-Service-Token") == "test-token"
 
     async def test_no_service_token_header_when_empty(self):
-        c = ServiceHTTPClient(
-            service_name="svc", base_url="http://svc:8000", service_token=""
-        )
+        c = ServiceHTTPClient(service_name="svc", base_url="http://svc:8000", service_token="")
         created_headers = {}
+
         def fake_client(**kwargs):
             created_headers.update(kwargs.get("headers", {}))
             m = MagicMock()
             m.is_closed = False
             return m
+
         with patch("tr_shared.http.client.httpx.AsyncClient", side_effect=fake_client):
             await c._get_client()
         assert "X-Service-Token" not in created_headers
