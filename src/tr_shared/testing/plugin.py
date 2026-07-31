@@ -24,6 +24,7 @@ The plugin is inert unless the service declares ``[tool.tr_testing]``
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +48,8 @@ def pytest_load_initial_conftests(early_config: Any, parser: Any, args: list[str
     config = find_config(Path(early_config.rootdir))
     if config is None:
         return  # not opted in — do nothing at all
+
+    _assert_venv_belongs_to_this_service(Path(early_config.rootdir))
 
     _STATE["config"] = config
     needs_infra = run_needs_infrastructure(args, _markexpr(early_config))
@@ -202,6 +205,43 @@ def _run_id() -> str:
     run_id = str(os.getpid())
     os.environ["TR_TESTING_RUN_ID"] = run_id
     return run_id
+
+
+def _assert_venv_belongs_to_this_service(rootdir: Path) -> None:
+    """G14: run the repo's own ``.venv``, or stop — never another service's.
+
+    This monorepo holds eight services side by side, each with its own ``.venv``. A
+    developer who has activated one of them (or whose editor did it for them) exports
+    ``VIRTUAL_ENV`` and puts that venv's ``bin/`` on ``PATH``. ``uv run pytest`` in a
+    *different* service then resolves the ``pytest`` executable out of the activated
+    venv, and the whole session imports from its ``site-packages``.
+
+    Nothing announces this. It surfaces only where the two dependency sets differ, as an
+    ``ImportError`` for a package that is installed, correctly, right where it belongs —
+    tr-people-finance reported 74 collection errors for a missing ``email_validator``
+    that was present in its own venv the entire time, because the run was using
+    tr-media-service's. The traceback names the other service's path, which is the only
+    clue, and it is easy to read past.
+
+    Skipped when the repo has no ``.venv``: Docker images and CI install into the system
+    environment, and there is nothing to disagree with there.
+    """
+    venv = rootdir / ".venv"
+    if not venv.is_dir():
+        return
+
+    prefix = Path(sys.prefix).resolve()
+    if prefix == venv.resolve():
+        return
+
+    raise SystemExit(
+        f"Refusing to run: this is {rootdir.name}, but the interpreter belongs to "
+        f"{prefix}.\n"
+        f"Expected {venv.resolve()}.\n"
+        "Another service's venv is active, so imports resolve against its "
+        "site-packages and any failure will name a dependency that is not actually "
+        "missing. Run `deactivate`, or drop the stale entry from PATH/VIRTUAL_ENV."
+    )
 
 
 def _assert_local(dsn: str) -> None:

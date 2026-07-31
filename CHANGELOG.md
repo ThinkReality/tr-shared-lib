@@ -5,6 +5,38 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] - 2026-07-31
+
+### Added
+- **G14** — the pytest plugin now refuses to run when the interpreter belongs to a
+  different service's `.venv` than the repo under test. Checked in
+  `pytest_load_initial_conftests`, before any collection, and skipped entirely when the
+  repo has no `.venv` (Docker images and CI install into the system environment).
+
+### Why
+Eight services sit side by side in this monorepo, each with its own `.venv`. Activate one
+— or let an editor activate it — and `VIRTUAL_ENV` plus a `PATH` entry follow you into
+every other service. `uv run pytest` there resolves the `pytest` executable out of the
+*activated* venv, and the whole session imports from its `site-packages`.
+
+Nothing announces this. It surfaces only where the two dependency sets happen to differ,
+and then it lies: tr-people-finance reported **74 collection errors** for a missing
+`email_validator` that was installed in its own venv the entire time, because the run was
+using tr-media-service's, which does not depend on it. The only clue is the other
+service's path inside the traceback, which is easy to read straight past — the obvious
+reading is "a dependency is missing", and that sends you to fix something that was never
+broken.
+
+The guard belongs in the plugin rather than in eight `conftest.py` copies: every service
+already loads it through the `pytest11` entry point, so there is no adoption gap and no
+per-service list to keep current. Both paths are `resolve()`d before comparison, so a
+symlinked checkout is not a false positive.
+
+### Migration
+None. A correctly-configured run never notices it. A run that trips it was already
+broken — it now says so in one line naming both paths, instead of failing later as an
+`ImportError` for a package that is present.
+
 ## [0.52.0] - 2026-07-31
 
 ### Fixed
