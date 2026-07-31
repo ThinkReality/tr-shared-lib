@@ -80,10 +80,19 @@ def run_needs_infrastructure(
 
     Checking existence needs no list of value-taking options, and stays correct
     when pytest adds one.
-    """
-    if _selects_integration_marker(markexpr):
-        return True
 
+    ``markexpr`` is accepted but **does not override the paths**, and is therefore
+    no longer consulted. It used to short-circuit to ``True``, so
+    ``pytest tests/unit/ -m integration`` provisioned a container for a run that can
+    select nothing: the lane marker is derived from the path
+    (``plugin.pytest_collection_modifyitems``), so no test under a unit path carries
+    the integration marker. That cost tr-shared-lib's own unit lane ~90s per run and
+    failed outright whenever the Docker daemon was busy.
+
+    The parameter stays in the signature because the plugin passes it and it keeps
+    the regression explicit in the tests. A bare ``pytest -m integration`` still
+    provisions — not because of the marker, but because it names no paths.
+    """
     base = root or Path.cwd()
     paths = []
     for arg in args:
@@ -94,18 +103,10 @@ def run_needs_infrastructure(
         if candidate and (base / candidate).exists():
             paths.append(candidate)
 
-    if not paths:
-        return True
-
-    return {lane_for_path(p) for p in paths} != {"unit"}
-
-
-def _selects_integration_marker(markexpr: str) -> bool:
-    """``-m integration`` provisions even when the paths look unit-shaped."""
-    if not markexpr:
+    # Every path positively identified as unit — nothing else can be selected,
+    # whatever the marker expression says.
+    if paths and {lane_for_path(p) for p in paths} == {"unit"}:
         return False
-    lowered = markexpr.lower()
-    return any(
-        name in lowered and f"not {name}" not in lowered
-        for name in ("integration", "e2e", "migrations")
-    )
+
+    # Otherwise the paths are absent, mixed, or unclassified: provision.
+    return True
