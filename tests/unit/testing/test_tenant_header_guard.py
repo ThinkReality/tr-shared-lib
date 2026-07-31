@@ -68,9 +68,7 @@ class TestMatcherResistsRefactorEvasions:
         when its webhook ingestion resolves the tenant that exact way.
         """
         assert _hits('t = request.headers.get("X-Tenant-ID".lower())')
-        assert _hits(
-            "t = request.headers.get(HttpHeader.TENANT_ID.value.strip().lower())"
-        )
+        assert _hits("t = request.headers.get(HttpHeader.TENANT_ID.value.strip().lower())")
 
     def test_catches_a_headers_mapping_passed_as_a_parameter(self):
         """The real lead-management shape: resolution extracted into a helper."""
@@ -87,9 +85,7 @@ class TestMatcherResistsRefactorEvasions:
 
     def test_ignores_outbound_client_headers(self):
         """Building a headers dict to SEND asserts nothing about the caller."""
-        assert not _hits(
-            'await client.get(url, headers={"x-tenant-id": str(tenant_id)})'
-        )
+        assert not _hits('await client.get(url, headers={"x-tenant-id": str(tenant_id)})')
 
     def test_ignores_unrelated_headers(self):
         assert not _hits('t = request.headers.get("x-correlation-id")')
@@ -104,9 +100,7 @@ class TestAssertions:
         return root
 
     def test_reader_is_found_and_reported_relative(self, app_root):
-        (app_root / "api" / "handler.py").write_text(
-            't = request.headers.get("x-tenant-id")\n'
-        )
+        (app_root / "api" / "handler.py").write_text('t = request.headers.get("x-tenant-id")\n')
 
         assert find_raw_tenant_header_readers(app_root) == {"api/handler.py": [1]}
 
@@ -126,17 +120,13 @@ class TestAssertions:
         assert find_raw_tenant_header_readers(app_root) == {}
 
     def test_undocumented_reader_fails(self, app_root):
-        (app_root / "api" / "handler.py").write_text(
-            't = request.headers.get("x-tenant-id")\n'
-        )
+        (app_root / "api" / "handler.py").write_text('t = request.headers.get("x-tenant-id")\n')
 
         with pytest.raises(AssertionError, match="New raw X-Tenant-ID read"):
             assert_no_undocumented_raw_tenant_header_reads(app_root, {})
 
     def test_allowlisted_reader_passes(self, app_root):
-        (app_root / "api" / "handler.py").write_text(
-            't = request.headers.get("x-tenant-id")\n'
-        )
+        (app_root / "api" / "handler.py").write_text('t = request.headers.get("x-tenant-id")\n')
 
         assert_no_undocumented_raw_tenant_header_reads(
             app_root,
@@ -147,14 +137,10 @@ class TestAssertions:
         (app_root / "api" / "handler.py").write_text("t = 1\n")
 
         with pytest.raises(AssertionError, match="no longer read the header"):
-            assert_no_stale_exemptions(
-                app_root, {"api/handler.py": Exemption(reason="x" * 61)}
-            )
+            assert_no_stale_exemptions(app_root, {"api/handler.py": Exemption(reason="x" * 61)})
 
     def test_exemption_with_only_prose_fails(self, app_root):
-        (app_root / "api" / "handler.py").write_text(
-            't = request.headers.get("x-tenant-id")\n'
-        )
+        (app_root / "api" / "handler.py").write_text('t = request.headers.get("x-tenant-id")\n')
 
         with pytest.raises(AssertionError, match="rests on prose alone"):
             assert_exemptions_are_machine_verified(
@@ -162,13 +148,9 @@ class TestAssertions:
             )
 
     def test_exemption_fails_when_its_gating_symbol_disappears(self, app_root):
-        (app_root / "api" / "handler.py").write_text(
-            't = request.headers.get("x-tenant-id")\n'
-        )
+        (app_root / "api" / "handler.py").write_text('t = request.headers.get("x-tenant-id")\n')
 
-        with pytest.raises(
-            AssertionError, match="the gate its exemption depends on is gone"
-        ):
+        with pytest.raises(AssertionError, match="the gate its exemption depends on is gone"):
             assert_exemptions_are_machine_verified(
                 app_root,
                 {

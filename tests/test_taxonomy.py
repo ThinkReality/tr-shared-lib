@@ -3,9 +3,24 @@ import pytest
 from tr_shared.contracts.taxonomy import Feature
 
 EXPECTED = {
-    "auth", "lead", "deal", "contact", "property", "listing", "cms", "lms",
-    "task", "activity", "notification", "hr", "finance", "admin", "media",
-    "dld", "wam", "recruitment",
+    "auth",
+    "lead",
+    "deal",
+    "contact",
+    "property",
+    "listing",
+    "cms",
+    "lms",
+    "task",
+    "activity",
+    "notification",
+    "hr",
+    "finance",
+    "admin",
+    "media",
+    "dld",
+    "wam",
+    "recruitment",
 }
 
 

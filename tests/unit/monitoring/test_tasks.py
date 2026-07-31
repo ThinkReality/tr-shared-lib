@@ -1,8 +1,7 @@
 """Tests for monitoring Celery tasks (using direct function calls, no broker)."""
+
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from tr_shared.monitoring.tasks import (
     _batch_insert_records,
@@ -49,9 +48,7 @@ class TestGetSyncRedis:
     def test_calls_from_url_with_decode_responses(self):
         with patch("redis.Redis.from_url") as mock_from_url:
             _get_sync_redis("redis://localhost:6379/0")
-            mock_from_url.assert_called_once_with(
-                "redis://localhost:6379/0", decode_responses=True
-            )
+            mock_from_url.assert_called_once_with("redis://localhost:6379/0", decode_responses=True)
 
 
 class TestEnsurePartition:
@@ -84,10 +81,13 @@ class TestBatchInsertRecords:
         engine = MagicMock()
         conn = engine.begin.return_value.__enter__.return_value
         with patch("tr_shared.monitoring.tasks._helpers._ensure_partition"):
-            _batch_insert_records(engine, [
-                {"service_name": "s", "status_code": 200, "response_time_ms": 10},
-                {"service_name": "s", "status_code": 404, "response_time_ms": 5},
-            ])
+            _batch_insert_records(
+                engine,
+                [
+                    {"service_name": "s", "status_code": 200, "response_time_ms": 10},
+                    {"service_name": "s", "status_code": 404, "response_time_ms": 5},
+                ],
+            )
         assert conn.execute.call_count == 2
 
     def test_skips_bad_record_without_raising(self):
@@ -96,19 +96,23 @@ class TestBatchInsertRecords:
         conn.execute.side_effect = [Exception("insert failed"), None]
         with patch("tr_shared.monitoring.tasks._helpers._ensure_partition"):
             # Should not raise even when first insert fails
-            _batch_insert_records(engine, [
-                {"status_code": 200},
-                {"status_code": 404},
-            ])
+            _batch_insert_records(
+                engine,
+                [
+                    {"status_code": 200},
+                    {"status_code": 404},
+                ],
+            )
 
 
 class TestFlushMonitoringBuffer:
     def test_flushes_records_and_inserts(self):
-        with patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.buffer._get_sync_redis") as mock_redis_fn, \
-             patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync") as mock_flush, \
-             patch("tr_shared.monitoring.tasks.buffer._batch_insert_records") as mock_insert:
-
+        with (
+            patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.buffer._get_sync_redis") as mock_redis_fn,
+            patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync") as mock_flush,
+            patch("tr_shared.monitoring.tasks.buffer._batch_insert_records") as mock_insert,
+        ):
             mock_eng_fn.return_value = MagicMock()
             mock_redis_fn.return_value = MagicMock()
             mock_flush.side_effect = [
@@ -119,20 +123,22 @@ class TestFlushMonitoringBuffer:
             mock_insert.assert_called_once()
 
     def test_disposes_engine_after_flush(self):
-        with patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"), \
-             patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync", return_value=[]):
-
+        with (
+            patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"),
+            patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync", return_value=[]),
+        ):
             mock_engine = MagicMock()
             mock_eng_fn.return_value = mock_engine
             flush_monitoring_buffer("svc", "postgresql://...", "redis://...")
             mock_engine.dispose.assert_called_once()
 
     def test_handles_flush_error_gracefully(self):
-        with patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"), \
-             patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync") as mock_flush:
-
+        with (
+            patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"),
+            patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync") as mock_flush,
+        ):
             mock_engine = MagicMock()
             mock_eng_fn.return_value = mock_engine
             mock_flush.side_effect = Exception("flush error")
@@ -140,11 +146,12 @@ class TestFlushMonitoringBuffer:
             mock_engine.dispose.assert_called_once()
 
     def test_stops_loop_when_buffer_empty(self):
-        with patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"), \
-             patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync", return_value=[]) as mock_flush, \
-             patch("tr_shared.monitoring.tasks.buffer._batch_insert_records") as mock_insert:
-
+        with (
+            patch("tr_shared.monitoring.tasks.buffer._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.buffer._get_sync_redis"),
+            patch("tr_shared.monitoring.redis_buffer.flush_buffer_sync", return_value=[]),
+            patch("tr_shared.monitoring.tasks.buffer._batch_insert_records") as mock_insert,
+        ):
             mock_eng_fn.return_value = MagicMock()
             flush_monitoring_buffer("svc", "postgresql://...", "redis://...")
             mock_insert.assert_not_called()
@@ -186,9 +193,10 @@ class TestAggregateDailyMetrics:
 
 class TestCreateNextDayPartition:
     def test_creates_tomorrows_partition(self):
-        with patch("tr_shared.monitoring.tasks.maintenance._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.maintenance._ensure_partition") as mock_part:
-
+        with (
+            patch("tr_shared.monitoring.tasks.maintenance._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.maintenance._ensure_partition") as mock_part,
+        ):
             mock_eng_fn.return_value = MagicMock()
             create_next_day_partition("postgresql://...")
             mock_part.assert_called_once()
@@ -196,9 +204,10 @@ class TestCreateNextDayPartition:
             assert partition_date == date.today() + timedelta(days=1)
 
     def test_disposes_engine(self):
-        with patch("tr_shared.monitoring.tasks.maintenance._create_sync_engine") as mock_eng_fn, \
-             patch("tr_shared.monitoring.tasks.maintenance._ensure_partition"):
-
+        with (
+            patch("tr_shared.monitoring.tasks.maintenance._create_sync_engine") as mock_eng_fn,
+            patch("tr_shared.monitoring.tasks.maintenance._ensure_partition"),
+        ):
             mock_engine = MagicMock()
             mock_eng_fn.return_value = mock_engine
             create_next_day_partition("postgresql://...")

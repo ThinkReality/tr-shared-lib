@@ -50,11 +50,7 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
             return None
 
     def _build_key(self, tenant_id: str, idempotency_key: str) -> str:
-        parts = [
-            p
-            for p in (self._service_name, "idempotency", tenant_id, idempotency_key)
-            if p
-        ]
+        parts = [p for p in (self._service_name, "idempotency", tenant_id, idempotency_key) if p]
         return ":".join(parts)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -65,10 +61,9 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
         if not idempotency_key:
             return await call_next(request)
 
-        tenant_id = (
-            getattr(getattr(request, "state", None), "tenant_id", None)
-            or request.headers.get(HttpHeader.TENANT_ID.value, "global")
-        )
+        tenant_id = getattr(
+            getattr(request, "state", None), "tenant_id", None
+        ) or request.headers.get(HttpHeader.TENANT_ID.value, "global")
 
         redis = await self._get_redis()
         if redis is None:
@@ -77,13 +72,9 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
         cache_key = self._build_key(str(tenant_id), idempotency_key)
 
         try:
-            was_set = await redis.set(
-                cache_key, _PROCESSING_SENTINEL, nx=True, ex=self._ttl
-            )
+            was_set = await redis.set(cache_key, _PROCESSING_SENTINEL, nx=True, ex=self._ttl)
         except Exception:
-            logger.warning(
-                "Idempotency SET NX failed — processing normally", exc_info=True
-            )
+            logger.warning("Idempotency SET NX failed — processing normally", exc_info=True)
             return await call_next(request)
 
         # SET NX returns True if newly set, None if key already existed
@@ -118,9 +109,7 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
                 media_type="application/json",
             )
         except Exception:
-            logger.warning(
-                "Idempotency GET failed — returning conflict", exc_info=True
-            )
+            logger.warning("Idempotency GET failed — returning conflict", exc_info=True)
             return Response(
                 content=json.dumps(
                     {
@@ -163,9 +152,7 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
                 )
                 await redis.set(cache_key, cache_value, ex=self._ttl)
             except Exception:
-                logger.warning(
-                    "Idempotency: failed to cache response", exc_info=True
-                )
+                logger.warning("Idempotency: failed to cache response", exc_info=True)
         elif status_code >= 500:
             try:
                 await redis.delete(cache_key)

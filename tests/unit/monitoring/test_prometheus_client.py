@@ -1,8 +1,9 @@
 """Tests for PrometheusClient."""
+
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 import httpx
+import pytest
 
 from tr_shared.monitoring.prometheus_client import PrometheusClient
 
@@ -175,10 +176,12 @@ class TestGetServiceOverview:
 class TestGetAllServicesStatus:
     async def test_returns_service_list(self):
         c = _client()
-        payload = _success([
-            {"metric": {"job": "crm-backend"}, "value": [1234, "1"]},
-            {"metric": {"job": "tr-listing"}, "value": [1234, "0"]},
-        ])
+        payload = _success(
+            [
+                {"metric": {"job": "crm-backend"}, "value": [1234, "1"]},
+                {"metric": {"job": "tr-listing"}, "value": [1234, "0"]},
+            ]
+        )
         c._client.get = AsyncMock(return_value=_mock_response(payload))
 
         result = await c.get_all_services_status()
@@ -191,12 +194,14 @@ class TestGetAllServicesStatus:
 class TestGetTopEndpoints:
     async def test_returns_endpoint_list(self):
         c = _client()
-        payload = _success([
-            {
-                "metric": {"http_route": "/api/v1/test", "http_method": "GET"},
-                "value": [1234, "10.0"],
-            },
-        ])
+        payload = _success(
+            [
+                {
+                    "metric": {"http_route": "/api/v1/test", "http_method": "GET"},
+                    "value": [1234, "10.0"],
+                },
+            ]
+        )
         c._client.get = AsyncMock(return_value=_mock_response(payload))
 
         result = await c.get_top_endpoints("svc", limit=5)

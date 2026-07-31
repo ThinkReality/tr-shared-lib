@@ -141,13 +141,15 @@ class TestWebhookEndpointPost:
 
     def test_extracts_type_field_for_pf_envelope(self):
         """PF sends event type in 'type' field (base envelope format)."""
-        pf_body = json.dumps({
-            "id": "evt-uuid-001",
-            "type": "lead.created",
-            "timestamp": "2025-08-24T14:15:22Z",
-            "entity": {"id": "lead-123", "type": "lead"},
-            "payload": {"channel": "whatsapp"},
-        }).encode()
+        pf_body = json.dumps(
+            {
+                "id": "evt-uuid-001",
+                "type": "lead.created",
+                "timestamp": "2025-08-24T14:15:22Z",
+                "entity": {"id": "lead-123", "type": "lead"},
+                "payload": {"channel": "whatsapp"},
+            }
+        ).encode()
         dispatched = []
 
         async def handler(event: WebhookEvent) -> None:
@@ -317,12 +319,14 @@ class TestMetaHandshake:
 
         verifier = MetaWebhookVerifier(verify_token="my-token")
         app = _build_app(
-            configs=[ProviderConfig(
-                name="meta",
-                secret="app-secret",
-                event_id_fields=["id"],
-                event_type_fields=["object"],
-            )],
+            configs=[
+                ProviderConfig(
+                    name="meta",
+                    secret="app-secret",
+                    event_id_fields=["id"],
+                    event_type_fields=["object"],
+                )
+            ],
             verifiers={"meta": verifier},
         )
         client = TestClient(app)

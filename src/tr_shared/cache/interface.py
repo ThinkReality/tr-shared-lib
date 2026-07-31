@@ -56,9 +56,7 @@ class CacheInterface(ABC):
         ...
 
     @abstractmethod
-    async def set(
-        self, key: str, value: str, ttl: int | None = None, nx: bool = False
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl: int | None = None, nx: bool = False) -> bool:
         """Set key to value. Returns True on success."""
         ...
 
@@ -127,9 +125,7 @@ class CacheInterface(ABC):
         ...
 
     @abstractmethod
-    async def eval(
-        self, script: str, numkeys: int, *keys_and_args: str | int
-    ) -> Any:
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str | int) -> Any:
         """Execute a Lua script server-side."""
         ...
 

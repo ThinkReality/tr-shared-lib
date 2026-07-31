@@ -40,9 +40,7 @@ class LogProviderInterface(ABC):
     """Contract for log shipping providers (e.g. Loki, BetterStack)."""
 
     @abstractmethod
-    def create_handler(
-        self, service_name: str, labels: dict[str, str]
-    ) -> logging.Handler:
+    def create_handler(self, service_name: str, labels: dict[str, str]) -> logging.Handler:
         """Return a ``logging.Handler`` that ships logs to the backend.
 
         Args:

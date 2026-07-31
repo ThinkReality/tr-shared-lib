@@ -158,16 +158,12 @@ EXTERNALLY_PUBLISHABLE_SLUGS: Final[frozenset[str]] = frozenset(
 """Slugs that can be published/unpublished on an external portal API."""
 
 PORTAL_USER_ID_KEYS: Final[dict[str, str]] = {
-    p.slug.value: p.user_id_key
-    for p in PORTAL_REGISTRY.values()
-    if p.user_id_key is not None
+    p.slug.value: p.user_id_key for p in PORTAL_REGISTRY.values() if p.user_id_key is not None
 }
 """``slug -> portal_info[slug] agent-id key`` (PF ``public_profile_id``,
 Bayut/Dubizzle ``user_id``). The one place this mapping is defined."""
 
 PORTAL_PROVIDER_KEYS: Final[dict[str, str]] = {
-    p.slug.value: p.provider_key
-    for p in PORTAL_REGISTRY.values()
-    if p.is_connectable_platform
+    p.slug.value: p.provider_key for p in PORTAL_REGISTRY.values() if p.is_connectable_platform
 }
 """``slug -> webhook/provider routing key`` (Dubizzle routes under ``bayut``)."""

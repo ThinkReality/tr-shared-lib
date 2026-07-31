@@ -8,15 +8,26 @@ from tr_shared.events.payloads.task import TaskCreatedV1
 from tr_shared.events.producer import EventProducer
 
 _PAYLOAD = TaskCreatedV1(
-    task_id="t1", title="x", status="open", priority="high",
-    entity_type="lead", entity_id="e1", assigned_to="u1", action="created",
+    task_id="t1",
+    title="x",
+    status="open",
+    priority="high",
+    entity_type="lead",
+    entity_id="e1",
+    assigned_to="u1",
+    action="created",
 )
 
 
 def _envelope(data: dict) -> EventEnvelope:
     return EventEnvelope(
-        event_id="e", event_type="task.created", version="1.0", tenant_id="ten1",
-        timestamp="2026-01-01T00:00:00Z", source_service="task", actor_id=None,
+        event_id="e",
+        event_type="task.created",
+        version="1.0",
+        tenant_id="ten1",
+        timestamp="2026-01-01T00:00:00Z",
+        source_service="task",
+        actor_id=None,
         data=data,
     )
 
@@ -45,7 +56,11 @@ class _RecordingProducer:
 async def test_publish_event_serializes_typed_payload():
     prod = _RecordingProducer()
     evt_id = await publish_event(
-        prod, "task.created", _PAYLOAD, tenant_id="ten1", actor_id="a1",
+        prod,
+        "task.created",
+        _PAYLOAD,
+        tenant_id="ten1",
+        actor_id="a1",
     )
     assert evt_id == "evt-123"
     call = prod.calls[0]

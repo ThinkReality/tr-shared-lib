@@ -1,7 +1,6 @@
 """Tests for MonitoringProviderFactory."""
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 from tr_shared.monitoring.factory import (
     LogProvider,
@@ -36,11 +35,13 @@ class TestCreateMetricsProvider:
         from tr_shared.monitoring.adapters.prometheus_metrics import (
             PrometheusMetricsAdapter,
         )
+
         result = MonitoringProviderFactory.create_metrics_provider("prometheus")
         assert isinstance(result, PrometheusMetricsAdapter)
 
     def test_noop_returns_noop_adapter(self):
         from tr_shared.monitoring.adapters.noop import NoopMetricsAdapter
+
         result = MonitoringProviderFactory.create_metrics_provider("noop")
         assert isinstance(result, NoopMetricsAdapter)
 
@@ -50,6 +51,7 @@ class TestCreateMetricsProvider:
 
     def test_case_insensitive(self):
         from tr_shared.monitoring.adapters.noop import NoopMetricsAdapter
+
         result = MonitoringProviderFactory.create_metrics_provider("NOOP")
         assert isinstance(result, NoopMetricsAdapter)
 
@@ -57,11 +59,13 @@ class TestCreateMetricsProvider:
 class TestCreateLogProvider:
     def test_noop_returns_noop_log_adapter(self):
         from tr_shared.monitoring.adapters.noop import NoopLogAdapter
+
         result = MonitoringProviderFactory.create_log_provider("noop")
         assert isinstance(result, NoopLogAdapter)
 
     def test_loki_returns_loki_adapter(self):
         from tr_shared.monitoring.adapters.loki_log import LokiLogAdapter
+
         result = MonitoringProviderFactory.create_log_provider(
             "loki", loki_url="http://loki:3100/loki/api/v1/push"
         )
@@ -73,6 +77,7 @@ class TestCreateLogProvider:
 
     def test_noop_case_insensitive(self):
         from tr_shared.monitoring.adapters.noop import NoopLogAdapter
+
         result = MonitoringProviderFactory.create_log_provider("NOOP")
         assert isinstance(result, NoopLogAdapter)
 
@@ -80,11 +85,13 @@ class TestCreateLogProvider:
 class TestCreateTraceProvider:
     def test_noop_returns_noop_trace_adapter(self):
         from tr_shared.monitoring.adapters.noop import NoopTraceAdapter
+
         result = MonitoringProviderFactory.create_trace_provider("noop")
         assert isinstance(result, NoopTraceAdapter)
 
     def test_otlp_returns_otlp_adapter(self):
         from tr_shared.monitoring.adapters.otlp_trace import OtlpTraceAdapter
+
         result = MonitoringProviderFactory.create_trace_provider(
             "otlp", otlp_endpoint="http://tempo:4317"
         )

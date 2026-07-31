@@ -1,13 +1,12 @@
 """Tests for the central RateLimiter class."""
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.schemas import (
-    Algorithm,
     FailMode,
     RateLimitConfig,
     RateLimitInfo,
@@ -18,15 +17,21 @@ from tr_shared.rate_limiter.schemas import (
 
 def _allowed_result(limit: int = 100, remaining: int = 99) -> RateLimitResult:
     return RateLimitResult(
-        allowed=True, limit=limit, remaining=remaining,
-        reset_at=int(time.time()) + 60, retry_after=0,
+        allowed=True,
+        limit=limit,
+        remaining=remaining,
+        reset_at=int(time.time()) + 60,
+        retry_after=0,
     )
 
 
 def _blocked_result(limit: int = 100) -> RateLimitResult:
     return RateLimitResult(
-        allowed=False, limit=limit, remaining=0,
-        reset_at=int(time.time()) + 30, retry_after=30,
+        allowed=False,
+        limit=limit,
+        remaining=0,
+        reset_at=int(time.time()) + 30,
+        retry_after=30,
     )
 
 
@@ -116,8 +121,8 @@ class TestCheck:
         limiter, mock_redis = limiter_with_mock_redis
         # First window allowed, second blocked
         mock_redis.eval.side_effect = [
-            [1, 0, 59],    # minute window: allowed
-            [1001, 1, 30], # hour window: blocked
+            [1, 0, 59],  # minute window: allowed
+            [1001, 1, 30],  # hour window: blocked
         ]
         config = RateLimitConfig(
             windows=[

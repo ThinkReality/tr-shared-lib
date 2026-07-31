@@ -72,16 +72,10 @@ def dedup_with_table_lock(
     op.execute(f"LOCK TABLE {qtable} IN SHARE ROW EXCLUSIVE MODE")
 
     if strategy == "hard_delete":
-        action_sql = (
-            f"DELETE FROM {qtable} t "
-            "USING ranked "
-            "WHERE t.id = ranked.id AND ranked.rn > 1"
-        )
+        action_sql = f"DELETE FROM {qtable} t USING ranked WHERE t.id = ranked.id AND ranked.rn > 1"
     elif strategy == "soft_delete":
         cols = soft_delete_columns or _DEFAULT_SOFT_DELETE_COLUMNS
-        set_clause = ", ".join(
-            f"{_quote(col)} = {expr}" for col, expr in cols.items()
-        )
+        set_clause = ", ".join(f"{_quote(col)} = {expr}" for col, expr in cols.items())
         action_sql = (
             f"UPDATE {qtable} t SET {set_clause} "
             "FROM ranked "
@@ -89,8 +83,7 @@ def dedup_with_table_lock(
         )
     else:
         raise ValueError(
-            f"Unknown dedup strategy: {strategy!r} "
-            "(expected 'soft_delete' or 'hard_delete')",
+            f"Unknown dedup strategy: {strategy!r} (expected 'soft_delete' or 'hard_delete')",
         )
 
     op.execute(

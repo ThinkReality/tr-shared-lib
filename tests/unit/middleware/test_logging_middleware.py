@@ -1,9 +1,7 @@
 """Tests for LoggingMiddleware."""
 
-import logging
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -33,11 +31,13 @@ def _build_app(excluded_paths=None, **kwargs) -> FastAPI:
     @app.get("/api/client-error")
     def client_error():
         from fastapi import Response
+
         return Response(status_code=400)
 
     @app.get("/api/server-error")
     def server_error():
         from fastapi import Response
+
         return Response(status_code=500)
 
     return app

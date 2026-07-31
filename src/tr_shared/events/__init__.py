@@ -14,10 +14,6 @@ from tr_shared.events.dead_letter import (
 )
 from tr_shared.events.durable_publisher import DurableEventPublisher
 from tr_shared.events.envelope import EventEnvelope
-from tr_shared.events.exceptions import (
-    EventPublishError,
-    EventPublishTransportError,
-)
 from tr_shared.events.event_types import (
     ActivityEvents,
     AdminEvents,
@@ -33,18 +29,22 @@ from tr_shared.events.event_types import (
     TaskEvents,
     WAMEvents,
 )
+from tr_shared.events.exceptions import (
+    EventPublishError,
+    EventPublishTransportError,
+)
 from tr_shared.events.helpers import (
     make_event_producer,
     parse_payload,
     publish_event,
 )
-from tr_shared.events.payloads import EventPayload
-from tr_shared.events.pii import hash_pii
 from tr_shared.events.outbox_drainer import (
     DEFAULT_DRAINER_INTERVAL_SECONDS,
     create_outbox_drainer_task,
     drain_outbox,
 )
+from tr_shared.events.payloads import EventPayload
+from tr_shared.events.pii import hash_pii
 from tr_shared.events.producer import EventProducer
 from tr_shared.events.retry_policy import RetryPolicy
 from tr_shared.events.retry_state import RetryStateStore

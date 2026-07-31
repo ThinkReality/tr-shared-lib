@@ -116,7 +116,8 @@ def aggregate_hourly_metrics(monitoring_db_url: str) -> None:
 
         logger.info(
             "Aggregated hourly metrics for %s hour %d",
-            target_date, target_hour,
+            target_date,
+            target_hour,
         )
     except Exception as exc:
         logger.error("aggregate_hourly_metrics failed: %s", exc)
@@ -128,6 +129,7 @@ def aggregate_hourly_metrics(monitoring_db_url: str) -> None:
 def aggregate_daily_metrics(monitoring_db_url: str) -> None:
     """Aggregate metrics_hourly into metrics_daily for the previous day. Runs daily at 01:00."""
     from datetime import date
+
     from sqlalchemy import text
 
     engine = _create_sync_engine(monitoring_db_url)

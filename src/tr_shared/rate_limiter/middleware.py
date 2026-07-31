@@ -40,9 +40,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.config = config or RateLimitConfig()
         self.excluded_paths = _DEFAULT_EXCLUDED | (excluded_paths or frozenset())
         self.whitelist_ips = set(whitelist_ips) if whitelist_ips else set()
-        self.identifier_extractor = (
-            identifier_extractor or default_identifier_extractor
-        )
+        self.identifier_extractor = identifier_extractor or default_identifier_extractor
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
@@ -68,9 +66,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         info = await self.limiter.check(key=key, config=self.config)
 
         if info.is_blocked:
-            retry_after = max(
-                (r.retry_after for r in info.results if not r.allowed), default=60
-            )
+            retry_after = max((r.retry_after for r in info.results if not r.allowed), default=60)
             tightest = next((r for r in info.results if not r.allowed), info.results[0])
 
             logger.warning(
@@ -104,9 +100,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if info.results:
             tightest = min(info.results, key=lambda r: r.remaining)
             response.headers[HttpHeader.RATE_LIMIT_LIMIT.value] = str(tightest.limit)
-            response.headers[HttpHeader.RATE_LIMIT_REMAINING.value] = str(
-                tightest.remaining
-            )
+            response.headers[HttpHeader.RATE_LIMIT_REMAINING.value] = str(tightest.remaining)
             response.headers[HttpHeader.RATE_LIMIT_RESET.value] = str(tightest.reset_at)
 
         return response

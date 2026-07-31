@@ -425,7 +425,15 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
                 "POSTGRES_DB": _POSTGRES_SUPERUSER,
             },
             command=None,
-            ready_probe=["psql", "-U", _POSTGRES_SUPERUSER, "-d", _POSTGRES_SUPERUSER, "-tAc", "SELECT 1"],
+            ready_probe=[
+                "psql",
+                "-U",
+                _POSTGRES_SUPERUSER,
+                "-d",
+                _POSTGRES_SUPERUSER,
+                "-tAc",
+                "SELECT 1",
+            ],
         )
         container = client.containers.get(pg_name)
         if not _database_exists(container, template):
@@ -448,9 +456,7 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
             ready_probe=["redis-cli", "ping"],
         )
 
-    cache_url, broker_url, result_url = redis_triple(
-        f"redis://127.0.0.1:{redis_port}", worker_id
-    )
+    cache_url, broker_url, result_url = redis_triple(f"redis://127.0.0.1:{redis_port}", worker_id)
     return Stack(
         postgres_dsn=_dsn(pg_port, run_db),
         redis_url=cache_url,

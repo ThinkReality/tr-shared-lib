@@ -11,9 +11,7 @@ from tr_shared.webhooks.providers.bayut import BayutMD5Verifier
 async def test_listings_and_leads_routes() -> None:
     stub = BayutStub().listings([{"id": "L1"}]).leads([{"id": "LD1"}])
 
-    async with httpx.AsyncClient(
-        transport=stub.build(), base_url="https://example.test"
-    ) as client:
+    async with httpx.AsyncClient(transport=stub.build(), base_url="https://example.test") as client:
         listings_resp = await client.get("/listings")
         leads_resp = await client.get("/leads")
 

@@ -250,7 +250,10 @@ def test_finance_invoice_event():
         "party_name": "ACME",
         "notification_recipient_id": "u1",
     }
-    assert parse_payload(_env("finance.invoice.created", data), FinanceInvoiceEventV1).invoice_number == "INV-1"
+    assert (
+        parse_payload(_env("finance.invoice.created", data), FinanceInvoiceEventV1).invoice_number
+        == "INV-1"
+    )
 
 
 def test_finance_card_imported_and_matched():

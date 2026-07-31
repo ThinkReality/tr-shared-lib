@@ -9,6 +9,7 @@ from tr_shared.cache.exceptions import CacheConnectionError
 
 try:
     from tr_shared.cache.adapters.upstash import UpstashAdapter as _UpstashAdapter
+
     _UPSTASH_AVAILABLE = True
 except ImportError:
     _UpstashAdapter = None  # type: ignore[assignment]

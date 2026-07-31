@@ -30,9 +30,7 @@ async def get_gateway_tenant_id(request: Request) -> UUID:
     to sign (no JWT and no valid site key).
     """
     identity = getattr(request.state, "identity", None)
-    tenant_id: UUID | None = (
-        getattr(identity, "tenant_id", None) if identity is not None else None
-    )
+    tenant_id: UUID | None = getattr(identity, "tenant_id", None) if identity is not None else None
     if tenant_id is None:
         logger.warning("gateway_tenant_missing", path=request.url.path)
         raise AuthenticationError("Request carries no verified tenant identity")
@@ -46,7 +44,5 @@ async def get_gateway_site_id(request: Request) -> UUID | None:
     an authenticated CRM call, and only the former has a site.
     """
     identity = getattr(request.state, "identity", None)
-    site_id: UUID | None = (
-        getattr(identity, "site_id", None) if identity is not None else None
-    )
+    site_id: UUID | None = getattr(identity, "site_id", None) if identity is not None else None
     return site_id

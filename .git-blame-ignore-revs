@@ -1,0 +1,11 @@
+# Revisions to skip in `git blame` — bulk mechanical reformats only.
+#
+# Enable locally (once per clone):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only add a commit here if it changed NO behaviour. A commit listed here
+# becomes invisible in blame, so a behavioural change hidden in one is a
+# change nobody can trace back to its author.
+
+# ruff adoption: `ruff check --fix` (63) + `ruff format` (127 files).
+485a1281bb4658a8744b06adfca0a458d5a7fa5c

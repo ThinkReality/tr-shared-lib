@@ -1,9 +1,13 @@
 # Runs on `git push` only. Setup: uv run pre-commit install --hook-type pre-push
 # Hooks call `uv run` to match uv.lock-pinned versions, same as CI (.github/workflows/ci.yml).
-# Mirrors the CI gates exactly. NOTE: tr-shared-lib CI gates only the lockfile + a mypy
-# baseline ratchet (no ruff gate upstream), so this config omits ruff hooks to avoid
-# blocking pushes CI accepts. The uv-lock-check hook guards the self-version bump that
+# Mirrors the CI gates exactly: ruff check + ruff format + the mypy baseline ratchet,
+# plus the lockfile guard. The uv-lock-check hook guards the self-version bump that
 # broke CI before (version bumped without `uv lock` → `uv sync --locked` fails).
+#
+# The ruff hooks were previously omitted because tr-shared-lib had no ruff gate
+# upstream — it was the one repo in the fleet that never adopted ruff, despite the
+# root CLAUDE.md listing it in the universal stack. Both now exist, so the note that
+# used to explain their absence is gone with them.
 default_install_hook_types: [pre-push]
 default_stages: [pre-push]
 
@@ -15,6 +19,21 @@ repos:
         entry: uv lock --locked
         language: system
         files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      - id: ruff-check
+        name: ruff check (lint)
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # Separate from check on purpose — `ruff check` cannot see layout drift.
+      - id: ruff-format
+        name: ruff format --check (layout)
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
         pass_filenames: false
 
       # Baseline ratchet: fails only on NEW errors vs mypy-baseline.txt (matches CI).

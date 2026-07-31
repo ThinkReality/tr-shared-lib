@@ -34,9 +34,7 @@ async def test_happy_path_returns_token_and_expires_in() -> None:
         return httpx.Response(200, json={"accessToken": "tk-abc", "expiresIn": 3600})
 
     async with _make_client(httpx.MockTransport(handler)) as client:
-        token, expires_in = await fetch_pf_access_token(
-            "my-key", "my-secret", http_client=client
-        )
+        token, expires_in = await fetch_pf_access_token("my-key", "my-secret", http_client=client)
 
     assert token == "tk-abc"
     assert expires_in == 3600

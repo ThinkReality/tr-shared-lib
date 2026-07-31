@@ -1,4 +1,5 @@
 """Tests for no-op monitoring adapters."""
+
 import logging
 
 from tr_shared.monitoring.adapters.noop import (

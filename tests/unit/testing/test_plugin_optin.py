@@ -111,9 +111,7 @@ class TestActiveAfterOptIn:
         assert env["ENVIRONMENT"] == "test"
         assert env["DATABASE_URL"] is not None
 
-    def test_unit_lane_gets_the_poison_dsn_and_never_calls_docker(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unit_lane_gets_the_poison_dsn_and_never_calls_docker(self, tmp_path: Path) -> None:
         """A unit run must not provision — and must fail loudly if it connects."""
         from tr_shared.testing.lanes import POISON_DATABASE_URL, POISON_REDIS_URL
 
@@ -181,9 +179,7 @@ class TestRemoteDsnIsRefused:
             },
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert _recorded(project)["DATABASE_URL"] == (
-            f"postgresql+asyncpg://u:p@{host}:5432/db"
-        )
+        assert _recorded(project)["DATABASE_URL"] == (f"postgresql+asyncpg://u:p@{host}:5432/db")
 
 
 # --------------------------------------------------------------------------- #
@@ -211,7 +207,9 @@ def _override_project(tmp_path: Path, *, migrate_ok: bool = True) -> Path:
     """
     script = tmp_path / "fake_migrate.sh"
     body = 'printf "%s" "$DATABASE_URL" > "$(dirname "$0")/migrated.txt"\n'
-    script.write_text("#!/bin/sh\n" + body + ("exit 0\n" if migrate_ok else "echo 'boom' >&2\nexit 1\n"))
+    script.write_text(
+        "#!/bin/sh\n" + body + ("exit 0\n" if migrate_ok else "echo 'boom' >&2\nexit 1\n")
+    )
     script.chmod(0o755)
 
     (tmp_path / "pyproject.toml").write_text(
@@ -296,9 +294,7 @@ class TestOverrideBranchRedisIsolation:
             "redis://127.0.0.1:6379/2",
         ]
 
-    def test_an_index_on_the_supplied_url_is_replaced_not_appended(
-        self, tmp_path: Path
-    ) -> None:
+    def test_an_index_on_the_supplied_url_is_replaced_not_appended(self, tmp_path: Path) -> None:
         """A CI runner naming `redis://host:6379/0` is naming a server, not an index."""
         project = _override_project(tmp_path)
         result = _run_override(

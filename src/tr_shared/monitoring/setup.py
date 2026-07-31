@@ -57,9 +57,7 @@ def setup_monitoring(
         redis_url: Required when *enable_persistence* is True.
         loki_url: When set, a log handler is attached to the root logger.
     """
-    metrics_adapter = MonitoringProviderFactory.create_metrics_provider(
-        provider=metrics_provider
-    )
+    metrics_adapter = MonitoringProviderFactory.create_metrics_provider(provider=metrics_provider)
     reader = metrics_adapter.create_metric_reader()
     readers = [reader] if reader else []
 

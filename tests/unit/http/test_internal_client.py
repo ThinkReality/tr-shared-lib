@@ -132,7 +132,8 @@ class TestErrorTranslation:
     async def test_httpx_request_error_maps_to_unavailable(self):
         http = _make_http()
         http.get.side_effect = httpx.RequestError(
-            "network", request=httpx.Request("GET", "http://svc"),
+            "network",
+            request=httpx.Request("GET", "http://svc"),
         )
         client = _Client(http)
         with pytest.raises(ServiceUnavailableError):
@@ -141,7 +142,8 @@ class TestErrorTranslation:
     async def test_error_detail_propagates(self):
         http = _make_http()
         http.get.side_effect = _status_error(
-            400, body={"error": "Validation failed", "detail": "bad x", "code": "V_001"},
+            400,
+            body={"error": "Validation failed", "detail": "bad x", "code": "V_001"},
         )
         client = _Client(http)
         with pytest.raises(ValidationError) as ei:

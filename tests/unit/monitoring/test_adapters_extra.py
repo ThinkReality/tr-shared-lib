@@ -1,10 +1,11 @@
 """Tests for PrometheusMetricsAdapter and OtlpTraceAdapter."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tr_shared.monitoring.adapters.prometheus_metrics import PrometheusMetricsAdapter
 from tr_shared.monitoring.adapters.otlp_trace import OtlpTraceAdapter
+from tr_shared.monitoring.adapters.prometheus_metrics import PrometheusMetricsAdapter
 
 
 class TestPrometheusMetricsAdapter:
@@ -23,9 +24,7 @@ class TestPrometheusMetricsAdapter:
 
     def test_start_server_calls_underlying_helper_for_positive_port(self):
         adapter = PrometheusMetricsAdapter()
-        with patch(
-            "tr_shared.monitoring.prometheus_endpoint.start_http_server"
-        ) as mock_start:
+        with patch("tr_shared.monitoring.prometheus_endpoint.start_http_server") as mock_start:
             mock_start.return_value = MagicMock()
             adapter.start_server(port=9090, service_name="svc")
             mock_start.assert_called_once()

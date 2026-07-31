@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 from sqlalchemy import text
 
-
 UNDELIVERED_EVENTS_COLUMNS: str = """
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_type TEXT NOT NULL,
@@ -125,8 +124,7 @@ def bootstrap_schema_and_version_table(
         # constraints, sequences, triggers, RLS, and privileges.
         connection.execute(
             text(
-                f'ALTER TABLE "{legacy_schema}"."{version_table}" '
-                f'SET SCHEMA "{schema}"',
+                f'ALTER TABLE "{legacy_schema}"."{version_table}" SET SCHEMA "{schema}"',
             ),
         )
         location = "target"

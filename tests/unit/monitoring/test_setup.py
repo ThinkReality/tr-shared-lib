@@ -1,8 +1,8 @@
 """Tests for setup_monitoring — uses mocks to avoid real OTel setup."""
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 from fastapi import FastAPI
-from unittest.mock import MagicMock, patch, call
 
 
 class TestSetupMonitoring:
@@ -13,11 +13,12 @@ class TestSetupMonitoring:
         from tr_shared.monitoring.setup import setup_monitoring
 
         app = self._make_app()
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments") as mock_instruments:
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments") as mock_instruments,
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = MagicMock()
             mock_adapter.start_server = MagicMock()
@@ -28,6 +29,7 @@ class TestSetupMonitoring:
                 setup_monitoring(app, "test-svc", prometheus_port=0)
 
             from tr_shared.monitoring.middleware import MetricsMiddleware
+
             middleware_types = [m.cls for m in app.user_middleware]
             assert MetricsMiddleware in middleware_types
 
@@ -35,11 +37,12 @@ class TestSetupMonitoring:
         app = self._make_app()
         from tr_shared.monitoring.setup import setup_monitoring
 
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()):
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()),
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = None
             mock_adapter.start_server = MagicMock()
@@ -52,12 +55,13 @@ class TestSetupMonitoring:
         app = self._make_app()
         from tr_shared.monitoring.setup import setup_monitoring
 
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()), \
-             patch("tr_shared.monitoring.setup.setup_tracing") as mock_tracing:
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()),
+            patch("tr_shared.monitoring.setup.setup_tracing") as mock_tracing,
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = None
             mock_adapter.start_server = MagicMock()
@@ -70,12 +74,13 @@ class TestSetupMonitoring:
         app = self._make_app()
         from tr_shared.monitoring.setup import setup_monitoring
 
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()), \
-             patch("tr_shared.monitoring.setup.setup_tracing") as mock_tracing:
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()),
+            patch("tr_shared.monitoring.setup.setup_tracing") as mock_tracing,
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = None
             mock_adapter.start_server = MagicMock()
@@ -84,8 +89,11 @@ class TestSetupMonitoring:
             mock_factory.create_trace_provider.return_value = mock_trace_adapter
 
             setup_monitoring(
-                app, "test-svc", prometheus_port=0,
-                enable_tracing=True, otlp_endpoint="http://tempo:4317"
+                app,
+                "test-svc",
+                prometheus_port=0,
+                enable_tracing=True,
+                otlp_endpoint="http://tempo:4317",
             )
             mock_tracing.assert_called_once()
 
@@ -93,11 +101,12 @@ class TestSetupMonitoring:
         app = self._make_app()
         from tr_shared.monitoring.setup import setup_monitoring
 
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()):
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()),
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = None
             mock_adapter.start_server = MagicMock()
@@ -110,12 +119,13 @@ class TestSetupMonitoring:
         app = self._make_app()
         from tr_shared.monitoring.setup import setup_monitoring
 
-        with patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory, \
-             patch("tr_shared.monitoring.setup.MeterProvider"), \
-             patch("tr_shared.monitoring.setup.metrics"), \
-             patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()), \
-             patch("logging.getLogger"):
-
+        with (
+            patch("tr_shared.monitoring.setup.MonitoringProviderFactory") as mock_factory,
+            patch("tr_shared.monitoring.setup.MeterProvider"),
+            patch("tr_shared.monitoring.setup.metrics"),
+            patch("tr_shared.monitoring.setup.create_instruments", return_value=MagicMock()),
+            patch("logging.getLogger"),
+        ):
             mock_adapter = MagicMock()
             mock_adapter.create_metric_reader.return_value = None
             mock_adapter.start_server = MagicMock()
@@ -126,7 +136,6 @@ class TestSetupMonitoring:
             mock_factory.create_log_provider.return_value = mock_log_adapter
 
             setup_monitoring(
-                app, "test-svc", prometheus_port=0,
-                loki_url="http://loki:3100/loki/api/v1/push"
+                app, "test-svc", prometheus_port=0, loki_url="http://loki:3100/loki/api/v1/push"
             )
             mock_factory.create_log_provider.assert_called_once()

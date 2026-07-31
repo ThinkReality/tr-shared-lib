@@ -3,14 +3,12 @@
 import time
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.middleware import RateLimitMiddleware
 from tr_shared.rate_limiter.schemas import (
-    FailMode,
     RateLimitConfig,
     RateLimitInfo,
     RateLimitResult,
@@ -22,8 +20,11 @@ def _allowed_info(limit: int = 100, remaining: int = 99) -> RateLimitInfo:
     return RateLimitInfo(
         results=[
             RateLimitResult(
-                allowed=True, limit=limit, remaining=remaining,
-                reset_at=int(time.time()) + 60, retry_after=0,
+                allowed=True,
+                limit=limit,
+                remaining=remaining,
+                reset_at=int(time.time()) + 60,
+                retry_after=0,
             )
         ],
         is_blocked=False,
@@ -34,8 +35,11 @@ def _blocked_info(limit: int = 100, retry_after: int = 30) -> RateLimitInfo:
     return RateLimitInfo(
         results=[
             RateLimitResult(
-                allowed=False, limit=limit, remaining=0,
-                reset_at=int(time.time()) + retry_after, retry_after=retry_after,
+                allowed=False,
+                limit=limit,
+                remaining=0,
+                reset_at=int(time.time()) + retry_after,
+                retry_after=retry_after,
             )
         ],
         is_blocked=True,

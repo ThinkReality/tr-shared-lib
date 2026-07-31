@@ -415,10 +415,7 @@ def assert_no_env_mutation_in_conftest(
     fixtures legitimately retarget ``DATABASE_URL`` mid-session and belong in the
     allowlist with ``requires_symbols=("_roundtrip",)``.
     """
-    found_conftests = {
-        str(p.relative_to(tests_root)): p
-        for p in tests_root.rglob("conftest.py")
-    }
+    found_conftests = {str(p.relative_to(tests_root)): p for p in tests_root.rglob("conftest.py")}
     violations = {}
     for rel, path in found_conftests.items():
         hits = detect_env_mutation(path.read_text(encoding="utf-8-sig"))
@@ -616,9 +613,7 @@ def detect_environment_vocabulary(source: str) -> list[int]:
                 in_case = False
             elif (match := _CASE_PATTERN.match(code)) is not None:
                 patterns = (p.strip() for p in match.group("pats").split("|"))
-                if any(
-                    p and p != "*" and p not in _CANONICAL_ENVIRONMENTS for p in patterns
-                ):
+                if any(p and p != "*" and p not in _CANONICAL_ENVIRONMENTS for p in patterns):
                     hits.append(number)
             continue
 

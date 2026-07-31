@@ -13,10 +13,10 @@ CI provides an ephemeral ``redis:7-alpine`` service and sets the same env.
 import json
 import os
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 import redis.asyncio as redis
-from unittest.mock import AsyncMock
 
 from tr_shared.events.consumer import EventConsumer
 from tr_shared.events.dead_letter import DeadLetterHandler, dead_letter_stream_name
@@ -97,13 +97,13 @@ class TestPelRetryRealRedis:
         consumer.register_handler("user.created", handler)
         await real_redis.xadd(stream, _envelope())
 
-        await _read_and_process(consumer, real_redis, stream)   # attempt 1 → PEL
-        claimed = await consumer._claim_once()                  # attempt 2 → ok
+        await _read_and_process(consumer, real_redis, stream)  # attempt 1 → PEL
+        claimed = await consumer._claim_once()  # attempt 2 → ok
 
         assert claimed == 1
         assert handler.await_count == 2
         assert (await real_redis.xpending(stream, GROUP))["pending"] == 0
-        assert await real_redis.xlen(stream) == 1               # no XADD storm
+        assert await real_redis.xlen(stream) == 1  # no XADD storm
 
     async def test_crash_orphan_recovered_from_dead_consumer(self, real_redis, stream):
         consumer = await _consumer(real_redis, stream)

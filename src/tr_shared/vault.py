@@ -64,11 +64,7 @@ async def resolve_vault_secrets(
 
         try:
             result = await db_session.execute(
-                text(
-                    "SELECT decrypted_secret "
-                    "FROM vault.decrypted_secrets "
-                    "WHERE id = :secret_id"
-                ),
+                text("SELECT decrypted_secret FROM vault.decrypted_secrets WHERE id = :secret_id"),
                 {"secret_id": str(uuid_obj)},
             )
             row = result.fetchone()
@@ -83,8 +79,7 @@ async def resolve_vault_secrets(
 
         if not row or not row[0]:
             logger.warning(
-                "Vault secret not found for UUID %s (field %s) — "
-                "keeping plain env var value",
+                "Vault secret not found for UUID %s (field %s) — keeping plain env var value",
                 vault_uuid,
                 field_name,
             )

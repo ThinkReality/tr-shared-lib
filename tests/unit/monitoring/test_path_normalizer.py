@@ -1,7 +1,5 @@
 """Tests for normalize_path — pure function, no mocking needed."""
 
-import pytest
-
 from tr_shared.monitoring.path_normalizer import normalize_path
 
 

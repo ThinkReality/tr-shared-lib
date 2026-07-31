@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from tr_shared.cache.helpers import (
     build_cache_key,
     build_entity_cache_key,
@@ -87,10 +85,12 @@ class TestInvalidatePattern:
 
     async def test_handles_multiple_scan_pages(self):
         cache = MagicMock()
-        cache.scan = AsyncMock(side_effect=[
-            (10, ["key:1"]),   # page 1, cursor != 0
-            (0, ["key:2"]),    # page 2, done
-        ])
+        cache.scan = AsyncMock(
+            side_effect=[
+                (10, ["key:1"]),  # page 1, cursor != 0
+                (0, ["key:2"]),  # page 2, done
+            ]
+        )
         cache.delete = AsyncMock(return_value=1)
         count = await invalidate_pattern(cache, "key:*")
         assert count == 2

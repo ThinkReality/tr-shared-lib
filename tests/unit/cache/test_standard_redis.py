@@ -2,8 +2,8 @@
 
 import pytest
 
-from tr_shared.cache.adapters.standard_redis import StandardPipeline, StandardRedisAdapter
-from tr_shared.cache.exceptions import CacheConnectionError, CacheOperationError
+from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
+from tr_shared.cache.exceptions import CacheConnectionError
 
 
 @pytest.fixture
@@ -196,6 +196,7 @@ class TestPipeline:
 class TestContextManager:
     async def test_context_manager_closes_on_exit(self, async_fake_redis):
         from unittest.mock import AsyncMock, patch
+
         a = StandardRedisAdapter(url="redis://localhost:6379/0")
         with patch.object(a, "initialize", new=AsyncMock(return_value=True)):
             with patch.object(a, "close", new=AsyncMock()) as mock_close:

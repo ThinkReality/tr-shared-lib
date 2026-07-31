@@ -45,7 +45,13 @@ def test_watcher_added_and_co_assigned_extras():
 
 
 def test_nullable_entity_fields():
-    data = {**BASE, "action": "created", "entity_type": None, "entity_id": None, "assigned_to": None}
+    data = {
+        **BASE,
+        "action": "created",
+        "entity_type": None,
+        "entity_id": None,
+        "assigned_to": None,
+    }
     assert TaskCreatedV1(**data).entity_id is None
 
 

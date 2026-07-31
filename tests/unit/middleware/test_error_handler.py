@@ -1,10 +1,10 @@
 """Tests for GlobalErrorHandlerMiddleware."""
 
-import pytest
+from unittest.mock import AsyncMock, patch
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 
 from tr_shared.middleware.error_handler import (
     GlobalErrorHandlerMiddleware,
@@ -34,7 +34,9 @@ def _build_app(raise_exc=None, status_code=200, **middleware_kwargs) -> FastAPI:
     def server_error_with_body():
         return JSONResponse(
             status_code=503,
-            content={"error": {"message": "downstream unavailable", "code": "UPSTREAM_UNAVAILABLE"}},
+            content={
+                "error": {"message": "downstream unavailable", "code": "UPSTREAM_UNAVAILABLE"}
+            },
         )
 
     return app
@@ -121,9 +123,7 @@ class TestSlackAlerts:
 
     async def test_slack_failure_does_not_reraise(self):
         """If Slack call fails, the error response is still returned."""
-        with patch(
-            "tr_shared.middleware.error_handler._get_slack_client"
-        ) as mock_client_fn:
+        with patch("tr_shared.middleware.error_handler._get_slack_client") as mock_client_fn:
             mock_http = AsyncMock()
             mock_http.post = AsyncMock(side_effect=Exception("Slack down"))
             mock_client_fn.return_value = mock_http
@@ -188,7 +188,8 @@ class TestQueryStringInContext:
             return JSONResponse(status_code=503, content={"error": "fail"})
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -207,7 +208,8 @@ class TestQueryStringInContext:
             return JSONResponse(status_code=500, content={"error": "fail"})
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -230,7 +232,8 @@ class TestTimestampInContext:
             return JSONResponse(status_code=500, content={})
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -252,7 +255,8 @@ class TestHostInContext:
             return JSONResponse(status_code=500, content={})
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -278,9 +282,7 @@ class TestUserTenantInSlackBlocks:
             request.state.user = {"id": "user-abc", "tenant_id": "tenant-xyz"}
             return JSONResponse(status_code=500, content={})
 
-        with patch(
-            "tr_shared.middleware.error_handler._get_slack_client"
-        ) as mock_client_fn:
+        with patch("tr_shared.middleware.error_handler._get_slack_client") as mock_client_fn:
             mock_http = AsyncMock()
             mock_resp = AsyncMock()
             mock_resp.raise_for_status = lambda: None
@@ -314,12 +316,13 @@ class TestTracebackTailTruncation:
         def tb():
             raise RuntimeError("boom")
 
-        with patch(
-            "tr_shared.middleware.error_handler.traceback.format_exc",
-            return_value=long_tb,
-        ), patch(
-            "tr_shared.middleware.error_handler._get_slack_client"
-        ) as mock_client_fn:
+        with (
+            patch(
+                "tr_shared.middleware.error_handler.traceback.format_exc",
+                return_value=long_tb,
+            ),
+            patch("tr_shared.middleware.error_handler._get_slack_client") as mock_client_fn,
+        ):
             mock_http = AsyncMock()
             mock_resp = AsyncMock()
             mock_resp.raise_for_status = lambda: None
@@ -345,7 +348,8 @@ class Test5xxResponseBodyInContext:
         app = _build_app(alert_on_5xx=True)
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -385,7 +389,8 @@ class Test5xxResponseBodyTruncation:
             )
 
         with patch.object(
-            GlobalErrorHandlerMiddleware, "_fire_alert",
+            GlobalErrorHandlerMiddleware,
+            "_fire_alert",
             side_effect=lambda ctx: captured.update(ctx),
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -401,8 +406,5 @@ class TestNoDuplicateContentTypeHeader:
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/server-error-with-body")
 
-        ct_headers = [
-            v for k, v in response.headers.items()
-            if k.lower() == "content-type"
-        ]
+        ct_headers = [v for k, v in response.headers.items() if k.lower() == "content-type"]
         assert len(ct_headers) == 1

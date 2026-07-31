@@ -159,9 +159,7 @@ class RateLimiter:
             logger.error("Rate limit reset failed: %s", e)
             return False
 
-    async def status(
-        self, key: str, config: RateLimitConfig | None = None
-    ) -> RateLimitInfo:
+    async def status(self, key: str, config: RateLimitConfig | None = None) -> RateLimitInfo:
         """Get current rate limit status without incrementing."""
         cfg = config or _DEFAULT_CONFIG
         redis = await self._get_redis()

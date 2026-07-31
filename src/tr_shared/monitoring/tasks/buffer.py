@@ -56,7 +56,8 @@ def flush_monitoring_buffer(
         if total_flushed > 0:
             logger.info(
                 "Flushed %d monitoring records for %s",
-                total_flushed, service_name,
+                total_flushed,
+                service_name,
             )
     except Exception as exc:
         logger.error("flush_monitoring_buffer failed for %s: %s", service_name, exc)

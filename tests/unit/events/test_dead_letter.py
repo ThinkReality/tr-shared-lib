@@ -1,7 +1,7 @@
 """Tests for DeadLetterHandler."""
 
 import json
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,10 +17,10 @@ from tr_shared.events.dead_letter import (
     dead_letter_stream_name,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _handler(redis_client=None, source_stream="events:leads", consumer_group="grp", maxlen=1000):
     client = redis_client or AsyncMock()
@@ -36,6 +36,7 @@ def _handler(redis_client=None, source_stream="events:leads", consumer_group="gr
 # ---------------------------------------------------------------------------
 # Initialization
 # ---------------------------------------------------------------------------
+
 
 class TestStreamNameContract:
     """The suffix + derivation are the shared producer/reader contract."""
@@ -68,6 +69,7 @@ class TestInitialization:
 # ---------------------------------------------------------------------------
 # move()
 # ---------------------------------------------------------------------------
+
 
 class TestMove:
     async def test_calls_xadd_once(self):

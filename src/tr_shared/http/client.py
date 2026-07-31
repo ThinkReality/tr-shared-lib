@@ -151,9 +151,7 @@ class ServiceHTTPClient:
             except httpx.RequestError as exc:
                 last_exc = exc
                 await self.circuit.record_failure()
-                logger.error(
-                    "Request error calling %s: %s", self.service_name, exc
-                )
+                logger.error("Request error calling %s: %s", self.service_name, exc)
 
             if attempt < self.max_retries - 1:
                 await asyncio.sleep(2**attempt)

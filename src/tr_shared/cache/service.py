@@ -82,7 +82,12 @@ class CacheService:
                 return json.loads(cached)
             logger.debug("Cache miss: %s", key, extra={"cache_status": "miss", "key": key})
         except Exception as e:
-            logger.error("Cache get error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache get error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
         return None
 
     async def get_result(self, key: str) -> CacheResult:
@@ -108,7 +113,9 @@ class CacheService:
             return CacheResult(value=None, hit=False)
         except Exception as e:
             logger.error(
-                "Cache get error for key %s: %s", key, e,
+                "Cache get error for key %s: %s",
+                key,
+                e,
                 extra={"cache_status": "error", "key": key},
             )
             return CacheResult(value=None, hit=False, error=e)
@@ -127,7 +134,9 @@ class CacheService:
                 result[key] = json.loads(cached)
             return result
         except Exception as e:
-            logger.error("Cache mget error for %d keys: %s", len(keys), e, extra={"cache_status": "error"})
+            logger.error(
+                "Cache mget error for %d keys: %s", len(keys), e, extra={"cache_status": "error"}
+            )
             return dict.fromkeys(keys)
 
     async def get_or_set(
@@ -151,12 +160,12 @@ class CacheService:
             data = await fetch_func(**fetch_kwargs)
 
             if data is not None:
-                await self.cache.setex(
-                    key, ttl, json.dumps(data, default=str)
-                )
+                await self.cache.setex(key, ttl, json.dumps(data, default=str))
             return data
         except Exception as e:
-            logger.error("Cache error for %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache error for %s: %s", key, e, extra={"cache_status": "error", "key": key}
+            )
             return await fetch_func(**fetch_kwargs)
 
     async def set(self, key: str, value: Any, ttl: int = 3600, *, nx: bool = False) -> bool:
@@ -186,7 +195,12 @@ class CacheService:
         except ValueError:
             raise
         except Exception as e:
-            logger.error("Cache set error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache set error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return False
 
     async def set_many(self, items: dict[str, Any], ttl: int = 3600) -> int:
@@ -202,7 +216,9 @@ class CacheService:
             return len(items)
         except Exception as e:
             logger.error(
-                "Cache set_many error for %d keys: %s", len(items), e,
+                "Cache set_many error for %d keys: %s",
+                len(items),
+                e,
                 extra={"cache_status": "error"},
             )
             return 0
@@ -223,9 +239,7 @@ class CacheService:
             deleted_count = 0
             cursor = 0
             while True:
-                cursor, keys = await self.cache.scan(
-                    cursor=cursor, match=pattern, count=100
-                )
+                cursor, keys = await self.cache.scan(cursor=cursor, match=pattern, count=100)
                 if keys:
                     deleted_count += await self.cache.delete(*keys)
                 if cursor == 0:
@@ -238,7 +252,9 @@ class CacheService:
             return deleted_count
         except Exception as e:
             logger.error(
-                "Cache pattern delete error for %s: %s", pattern, e,
+                "Cache pattern delete error for %s: %s",
+                pattern,
+                e,
                 extra={"cache_status": "error"},
             )
             return 0
@@ -258,7 +274,12 @@ class CacheService:
                 await self.cache.expire(key, ttl)
             return new_val
         except Exception as e:
-            logger.error("Cache increment error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache increment error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return 0
 
     async def exists(self, key: str) -> bool:
@@ -266,7 +287,12 @@ class CacheService:
         try:
             return bool(await self.cache.exists(key))
         except Exception as e:
-            logger.error("Cache exists error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache exists error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return False
 
     async def ttl(self, key: str) -> int:
@@ -279,7 +305,12 @@ class CacheService:
         try:
             return await self.cache.ttl(key)
         except Exception as e:
-            logger.error("Cache ttl error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache ttl error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return -2
 
     async def expire(self, key: str, seconds: int) -> bool:
@@ -292,7 +323,12 @@ class CacheService:
         try:
             return await self.cache.expire(key, seconds)
         except Exception as e:
-            logger.error("Cache expire error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache expire error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return False
 
     async def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
@@ -308,15 +344,18 @@ class CacheService:
             keys: list[str] = []
             cursor = 0
             while True:
-                cursor, batch = await self.cache.scan(
-                    cursor=cursor, match=pattern, count=count
-                )
+                cursor, batch = await self.cache.scan(cursor=cursor, match=pattern, count=count)
                 keys.extend(batch)
                 if cursor == 0:
                     break
             return keys
         except Exception as e:
-            logger.error("Cache scan_keys error for pattern %s: %s", pattern, e, extra={"cache_status": "error"})
+            logger.error(
+                "Cache scan_keys error for pattern %s: %s",
+                pattern,
+                e,
+                extra={"cache_status": "error"},
+            )
             return []
 
     async def zadd(self, key: str, mapping: dict[str, float]) -> int:
@@ -333,7 +372,12 @@ class CacheService:
         try:
             return await self.cache.zadd(key, mapping)
         except Exception as e:
-            logger.error("Cache zadd error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache zadd error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return 0
 
     async def zrangebyscore(
@@ -359,7 +403,12 @@ class CacheService:
         try:
             return await self.cache.zrangebyscore(key, min, max, withscores=withscores)
         except Exception as e:
-            logger.error("Cache zrangebyscore error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache zrangebyscore error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return []
 
     async def zrange(self, key: str, start: int, end: int) -> list[str]:
@@ -376,7 +425,12 @@ class CacheService:
         try:
             return await self.cache.zrange(key, start, end)
         except Exception as e:
-            logger.error("Cache zrange error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache zrange error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return []
 
     async def zrem(self, key: str, *members: str) -> int:
@@ -388,7 +442,12 @@ class CacheService:
         try:
             return await self.cache.zrem(key, *members)
         except Exception as e:
-            logger.error("Cache zrem error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache zrem error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return 0
 
     async def sadd(self, key: str, *members: str) -> int:
@@ -401,7 +460,12 @@ class CacheService:
         try:
             return await self.cache.sadd(key, *members)
         except Exception as e:
-            logger.error("Cache sadd error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache sadd error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return 0
 
     async def srem(self, key: str, *members: str) -> int:
@@ -413,7 +477,12 @@ class CacheService:
         try:
             return await self.cache.srem(key, *members)
         except Exception as e:
-            logger.error("Cache srem error for key %s: %s", key, e, extra={"cache_status": "error", "key": key})
+            logger.error(
+                "Cache srem error for key %s: %s",
+                key,
+                e,
+                extra={"cache_status": "error", "key": key},
+            )
             return 0
 
     def build_key(self, *parts: Any) -> str:
@@ -421,13 +490,9 @@ class CacheService:
         clean_parts = [str(part) for part in parts if part is not None]
         return ":".join([self.key_prefix, *clean_parts])
 
-    def build_list_key(
-        self, entity: str, filters: dict | None = None
-    ) -> str:
+    def build_list_key(self, entity: str, filters: dict | None = None) -> str:
         """Build a cache key for list queries with filter hash."""
         if not filters:
             return self.build_key(entity, "list", "all")
-        filter_hash = hashlib.sha256(
-            json.dumps(filters, sort_keys=True).encode()
-        ).hexdigest()[:8]
+        filter_hash = hashlib.sha256(json.dumps(filters, sort_keys=True).encode()).hexdigest()[:8]
         return self.build_key(entity, "list", f"hash_{filter_hash}")

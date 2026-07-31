@@ -58,9 +58,7 @@ async def fetch_pf_access_token(
     if response.status_code != 200:
         # Do NOT include response body in the error message — it may echo
         # the credentials back. Status code alone is enough for diagnosis.
-        raise IntegrationConfigError(
-            f"PF token exchange returned HTTP {response.status_code}"
-        )
+        raise IntegrationConfigError(f"PF token exchange returned HTTP {response.status_code}")
 
     try:
         data = response.json()

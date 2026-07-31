@@ -6,8 +6,8 @@ These drive lead-management's config-cache invalidation (R10).
 import pytest
 from pydantic import ValidationError
 
-from tr_shared.events.event_types import AdminEvents
 from tr_shared.events import payloads
+from tr_shared.events.event_types import AdminEvents
 from tr_shared.events.payloads import (
     AdminAgentGroupCreatedV1,
     AdminAgentGroupDeletedV1,

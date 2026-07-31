@@ -1,4 +1,5 @@
 """Tests for setup_celery_instrumentation."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ class TestSetupCeleryInstrumentation:
     def reset_guard(self):
         """Reset idempotency guard so each test starts clean."""
         import tr_shared.monitoring.celery_instrumentation as mod
+
         mod._instrumented = False
         yield
         mod._instrumented = False
@@ -27,16 +29,19 @@ class TestSetupCeleryInstrumentation:
         failure_handlers: list = []
         postrun_handlers: list = []
 
-        with patch("tr_shared.monitoring.celery_instrumentation.task_prerun") as p, \
-             patch("tr_shared.monitoring.celery_instrumentation.task_failure") as f, \
-             patch("tr_shared.monitoring.celery_instrumentation.task_postrun") as q, \
-             patch("tr_shared.monitoring.celery_instrumentation.metrics") as mock_metrics:
+        with (
+            patch("tr_shared.monitoring.celery_instrumentation.task_prerun") as p,
+            patch("tr_shared.monitoring.celery_instrumentation.task_failure") as f,
+            patch("tr_shared.monitoring.celery_instrumentation.task_postrun") as q,
+            patch("tr_shared.monitoring.celery_instrumentation.metrics") as mock_metrics,
+        ):
             mock_metrics.get_meter.return_value = meter
             p.connect.side_effect = lambda fn: prerun_handlers.append(fn)
             f.connect.side_effect = lambda fn: failure_handlers.append(fn)
             q.connect.side_effect = lambda fn: postrun_handlers.append(fn)
 
             from tr_shared.monitoring.celery_instrumentation import setup_celery_instrumentation
+
             setup_celery_instrumentation()
 
         return {
@@ -71,9 +76,7 @@ class TestSetupCeleryInstrumentation:
 
         r["up_down"].add.assert_any_call(1, {"task.name": "my_task"})
         r["up_down"].add.assert_any_call(-1, {"task.name": "my_task"})
-        r["counter"].add.assert_called_once_with(
-            1, {"task.name": "my_task", "status": "success"}
-        )
+        r["counter"].add.assert_called_once_with(1, {"task.name": "my_task", "status": "success"})
         r["histogram"].record.assert_called_once()
         duration = r["histogram"].record.call_args.args[0]
         assert duration >= 0
@@ -87,9 +90,7 @@ class TestSetupCeleryInstrumentation:
         r["failure"][0](task_id="xyz", task=task)
         r["postrun"][0](task_id="xyz", task=task)
 
-        r["counter"].add.assert_called_once_with(
-            1, {"task.name": "bad_task", "status": "failure"}
-        )
+        r["counter"].add.assert_called_once_with(1, {"task.name": "bad_task", "status": "failure"})
 
     def test_postrun_without_prerun_does_not_raise(self):
         """Missing start time (e.g. TTL eviction) should not crash."""

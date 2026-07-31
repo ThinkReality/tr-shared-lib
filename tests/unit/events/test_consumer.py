@@ -39,9 +39,7 @@ class TestInMemoryIdempotencyChecker:
 
         # IDs 5000–10 000 must still be present
         for i in range(5_000, 10_001):
-            assert f"evt-{i:05d}" in checker._ids, (
-                f"evt-{i:05d} should still be tracked (newest)"
-            )
+            assert f"evt-{i:05d}" in checker._ids, f"evt-{i:05d} should still be tracked (newest)"
 
     async def test_size_after_eviction_is_bounded(self):
         checker = InMemoryIdempotencyChecker()
@@ -213,7 +211,9 @@ STREAM = "s"
 GROUP = "g"
 
 
-async def _stream_consumer(fake_redis, *, max_retries=3, claim_min_idle_ms=0, zombie_idle_ms=86_400_000):
+async def _stream_consumer(
+    fake_redis, *, max_retries=3, claim_min_idle_ms=0, zombie_idle_ms=86_400_000
+):
     consumer = EventConsumer(
         redis_url="redis://unused",
         stream_name=STREAM,
@@ -316,10 +316,10 @@ class TestPelRetryAndOrphanRecovery:
         consumer._zombie_idle_ms = 1_000
         consumer._redis.xinfo_consumers = AsyncMock(
             return_value=[
-                {"name": "zombie", "pending": 0, "idle": 5_000},   # empty + idle → swept
-                {"name": "busy", "pending": 3, "idle": 9_999},     # has pending → kept
-                {"name": "fresh", "pending": 0, "idle": 100},      # too recent → kept
-                {"name": "c1", "pending": 0, "idle": 9_999},       # self → kept
+                {"name": "zombie", "pending": 0, "idle": 5_000},  # empty + idle → swept
+                {"name": "busy", "pending": 3, "idle": 9_999},  # has pending → kept
+                {"name": "fresh", "pending": 0, "idle": 100},  # too recent → kept
+                {"name": "c1", "pending": 0, "idle": 9_999},  # self → kept
             ]
         )
         consumer._redis.xgroup_delconsumer = AsyncMock()

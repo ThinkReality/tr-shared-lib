@@ -23,17 +23,6 @@ from tr_shared.integrations.constants import (
     PUBLIC_CONFIG_KEYS,
     sanitize_public_config,
 )
-from tr_shared.integrations.portal_identity import (
-    EXTERNALLY_PUBLISHABLE_SLUGS,
-    KNOWN_PLATFORM_SLUGS,
-    LISTING_PORTAL_SLUGS,
-    PORTAL_PROVIDER_KEYS,
-    PORTAL_REGISTRY,
-    PORTAL_USER_ID_KEYS,
-    PortalIdentity,
-    PortalSlug,
-    get_portal_identity,
-)
 from tr_shared.integrations.exceptions import (
     IntegrationConfigError,
     IntegrationConfigNotFound,
@@ -50,9 +39,20 @@ from tr_shared.integrations.portal_errors import (
     PortalUnavailableError,
     PortalValidationError,
 )
+from tr_shared.integrations.portal_identity import (
+    EXTERNALLY_PUBLISHABLE_SLUGS,
+    KNOWN_PLATFORM_SLUGS,
+    LISTING_PORTAL_SLUGS,
+    PORTAL_PROVIDER_KEYS,
+    PORTAL_REGISTRY,
+    PORTAL_USER_ID_KEYS,
+    PortalIdentity,
+    PortalSlug,
+    get_portal_identity,
+)
 from tr_shared.integrations.registry import (
-    init_integration_config_client,
     get_integration_config_client,
+    init_integration_config_client,
     reset_integration_config_client,
 )
 

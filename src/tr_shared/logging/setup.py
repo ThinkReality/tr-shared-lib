@@ -30,9 +30,7 @@ _SENSITIVE_PATTERNS = re.compile(
 _REDACTED = "[REDACTED]"
 
 
-def _mask_sensitive_fields(
-    logger: Any, method: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+def _mask_sensitive_fields(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Structlog processor that fully redacts values of sensitive fields."""
     for field_name, value in event_dict.items():
         if isinstance(value, str) and value and _SENSITIVE_PATTERNS.search(field_name):
@@ -73,8 +71,7 @@ def configure_logging(
     )
 
     structlog.configure(
-        processors=shared_processors
-        + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        processors=shared_processors + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

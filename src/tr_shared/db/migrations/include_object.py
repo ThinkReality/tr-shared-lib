@@ -65,9 +65,7 @@ def make_service_include_object(
         )
     """
     own_table_names: frozenset[str] = frozenset(
-        t.name
-        for t in target_metadata.sorted_tables
-        if getattr(t, "schema", None) == target_schema
+        t.name for t in target_metadata.sorted_tables if getattr(t, "schema", None) == target_schema
     )
 
     def include_object(

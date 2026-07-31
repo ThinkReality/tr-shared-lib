@@ -232,9 +232,7 @@ def find_raw_tenant_header_readers(app_root: Path) -> dict[str, list[int]]:
     for path in iter_app_modules(app_root):
         # utf-8-sig: a BOM makes ast.parse raise SyntaxError on the first line.
         # One WAM module has one, and a crashing scan is a silently absent guard.
-        hits = scan_source_for_raw_tenant_header_reads(
-            path.read_text(encoding="utf-8-sig")
-        )
+        hits = scan_source_for_raw_tenant_header_reads(path.read_text(encoding="utf-8-sig"))
         if hits:
             found[str(path.relative_to(app_root))] = hits
     return found
@@ -245,9 +243,7 @@ def assert_no_undocumented_raw_tenant_header_reads(
     allowlist: Mapping[str, Exemption],
 ) -> None:
     found = find_raw_tenant_header_readers(app_root)
-    undocumented = {
-        module: lines for module, lines in found.items() if module not in allowlist
-    }
+    undocumented = {module: lines for module, lines in found.items() if module not in allowlist}
     assert not undocumented, (
         "New raw X-Tenant-ID read(s). The header is gateway-signed identity CONTEXT, "
         "not an authorization input — authorize on AuthContext.tenant_id instead. "
@@ -263,9 +259,7 @@ def assert_no_stale_exemptions(
     """A documented exemption that no longer reads the header must be removed."""
     found = find_raw_tenant_header_readers(app_root)
     stale = set(allowlist) - set(found)
-    assert not stale, (
-        f"Allowlisted modules that no longer read the header: {sorted(stale)}"
-    )
+    assert not stale, f"Allowlisted modules that no longer read the header: {sorted(stale)}"
 
 
 def assert_exemptions_are_machine_verified(

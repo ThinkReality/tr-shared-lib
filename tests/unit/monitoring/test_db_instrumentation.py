@@ -1,4 +1,5 @@
 """Tests for setup_db_instrumentation."""
+
 import time
 from unittest.mock import MagicMock, patch
 
@@ -8,34 +9,42 @@ import pytest
 class TestExtractOperationType:
     def test_select(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("SELECT * FROM t") == "SELECT"
 
     def test_insert(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("INSERT INTO t VALUES (1)") == "INSERT"
 
     def test_update(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("UPDATE t SET x=1") == "UPDATE"
 
     def test_delete(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("DELETE FROM t WHERE id=1") == "DELETE"
 
     def test_other_ddl(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("VACUUM t") == "OTHER"
 
     def test_empty_string(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("") == "UNKNOWN"
 
     def test_none(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type(None) == "UNKNOWN"
 
     def test_case_insensitive(self):
         from tr_shared.monitoring.db_instrumentation import _extract_operation_type
+
         assert _extract_operation_type("select 1") == "SELECT"
 
 
@@ -55,6 +64,7 @@ class TestSetupDbInstrumentation:
             def decorator(fn):
                 handlers[event_name] = fn
                 return fn
+
             return decorator
 
         histogram = MagicMock()
@@ -63,11 +73,14 @@ class TestSetupDbInstrumentation:
         meter.create_histogram.return_value = histogram
         meter.create_counter.return_value = counter
 
-        with patch("tr_shared.monitoring.db_instrumentation.event") as mock_event, \
-             patch("tr_shared.monitoring.db_instrumentation.metrics") as mock_metrics:
+        with (
+            patch("tr_shared.monitoring.db_instrumentation.event") as mock_event,
+            patch("tr_shared.monitoring.db_instrumentation.metrics") as mock_metrics,
+        ):
             mock_event.listens_for.side_effect = fake_listens_for
             mock_metrics.get_meter.return_value = meter
             from tr_shared.monitoring.db_instrumentation import setup_db_instrumentation
+
             setup_db_instrumentation(engine=mock_engine)
 
         return {"handlers": handlers, "histogram": histogram, "counter": counter}

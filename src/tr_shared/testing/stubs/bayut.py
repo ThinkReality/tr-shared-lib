@@ -28,15 +28,11 @@ class BayutStub:
         self._builder = MockTransportBuilder()
 
     def listings(self, items: list[dict[str, Any]]) -> "BayutStub":
-        self._builder.route(
-            "GET", r"/listings$", json={"data": items, "total": len(items)}
-        )
+        self._builder.route("GET", r"/listings$", json={"data": items, "total": len(items)})
         return self
 
     def leads(self, items: list[dict[str, Any]]) -> "BayutStub":
-        self._builder.route(
-            "GET", r"/leads$", json={"data": items, "total": len(items)}
-        )
+        self._builder.route("GET", r"/leads$", json={"data": items, "total": len(items)})
         return self
 
     def route(self, *args: Any, **kwargs: Any) -> "BayutStub":

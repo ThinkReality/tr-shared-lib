@@ -25,19 +25,21 @@ from tr_shared.monitoring.redis_buffer import push_to_buffer
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_EXCLUDED_PATHS: frozenset[str] = frozenset({
-    "/",
-    "/health",
-    "/health/ready",
-    "/health/live",
-    "/api/v1/health",
-    "/api/v1/health/ready",
-    "/api/v1/health/live",
-    "/metrics",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-})
+_DEFAULT_EXCLUDED_PATHS: frozenset[str] = frozenset(
+    {
+        "/",
+        "/health",
+        "/health/ready",
+        "/health/live",
+        "/api/v1/health",
+        "/api/v1/health/ready",
+        "/api/v1/health/live",
+        "/metrics",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+    }
+)
 
 
 class PersistenceMiddleware(BaseHTTPMiddleware):

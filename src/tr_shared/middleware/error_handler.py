@@ -90,8 +90,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
                 # Rebuild from raw_headers to avoid MutableHeaders.__getitem__ KeyError
                 # on duplicate or encoded header keys.
                 raw_headers = {
-                    k.decode("latin-1"): v.decode("latin-1")
-                    for k, v in response.raw_headers
+                    k.decode("latin-1"): v.decode("latin-1") for k, v in response.raw_headers
                 }
                 return Response(
                     content=body_bytes,
@@ -159,9 +158,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
     def _extract_identity(request: Request) -> tuple[str | None, str | None]:
         if hasattr(request.state, "auth_context") and request.state.auth_context:
             ctx = request.state.auth_context
-            return str(getattr(ctx, "user_id", None)), str(
-                getattr(ctx, "tenant_id", None)
-            )
+            return str(getattr(ctx, "user_id", None)), str(getattr(ctx, "tenant_id", None))
         user = getattr(request.state, "user", None)
         if user is None:
             return None, None
@@ -198,9 +195,8 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             tb_text = f"*Traceback:*\n```{tb[-1500:]}```"
         else:
             body = ctx.get("response_body", "")
-            tb_text = (
-                f"_No exception raised (handled {ctx['status_code']} response)_\n"
-                + (f"*Response body:*\n```{body}```" if body else "_No body available_")
+            tb_text = f"_No exception raised (handled {ctx['status_code']} response)_\n" + (
+                f"*Response body:*\n```{body}```" if body else "_No body available_"
             )
 
         message = {

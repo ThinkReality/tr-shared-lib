@@ -39,7 +39,9 @@ class IdempotencyChecker(Protocol):
 class InMemoryIdempotencyChecker:
     """In-memory dedup with optional Redis fallback for cross-instance checks."""
 
-    def __init__(self, redis_client: redis.Redis | None = None, group_name: str = "", ttl_days: int = 7) -> None:
+    def __init__(
+        self, redis_client: redis.Redis | None = None, group_name: str = "", ttl_days: int = 7
+    ) -> None:
         self._ids: OrderedDict[str, None] = OrderedDict()
         self._redis = redis_client
         self._group = group_name
@@ -135,8 +137,12 @@ class EventConsumer:
         if self._redis is None:
             return
         try:
-            await self._redis.xgroup_create(self._stream_name, self._consumer_group, id="0", mkstream=True)
-            logger.info("Created consumer group '%s' on '%s'", self._consumer_group, self._stream_name)
+            await self._redis.xgroup_create(
+                self._stream_name, self._consumer_group, id="0", mkstream=True
+            )
+            logger.info(
+                "Created consumer group '%s' on '%s'", self._consumer_group, self._stream_name
+            )
         except redis.ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
@@ -156,10 +162,17 @@ class EventConsumer:
             name = consumer.get("name")
             if not name or name == self._consumer_name:
                 continue
-            if int(consumer.get("pending", 0)) == 0 and int(consumer.get("idle", 0)) >= self._zombie_idle_ms:
+            if (
+                int(consumer.get("pending", 0)) == 0
+                and int(consumer.get("idle", 0)) >= self._zombie_idle_ms
+            ):
                 try:
-                    await self._redis.xgroup_delconsumer(self._stream_name, self._consumer_group, name)
-                    logger.info("Swept idle empty consumer '%s' from group '%s'", name, self._consumer_group)
+                    await self._redis.xgroup_delconsumer(
+                        self._stream_name, self._consumer_group, name
+                    )
+                    logger.info(
+                        "Swept idle empty consumer '%s' from group '%s'", name, self._consumer_group
+                    )
                 except redis.ResponseError:
                     logger.warning("Failed to sweep consumer '%s' — continuing", name)
 
@@ -170,6 +183,7 @@ class EventConsumer:
         def decorator(func: EventHandler) -> EventHandler:
             self.register_handler(event_type, func)
             return func
+
         return decorator
 
     def _resolve_handler(self, event_type: str) -> EventHandler | None:
@@ -204,7 +218,9 @@ class EventConsumer:
                 try:
                     await self._dlq.move(message_id, data, "Malformed message")
                 except Exception:
-                    logger.exception("DLQ move failed for malformed message %s — continuing", message_id)
+                    logger.exception(
+                        "DLQ move failed for malformed message %s — continuing", message_id
+                    )
             else:
                 logger.error(
                     "Malformed message discarded — no DLQ configured",
@@ -274,7 +290,10 @@ class EventConsumer:
 
         logger.warning(
             "Handler failed for event %s (attempt %d/%d)",
-            envelope.event_id, attempts, self._retry_policy.max_retries, exc_info=exc,
+            envelope.event_id,
+            attempts,
+            self._retry_policy.max_retries,
+            exc_info=exc,
         )
         if attempts >= self._retry_policy.max_retries:
             if self._dlq:

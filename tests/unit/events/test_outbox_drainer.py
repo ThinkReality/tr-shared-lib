@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-
 from tr_shared.events import RetryPolicy, drain_outbox
 
 
@@ -44,6 +43,7 @@ class _FakeSession:
         @asynccontextmanager
         async def _ctx():
             yield
+
         return _ctx()
 
     async def __aenter__(self):

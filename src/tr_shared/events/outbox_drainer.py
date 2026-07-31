@@ -122,8 +122,7 @@ async def drain_outbox(
                 async with session_factory() as s2, s2.begin():
                     await s2.execute(
                         text(
-                            f"UPDATE {schema}.{table_name} "
-                            "SET published_at = NOW() WHERE id = :id",
+                            f"UPDATE {schema}.{table_name} SET published_at = NOW() WHERE id = :id",
                         ),
                         {"id": str(event_id)},
                     )

@@ -7,7 +7,6 @@ _REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "e
 
 
 class BaseAPIException(HTTPException):
-
     def __init__(
         self,
         status_code: int,
@@ -66,7 +65,9 @@ class AuthenticationError(BaseAPIException):
 class AuthorizationError(BaseAPIException):
     """Permission denied (403)."""
 
-    def __init__(self, detail: str = "Operation not permitted", code: str = "FORBIDDEN_001") -> None:
+    def __init__(
+        self, detail: str = "Operation not permitted", code: str = "FORBIDDEN_001"
+    ) -> None:
         super().__init__(status_code=403, error="Authorization failed", detail=detail, code=code)
 
 
@@ -121,7 +122,9 @@ class InternalServerError(BaseAPIException):
 class ServiceUnavailableError(BaseAPIException):
     """Downstream service unavailable (503)."""
 
-    def __init__(self, detail: str = "Service unavailable", code: str = "SERVICE_UNAVAILABLE_001") -> None:
+    def __init__(
+        self, detail: str = "Service unavailable", code: str = "SERVICE_UNAVAILABLE_001"
+    ) -> None:
         super().__init__(status_code=503, error="Service unavailable", detail=detail, code=code)
 
 

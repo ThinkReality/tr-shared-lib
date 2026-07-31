@@ -14,9 +14,7 @@ async def test_static_json_route_matches_and_records_request() -> None:
     async with httpx.AsyncClient(
         transport=builder.build(), base_url="https://example.test"
     ) as client:
-        resp = await client.post(
-            "/oauth/token", json={"grant_type": "client_credentials"}
-        )
+        resp = await client.post("/oauth/token", json={"grant_type": "client_credentials"})
 
     assert resp.status_code == 200
     assert resp.json() == {"access_token": "t"}
@@ -28,9 +26,7 @@ async def test_static_json_route_matches_and_records_request() -> None:
 @pytest.mark.asyncio
 async def test_callable_json_route_uses_path_match_groups() -> None:
     builder = MockTransportBuilder()
-    builder.route(
-        "GET", r"/listings/(?P<id>[\w-]+)$", json=lambda m: {"id": m.group("id")}
-    )
+    builder.route("GET", r"/listings/(?P<id>[\w-]+)$", json=lambda m: {"id": m.group("id")})
 
     async with httpx.AsyncClient(
         transport=builder.build(), base_url="https://example.test"

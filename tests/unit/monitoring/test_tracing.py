@@ -1,7 +1,6 @@
 """Tests for setup_tracing."""
-from unittest.mock import MagicMock, patch
 
-import pytest
+from unittest.mock import MagicMock, patch
 
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -30,7 +29,6 @@ class TestSetupTracing:
         assert provider.resource.attributes.get("service.name") == "svc-name-check"
 
     def test_sets_global_tracer_provider(self):
-        from opentelemetry import trace
 
         provider = setup_tracing("global-test-svc")
         # Global tracer provider was replaced — provider is returned

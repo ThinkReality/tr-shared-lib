@@ -195,9 +195,7 @@ class IntegrationConfigClient:
             return
 
         keys_to_remove = [
-            key
-            for key in self._local_cache
-            if self._key_matches(key, tenant_id, platform_name)
+            key for key in self._local_cache if self._key_matches(key, tenant_id, platform_name)
         ]
         for key in keys_to_remove:
             del self._local_cache[key]
@@ -228,10 +226,7 @@ class IntegrationConfigClient:
         # because the wire-format space wasn't normalized to %20.
         encoded_name = quote(platform_name, safe="")
         encoded_tenant = quote(str(tenant_id), safe="")
-        url = (
-            f"/api/v1/internal/integrations/platforms/{encoded_name}"
-            f"/tenants/{encoded_tenant}"
-        )
+        url = f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants/{encoded_tenant}"
         headers = {HttpHeader.SERVICE_TOKEN.value: self._service_token}
         if correlation_id:
             headers[HttpHeader.CORRELATION_ID.value] = correlation_id
@@ -266,9 +261,7 @@ class IntegrationConfigClient:
         payload = response.json()
         data = payload.get("data", payload) if isinstance(payload, dict) else payload
         if not isinstance(data, dict):
-            raise IntegrationConfigError(
-                "admin panel returned malformed response (not a dict)"
-            )
+            raise IntegrationConfigError("admin panel returned malformed response (not a dict)")
 
         try:
             return IntegrationConfig(**data)
@@ -277,9 +270,7 @@ class IntegrationConfigClient:
                 f"admin panel response failed IntegrationConfig validation: {exc}"
             ) from exc
 
-    def _cache_key(
-        self, tenant_id: str, platform_name: str, include_secrets: bool
-    ) -> str:
+    def _cache_key(self, tenant_id: str, platform_name: str, include_secrets: bool) -> str:
         return f"{tenant_id}:{platform_name}:{int(include_secrets)}"
 
     def _key_matches(

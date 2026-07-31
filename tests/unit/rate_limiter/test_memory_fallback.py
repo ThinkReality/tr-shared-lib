@@ -84,9 +84,7 @@ class TestMemoryFallback:
         result = await fb.check("key:new", limit=10, window_seconds=60)
         assert result.allowed is True
         assert "key:new" in fb._buckets
-        assert all(
-            "old:key" not in k for k in fb._buckets
-        )
+        assert all("old:key" not in k for k in fb._buckets)
 
     async def test_blocked_retry_after_is_positive(self):
         fb = self._fallback()

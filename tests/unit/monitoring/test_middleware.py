@@ -1,9 +1,9 @@
 """Tests for MetricsMiddleware."""
 
-import pytest
+from unittest.mock import MagicMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
 
 from tr_shared.monitoring.instruments import InstrumentSet
 from tr_shared.monitoring.middleware import DEFAULT_EXCLUDED_PATHS, MetricsMiddleware
@@ -39,6 +39,7 @@ def _build_app(instruments=None, excluded_paths=None, business_domain_classifier
     @app.get("/api/error")
     def error_endpoint():
         from fastapi import Response
+
         return Response(status_code=400)
 
     return app
@@ -116,8 +117,8 @@ class TestMetricRecording:
         client.get("/api/test")
         calls = instruments.active_requests.add.call_args_list
         values = [c[0][0] for c in calls]
-        assert 1 in values    # +1 at start
-        assert -1 in values   # -1 at end (finally block)
+        assert 1 in values  # +1 at start
+        assert -1 in values  # -1 at end (finally block)
 
     def test_error_counter_incremented_on_4xx(self):
         instruments = _mock_instruments()

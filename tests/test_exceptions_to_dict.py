@@ -4,7 +4,11 @@ from tr_shared.exceptions import NotFoundError, ValidationError
 def test_to_dict_is_nested_error_object():
     exc = ValidationError(detail="Price must be > 0", code="LISTING_VALIDATION_001")
     assert exc.to_dict() == {
-        "error": {"message": "Validation failed", "code": "LISTING_VALIDATION_001", "detail": "Price must be > 0"}
+        "error": {
+            "message": "Validation failed",
+            "code": "LISTING_VALIDATION_001",
+            "detail": "Price must be > 0",
+        }
     }
 
 

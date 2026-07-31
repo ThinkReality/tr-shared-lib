@@ -3,8 +3,6 @@
 import uuid
 from datetime import UTC, date, datetime
 
-import pytest
-
 from tr_shared.monitoring.models import (
     MonitoringBase,
     MonitoringMetricsDaily,
@@ -17,6 +15,7 @@ from tr_shared.monitoring.models import (
 class TestMonitoringBase:
     def test_is_declarative_base(self):
         from sqlalchemy.orm import DeclarativeBase
+
         assert issubclass(MonitoringBase, DeclarativeBase)
 
 
@@ -94,8 +93,12 @@ class TestMonitoringMetricsHourly:
 
     def test_has_unique_constraint(self):
         from sqlalchemy import UniqueConstraint
-        constraints = [c for c in MonitoringMetricsHourly.__table__.constraints
-                       if isinstance(c, UniqueConstraint)]
+
+        constraints = [
+            c
+            for c in MonitoringMetricsHourly.__table__.constraints
+            if isinstance(c, UniqueConstraint)
+        ]
         assert len(constraints) >= 1
 
     def test_instantiation(self):

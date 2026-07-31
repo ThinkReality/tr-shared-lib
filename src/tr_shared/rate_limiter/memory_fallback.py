@@ -73,6 +73,4 @@ class MemoryFallback:
         for k in expired:
             del self._buckets[k]
         if expired:
-            logger.debug(
-                "Memory fallback cleanup: removed %d expired buckets", len(expired)
-            )
+            logger.debug("Memory fallback cleanup: removed %d expired buckets", len(expired))

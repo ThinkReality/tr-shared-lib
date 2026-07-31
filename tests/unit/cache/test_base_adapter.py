@@ -5,8 +5,8 @@ in the base class works correctly, using a minimal concrete subclass
 backed by fakeredis so no real Redis server is needed.
 """
 
-import pytest
 import fakeredis.aioredis as fakeredis
+import pytest
 
 from tr_shared.cache.adapters.base import BaseRedisAdapter
 from tr_shared.cache.exceptions import CacheConnectionError, CacheOperationError
@@ -35,9 +35,7 @@ class _FakeAdapter(BaseRedisAdapter):
     async def ping(self) -> bool:
         return self._available
 
-    async def set(
-        self, key: str, value: str, ttl: int | None = None, nx: bool = False
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl: int | None = None, nx: bool = False) -> bool:
         self._check_initialized("set")
         try:
             result = await self._client.set(key, value, ex=ttl, nx=nx or None)

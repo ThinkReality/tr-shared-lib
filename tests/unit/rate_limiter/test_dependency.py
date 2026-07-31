@@ -14,7 +14,6 @@ from tr_shared.rate_limiter.dependency import (
     rate_limit,
 )
 from tr_shared.rate_limiter.schemas import (
-    FailMode,
     RateLimitInfo,
     RateLimitResult,
 )
@@ -24,8 +23,11 @@ def _allowed_info() -> RateLimitInfo:
     return RateLimitInfo(
         results=[
             RateLimitResult(
-                allowed=True, limit=100, remaining=99,
-                reset_at=int(time.time()) + 60, retry_after=0,
+                allowed=True,
+                limit=100,
+                remaining=99,
+                reset_at=int(time.time()) + 60,
+                retry_after=0,
             )
         ],
         is_blocked=False,
@@ -36,8 +38,11 @@ def _blocked_info(retry_after: int = 30) -> RateLimitInfo:
     return RateLimitInfo(
         results=[
             RateLimitResult(
-                allowed=False, limit=100, remaining=0,
-                reset_at=int(time.time()) + retry_after, retry_after=retry_after,
+                allowed=False,
+                limit=100,
+                remaining=0,
+                reset_at=int(time.time()) + retry_after,
+                retry_after=retry_after,
             )
         ],
         is_blocked=True,
