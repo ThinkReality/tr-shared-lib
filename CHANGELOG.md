@@ -5,6 +5,95 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0] - 2026-07-31
+
+### Fixed
+- `tr_shared.testing.lanes.run_needs_infrastructure` no longer consults `markexpr`
+  before the paths. `pytest tests/unit/ -m integration` used to short-circuit to
+  `True` and provision a Postgres + Redis pair for a run that can select nothing:
+  the lane marker is *derived from the path*
+  (`plugin.pytest_collection_modifyitems`), so no test under a unit path ever
+  carries the integration marker.
+
+### Changed
+- Adopted ruff as the lint + format gate (config, dev dependency, CI job,
+  pre-commit hooks) and applied `ruff check --fix` + `ruff format` across the
+  tree. `.git-blame-ignore-revs` records the reformat commit so `git blame` skips
+  it. No behavioural change — style only, but it is why this release touches 148
+  files.
+- Rewrote 9 tests left behind by earlier source rewrites (`#7`). They asserted
+  against signatures that no longer existed and had been passing vacuously.
+
+### Why
+The lane bug cost this library's own unit lane roughly 90 seconds per run, and
+failed outright whenever the Docker daemon was busy — the shape every service in
+the fleet then inherits. It is the third instance of one root cause: the lane is
+decided from `argv` *before* anything is collected, so every wrong answer is a
+guess made too early. Paths now outrank the marker expression.
+
+`markexpr` stays in the signature deliberately. The plugin passes it, and keeping
+it makes the regression explicit in the tests rather than something a future
+refactor can quietly reintroduce.
+
+### Migration
+None. A bare `pytest -m integration` still provisions — not because of the marker,
+but because it names no paths, which is unchanged behaviour. Services get this on
+their next pin bump; no code change is required of them.
+
+## [0.51.0] - 2026-07-31
+
+### Added
+- `HttpHeader.ORIGINAL_IP` (`X-Original-IP`) — the originating client's IP as
+  observed by the gateway at the socket. The gateway strips any inbound copy
+  before re-deriving it, so downstream reads a gateway-asserted value rather than
+  a caller-supplied one.
+
+### Removed
+- **Breaking:** `register_integration_cache_handlers` is no longer exported from
+  `tr_shared.integrations`, and the event-driven cache-invalidation path it wired
+  up is gone. `IntegrationConfigClient` now caches behind a plain TTL.
+
+### Why
+`ORIGINAL_IP` is deliberately **not** a `shared_auth_lib.SignedHeader` member.
+Adding one there changes the canonical string of every signed request, which forces
+a lockstep redeploy of the entire fleet — a gateway on one version and a service on
+another produce different signatures and every route 403s. Because it is unsigned,
+downstream must use it only for bucketing (rate limits), never for authorization.
+
+The invalidation handlers were removed rather than fixed because the event path
+duplicated what the TTL already guarantees, and a second invalidation mechanism is
+a second thing that can silently stop working.
+
+### Migration
+No consumer in the fleet imported `register_integration_cache_handlers` — verified
+across all eight services and shared-auth-lib before this entry was written — so
+the removal is a no-op in practice. Anything outside the fleet that did import it
+should delete the call: the TTL cache needs no registration.
+
+## [0.50.0] - 2026-07-30
+
+### Changed
+- `tr_shared.contracts.s2s.wam_leads.BASE_PATH` moved from `/api/v1/leads` to
+  `/api/v1/internal/leads`.
+
+### Added
+- A worked "adding a provider" guide on `monitoring.factory`, documenting the five
+  steps and the two things they hide: a provider needing its own configuration
+  still requires new kwargs on both `create_*_provider` and `setup_monitoring`, and
+  the `provider` arguments are typed `str` rather than the enums, so a typo raises
+  from the factory's terminal `ValueError` instead of failing at the call site.
+
+### Why
+The `/internal` prefix is load-bearing, not cosmetic. tr-whatsApp-marketing-agent
+mounts `GatewayHMACMiddleware` app-wide, which 403s any unsigned request outside its
+skip list, and `/api/v1/internal/` is that skip list's only business-route entry.
+The contract has to name the path the provider actually serves, or tr-lead-management's
+`WAMClient` signs nothing and gets a 403 that looks like an auth bug.
+
+### Migration
+Consumers reading `BASE_PATH` from the contract need no change — that is the point
+of the contract. Anything that hardcoded `/api/v1/leads` for WAM must be repointed.
+
 ## [0.49.3] - 2026-07-30
 
 ### Added
