@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from tr_shared.testing.lanes import lane_for_path, run_needs_infrastructure
 
 
@@ -63,9 +64,12 @@ class TestRunNeedsInfrastructure:
 
     def test_option_values_are_not_paths(self, tree) -> None:
         """`-p no:cacheprovider` used to force provisioning for every unit run."""
-        assert run_needs_infrastructure(
-            ["tests/unit/", "-p", "no:cacheprovider", "-k", "some_name"], root=tree
-        ) is False
+        assert (
+            run_needs_infrastructure(
+                ["tests/unit/", "-p", "no:cacheprovider", "-k", "some_name"], root=tree
+            )
+            is False
+        )
 
     def test_unit_path_does_not_provision(self, tree) -> None:
         assert run_needs_infrastructure(["tests/unit/"], root=tree) is False

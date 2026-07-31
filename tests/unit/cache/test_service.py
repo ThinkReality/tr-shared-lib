@@ -3,8 +3,6 @@
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from tr_shared.cache.service import CacheResult, CacheService
 
 
@@ -198,8 +196,8 @@ class TestDelete:
     async def test_delete_pattern_handles_multiple_scan_pages(self):
         cache = _mock_cache()
         cache.scan.side_effect = [
-            (42, ["key:1"]),   # cursor != 0, more pages
-            (0, ["key:2"]),    # cursor == 0, done
+            (42, ["key:1"]),  # cursor != 0, more pages
+            (0, ["key:2"]),  # cursor == 0, done
         ]
         cache.delete.return_value = 1
         svc = CacheService(cache=cache, key_prefix="dev:svc")

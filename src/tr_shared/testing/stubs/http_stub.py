@@ -65,8 +65,7 @@ class MockTransportBuilder:
         *,
         json: Any | Callable[[re.Match[str]], Any] | None = None,
         status_code: int = 200,
-        handler: Callable[["httpx.Request", re.Match[str]], "httpx.Response"]
-        | None = None,
+        handler: Callable[["httpx.Request", re.Match[str]], "httpx.Response"] | None = None,
     ) -> "MockTransportBuilder":
         """Register a route. Either pass ``json``/``status_code`` for the common
         case, or a full ``handler(request, match) -> httpx.Response`` for anything

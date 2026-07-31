@@ -188,9 +188,7 @@ class TestGetConfig:
         finally:
             await client.close()
 
-        assert not any(
-            "integration_secrets_fetched" in rec.getMessage() for rec in caplog.records
-        )
+        assert not any("integration_secrets_fetched" in rec.getMessage() for rec in caplog.records)
 
     @pytest.mark.asyncio
     async def test_cache_key_distinguishes_include_secrets(self) -> None:
@@ -255,9 +253,7 @@ class TestStampede:
 
         client = _make_client(handler)
         try:
-            tasks = [
-                asyncio.create_task(client.get_config(TENANT_A, PF)) for _ in range(10)
-            ]
+            tasks = [asyncio.create_task(client.get_config(TENANT_A, PF)) for _ in range(10)]
             results = await asyncio.gather(*tasks)
             assert all(r.tenant_id == TENANT_A for r in results)
 
@@ -293,9 +289,7 @@ class TestCircuitBreaker:
             # Next call should be rejected by the breaker
             with pytest.raises(IntegrationConfigError) as exc:
                 await client.get_config("tenant-new", PF)
-            assert (
-                "circuit" in str(exc.value).lower() or "open" in str(exc.value).lower()
-            )
+            assert "circuit" in str(exc.value).lower() or "open" in str(exc.value).lower()
         finally:
             await client.close()
 
@@ -363,16 +357,10 @@ class TestWarmAllAndEnabledTenants:
     async def test_warm_all_warms_each_tenant(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
-            if (
-                url.endswith("/tenants")
-                or "platforms/" in url
-                and "/tenants/" not in url
-            ):
+            if url.endswith("/tenants") or "platforms/" in url and "/tenants/" not in url:
                 return httpx.Response(200, json=_tenants_response([TENANT_A, TENANT_B]))
             tid = TENANT_A if TENANT_A in url else TENANT_B
-            return httpx.Response(
-                200, json=_config_response(tenant_id=tid, include_secrets=True)
-            )
+            return httpx.Response(200, json=_config_response(tenant_id=tid, include_secrets=True))
 
         client = _make_client(handler)
         try:
@@ -387,9 +375,7 @@ class TestWarmAllAndEnabledTenants:
 
         def handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
-            if url.endswith("/tenants") or (
-                "platforms/" in url and "/tenants/" not in url
-            ):
+            if url.endswith("/tenants") or ("platforms/" in url and "/tenants/" not in url):
                 return httpx.Response(200, json=_tenants_response([TENANT_A, TENANT_B]))
             # TENANT_A ok, TENANT_B fails
             if TENANT_B in url:

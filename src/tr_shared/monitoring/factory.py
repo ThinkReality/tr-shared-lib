@@ -135,8 +135,7 @@ class MonitoringProviderFactory:
             return NoopLogAdapter()
 
         raise ValueError(
-            f"Unsupported log provider: {provider}. "
-            f"Use one of: {[p.value for p in LogProvider]}"
+            f"Unsupported log provider: {provider}. Use one of: {[p.value for p in LogProvider]}"
         )
 
     @staticmethod

@@ -24,6 +24,7 @@ def _create_sync_engine(db_url: str):
 def _get_sync_redis(redis_url: str):
     """Create a synchronous Redis client."""
     import redis
+
     return redis.Redis.from_url(redis_url, decode_responses=True)
 
 

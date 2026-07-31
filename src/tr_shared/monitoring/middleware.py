@@ -18,19 +18,21 @@ from tr_shared.monitoring.path_normalizer import normalize_path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXCLUDED_PATHS: frozenset[str] = frozenset({
-    "/",
-    "/health",
-    "/health/ready",
-    "/health/live",
-    "/api/v1/health",
-    "/api/v1/health/ready",
-    "/api/v1/health/live",
-    "/metrics",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-})
+DEFAULT_EXCLUDED_PATHS: frozenset[str] = frozenset(
+    {
+        "/",
+        "/health",
+        "/health/ready",
+        "/health/live",
+        "/api/v1/health",
+        "/api/v1/health/ready",
+        "/api/v1/health/live",
+        "/metrics",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+    }
+)
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):

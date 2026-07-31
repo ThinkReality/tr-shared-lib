@@ -1,6 +1,5 @@
 """Tests for tr_shared.db.migrations.bootstrap."""
 
-
 from tr_shared.db.migrations import (
     UNDELIVERED_EVENTS_COLUMNS,
     bootstrap_schema_and_version_table,
@@ -88,7 +87,9 @@ class TestBootstrapSchemaAndVersionTable:
     def test_commits_bootstrap_transaction(self):
         conn = _FakeConnection(scalar_results=[1, None])
         bootstrap_schema_and_version_table(
-            conn, schema="admin", version_table="v",
+            conn,
+            schema="admin",
+            version_table="v",
         )
         assert conn.commit_count == 1
 

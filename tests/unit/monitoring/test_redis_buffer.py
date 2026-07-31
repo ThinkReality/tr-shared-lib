@@ -1,8 +1,7 @@
 """Tests for the Redis monitoring buffer helpers."""
+
 import json
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from tr_shared.monitoring.redis_buffer import (
     BUFFER_TTL_SECONDS,
@@ -38,9 +37,7 @@ class TestPushToBuffer:
     async def test_sets_ttl_after_push(self):
         redis = AsyncMock()
         await push_to_buffer(redis, "svc", {"x": 1})
-        redis.expire.assert_awaited_once_with(
-            "monitoring:buffer:svc", BUFFER_TTL_SECONDS
-        )
+        redis.expire.assert_awaited_once_with("monitoring:buffer:svc", BUFFER_TTL_SECONDS)
 
     async def test_swallows_redis_rpush_error(self):
         redis = AsyncMock()
@@ -54,6 +51,7 @@ class TestPushToBuffer:
 
     async def test_serializes_non_json_types_with_default_str(self):
         from datetime import datetime
+
         redis = AsyncMock()
         await push_to_buffer(redis, "svc", {"ts": datetime(2026, 1, 1)})
         _, payload = redis.rpush.call_args[0]

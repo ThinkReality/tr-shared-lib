@@ -49,7 +49,9 @@ def test_carries_portal_and_extra_context():
     assert rl.portal == "bayut"
     assert rl.retry_after == 42
 
-    dup = PortalDuplicateError(portal="propertyfinder", existing_listing_id="pf-99", reference="TR-1")
+    dup = PortalDuplicateError(
+        portal="propertyfinder", existing_listing_id="pf-99", reference="TR-1"
+    )
     assert dup.existing_listing_id == "pf-99"
     assert dup.reference == "TR-1"
 

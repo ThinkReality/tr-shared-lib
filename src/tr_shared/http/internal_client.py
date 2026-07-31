@@ -5,6 +5,7 @@ from uuid import UUID
 
 import httpx
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -16,7 +17,6 @@ from tr_shared.exceptions import (
     ServiceUnavailableError,
     ValidationError,
 )
-from tr_shared.contracts.headers import HttpHeader
 from tr_shared.http.client import ServiceHTTPClient
 
 

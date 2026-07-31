@@ -98,9 +98,7 @@ class UpstashAdapter(BaseRedisAdapter):
         except Exception:
             return False
 
-    async def set(
-        self, key: str, value: str, ttl: int | None = None, nx: bool = False
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl: int | None = None, nx: bool = False) -> bool:
         """Set key to value.
 
         When ``nx=True``, uses a single atomic SET NX EX command so the key
@@ -133,9 +131,7 @@ class UpstashAdapter(BaseRedisAdapter):
         """
         self._check_initialized("xadd")
         try:
-            return await self._client.xadd(
-                stream, fields, maxlen=maxlen, approximate=True
-            )
+            return await self._client.xadd(stream, fields, maxlen=maxlen, approximate=True)
         except Exception as e:
             raise CacheOperationError(f"XADD failed: {e}") from e
 

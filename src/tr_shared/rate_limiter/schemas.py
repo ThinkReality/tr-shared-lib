@@ -22,9 +22,7 @@ class FailMode(str, Enum):
 class WindowConfig(BaseModel):
     """Configuration for a single rate-limit window."""
 
-    limit: int = Field(
-        default=100, description="Maximum requests allowed in the window"
-    )
+    limit: int = Field(default=100, description="Maximum requests allowed in the window")
     window_seconds: int = Field(default=60, description="Window duration in seconds")
 
 
@@ -48,9 +46,7 @@ class RateLimitResult(BaseModel):
     limit: int
     remaining: int
     reset_at: int = Field(description="Unix timestamp when the window resets")
-    retry_after: int = Field(
-        default=0, description="Seconds until the client may retry"
-    )
+    retry_after: int = Field(default=0, description="Seconds until the client may retry")
 
 
 class RateLimitInfo(BaseModel):

@@ -9,7 +9,6 @@ standard bans sqlite outright.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import uuid
 
@@ -41,15 +40,12 @@ def _docker_available() -> bool:
         return False
 
 
-requires_docker = pytest.mark.skipif(
-    not _docker_available(), reason="Docker is not reachable"
-)
+requires_docker = pytest.mark.skipif(not _docker_available(), reason="Docker is not reachable")
 
 
 @pytest.fixture(scope="module")
 def postgres_dsn() -> str:
     """A throwaway Postgres for this module, reusing the library's own provisioner."""
-    from tr_shared.testing.config import TestingConfig
     from tr_shared.testing.stack import _adopt_or_create, _docker, _wait_ready
 
     client = _docker()
@@ -136,9 +132,7 @@ class TestSavepointRollback:
         assert await _count(engine, table) == 0
 
     @pytest.mark.asyncio
-    async def test_a_session_rollback_does_not_break_the_outer_transaction(
-        self, db
-    ) -> None:
+    async def test_a_session_rollback_does_not_break_the_outer_transaction(self, db) -> None:
         engine, table = db
         async with savepoint_session(engine) as session:
             await session.execute(text(f"INSERT INTO {table} VALUES (4)"))
@@ -177,9 +171,7 @@ class TestWorkerAllocation:
         monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
         assert worker_id() == "main"
 
-    def test_each_worker_gets_a_distinct_index_block(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_each_worker_gets_a_distinct_index_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         seen = []
         for slot in range(5):
             monkeypatch.setenv("PYTEST_XDIST_WORKER", f"gw{slot}")
@@ -189,8 +181,6 @@ class TestWorkerAllocation:
         assert seen == [0, 3, 6, 9, 12]
         assert len(set(seen)) == len(seen)
 
-    def test_offsets_stay_inside_the_worker_block(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_offsets_stay_inside_the_worker_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw2")
         assert [redis_index_for_worker(o) for o in range(3)] == [6, 7, 8]

@@ -5,12 +5,12 @@ from tr_shared.db.base import (
     Base,
     BaseModel,
     SoftDeleteMixin,
-    TimestampMixin,
     TenantMixin,
+    TimestampMixin,
 )
 from tr_shared.db.migrations import (
-    CrossSchemaFKError,
     UNDELIVERED_EVENTS_COLUMNS,
+    CrossSchemaFKError,
     add_check_constraint_deferred,
     add_fk_deferred,
     bootstrap_schema_and_version_table,

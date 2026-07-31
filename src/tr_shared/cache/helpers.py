@@ -97,16 +97,12 @@ async def invalidate_pattern(cache: "CacheInterface", pattern: str) -> int:
     try:
         cursor = 0
         while True:
-            cursor, keys = await cache.scan(
-                cursor=cursor, match=pattern, count=100
-            )
+            cursor, keys = await cache.scan(cursor=cursor, match=pattern, count=100)
             if keys:
                 deleted_count += await cache.delete(*keys)
             if cursor == 0:
                 break
-        logger.info(
-            "Invalidated %d keys matching pattern: %s", deleted_count, pattern
-        )
+        logger.info("Invalidated %d keys matching pattern: %s", deleted_count, pattern)
     except Exception as e:
         logger.warning("Error invalidating cache pattern %s: %s", pattern, e)
     return deleted_count
@@ -130,9 +126,7 @@ async def invalidate_entity_cache(
         prefix: Key prefix.
     """
     if identifier:
-        key = build_entity_cache_key(
-            entity, identifier, tenant_id, prefix=prefix
-        )
+        key = build_entity_cache_key(entity, identifier, tenant_id, prefix=prefix)
         deleted = await cache.delete(key)
         logger.info("Invalidated cache for %s:%s", entity, identifier)
         return deleted
@@ -144,9 +138,7 @@ async def invalidate_entity_cache(
     return await invalidate_pattern(cache, pattern)
 
 
-async def invalidate_list_caches(
-    cache: "CacheInterface", entity: str, *, prefix: str
-) -> int:
+async def invalidate_list_caches(cache: "CacheInterface", entity: str, *, prefix: str) -> int:
     """Invalidate all list caches for an entity type.
 
     Args:

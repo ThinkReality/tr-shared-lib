@@ -35,11 +35,14 @@ class MetaWebhookVerifier:
             logger.warning("Missing X-Hub-Signature-256 header")
             return False
 
-        expected = "sha256=" + hmac.new(
-            secret.encode("utf-8"),
-            raw_body,
-            hashlib.sha256,
-        ).hexdigest()
+        expected = (
+            "sha256="
+            + hmac.new(
+                secret.encode("utf-8"),
+                raw_body,
+                hashlib.sha256,
+            ).hexdigest()
+        )
 
         return hmac.compare_digest(expected, signature)
 

@@ -42,9 +42,7 @@ class BaseRedisAdapter(CacheInterface):
     async def ping(self) -> bool: ...
 
     @abstractmethod
-    async def set(
-        self, key: str, value: str, ttl: int | None = None, nx: bool = False
-    ) -> bool: ...
+    async def set(self, key: str, value: str, ttl: int | None = None, nx: bool = False) -> bool: ...
 
     @abstractmethod
     async def xadd(
@@ -62,9 +60,7 @@ class BaseRedisAdapter(CacheInterface):
     def _check_initialized(self, op: str) -> None:
         """Raise CacheConnectionError if the client has not been initialised."""
         if not self._client or not self._available:
-            raise CacheConnectionError(
-                f"Cache not initialized — call initialize() before {op}()"
-            )
+            raise CacheConnectionError(f"Cache not initialized — call initialize() before {op}()")
 
     async def get(self, key: str) -> str | None:
         self._check_initialized("get")
@@ -143,15 +139,11 @@ class BaseRedisAdapter(CacheInterface):
     ) -> tuple[int, list[str]]:
         self._check_initialized("scan")
         try:
-            return await self._client.scan(
-                cursor=cursor, match=match, count=count
-            )
+            return await self._client.scan(cursor=cursor, match=match, count=count)
         except Exception as e:
             raise CacheOperationError(f"SCAN failed: {e}") from e
 
-    async def eval(
-        self, script: str, numkeys: int, *keys_and_args: str | int
-    ) -> Any:
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str | int) -> Any:
         self._check_initialized("eval")
         try:
             return await self._client.eval(script, numkeys, *keys_and_args)

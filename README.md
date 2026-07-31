@@ -104,9 +104,11 @@ consumer = EventConsumer(
     consumer_group="my_service",
 )
 
+
 @consumer.handler("user.created")
 async def handle_user_created(envelope: EventEnvelope) -> None:
     print(envelope.data)
+
 
 await consumer.start()
 ```
@@ -144,18 +146,18 @@ from tr_shared.rate_limiter import RateLimiter, RateLimitMiddleware
 app.add_middleware(
     RateLimitMiddleware,
     redis_url="redis://localhost:6379",
-    default_limit=100,      # requests
-    default_window=60,      # seconds
+    default_limit=100,  # requests
+    default_window=60,  # seconds
 )
 
 # Or per-route dependency
 from tr_shared.rate_limiter.dependency import rate_limit
 
+
 @router.post("/listings")
 async def create_listing(
     _: None = Depends(rate_limit(limit=10, window=60)),
-):
-    ...
+): ...
 ```
 
 ---

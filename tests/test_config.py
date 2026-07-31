@@ -55,9 +55,7 @@ class TestBaseServiceSettings:
 
     def test_production_requires_gateway_signing_secret(self):
         with pytest.raises(ValidationError, match="AUTH_LIB_GATEWAY_SIGNING_SECRET"):
-            BaseServiceSettings(
-                **{**_PROD_BASE, "AUTH_LIB_GATEWAY_SIGNING_SECRET": ""}
-            )
+            BaseServiceSettings(**{**_PROD_BASE, "AUTH_LIB_GATEWAY_SIGNING_SECRET": ""})
 
     def test_production_requires_auth_lib_service_token(self):
         with pytest.raises(ValidationError, match="AUTH_LIB_SERVICE_TOKEN"):
@@ -69,30 +67,22 @@ class TestBaseServiceSettings:
 
     def test_production_rejects_localhost_redis(self):
         with pytest.raises(ValidationError, match="REDIS_URL.*localhost"):
-            BaseServiceSettings(
-                **{**_PROD_BASE, "REDIS_URL": "redis://localhost:6379/0"}
-            )
+            BaseServiceSettings(**{**_PROD_BASE, "REDIS_URL": "redis://localhost:6379/0"})
 
     def test_production_rejects_localhost_celery_broker(self):
         with pytest.raises(ValidationError, match="CELERY_BROKER_URL.*localhost"):
-            BaseServiceSettings(
-                **{**_PROD_BASE, "CELERY_BROKER_URL": "redis://localhost:6379/1"}
-            )
+            BaseServiceSettings(**{**_PROD_BASE, "CELERY_BROKER_URL": "redis://localhost:6379/1"})
 
     def test_production_rejects_localhost_database(self):
         with pytest.raises(ValidationError, match="DATABASE_URL.*localhost"):
-            BaseServiceSettings(
-                **{**_PROD_BASE, "DATABASE_URL": "postgresql://localhost:5432/db"}
-            )
+            BaseServiceSettings(**{**_PROD_BASE, "DATABASE_URL": "postgresql://localhost:5432/db"})
 
     def test_development_allows_wildcard(self):
         s = BaseServiceSettings(SERVICE_NAME="svc", CORS_ORIGINS="*")
         assert s.get_cors_origins() == ["*"]
 
     def test_get_cors_origins_splits_csv(self):
-        s = BaseServiceSettings(
-            SERVICE_NAME="svc", CORS_ORIGINS="https://a.com, https://b.com"
-        )
+        s = BaseServiceSettings(SERVICE_NAME="svc", CORS_ORIGINS="https://a.com, https://b.com")
         assert s.get_cors_origins() == ["https://a.com", "https://b.com"]
 
     def test_production_valid_config_downstream(self):

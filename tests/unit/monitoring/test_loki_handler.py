@@ -1,4 +1,5 @@
 """Tests for LokiHandler."""
+
 import json
 import logging
 from unittest.mock import MagicMock, patch
@@ -122,9 +123,7 @@ class TestFlush:
         handler.emit(record)
 
         mock_client = self._make_mock_http_client()
-        with patch(
-            "tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client
-        ):
+        with patch("tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client):
             handler._flush()
             mock_client.post.assert_called_once()
             assert mock_client.post.call_args[0][0] == handler.url
@@ -134,9 +133,7 @@ class TestFlush:
         handler.emit(record)
 
         mock_client = self._make_mock_http_client()
-        with patch(
-            "tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client
-        ):
+        with patch("tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client):
             handler._flush()
         assert len(handler._buffer) == 0
 
@@ -148,9 +145,7 @@ class TestFlush:
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.side_effect = Exception("connect refused")
-        with patch(
-            "tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client
-        ):
+        with patch("tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client):
             handler._flush()  # Must not raise
 
     def test_flush_warns_on_loki_4xx(self, handler):
@@ -158,9 +153,7 @@ class TestFlush:
         handler.emit(record)
 
         mock_client = self._make_mock_http_client(status_code=400)
-        with patch(
-            "tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client
-        ):
+        with patch("tr_shared.monitoring.loki_handler.httpx.Client", return_value=mock_client):
             handler._flush()  # Should not raise
 
 

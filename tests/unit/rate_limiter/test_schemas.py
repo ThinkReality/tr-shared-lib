@@ -1,7 +1,5 @@
 """Tests for rate_limiter Pydantic schemas and enums."""
 
-import pytest
-
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
     FailMode,

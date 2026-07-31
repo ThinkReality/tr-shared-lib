@@ -101,7 +101,11 @@ def test_required_keys_enforced():
 
 def test_optionals_default_to_none():
     payload = ListingPermitEventV1(
-        **{k: v for k, v in _EXPIRED.items() if k not in ("permit_type", "notification_recipient_id")}
+        **{
+            k: v
+            for k, v in _EXPIRED.items()
+            if k not in ("permit_type", "notification_recipient_id")
+        }
     )
     assert payload.permit_type is None
     assert payload.notification_recipient_id is None

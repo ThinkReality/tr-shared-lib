@@ -43,7 +43,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         meta = self._extract_metadata(request)
 
-        logger.info("Request started", extra={"service": self.service_name, "event": "request_started", **meta})
+        logger.info(
+            "Request started",
+            extra={"service": self.service_name, "event": "request_started", **meta},
+        )
 
         try:
             response = await call_next(request)

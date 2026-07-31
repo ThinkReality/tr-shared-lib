@@ -8,7 +8,9 @@ from tr_shared.logging import (
 
 def test_safe_log_context_redacts_email_and_long_tokens():
     try:
-        raise ValueError("failed for user@example.com with token abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ")
+        raise ValueError(
+            "failed for user@example.com with token abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ"
+        )
     except ValueError as e:
         ctx = safe_log_context(e)
         assert "user@example.com" not in ctx["error"]

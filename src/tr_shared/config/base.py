@@ -97,27 +97,19 @@ class BaseServiceSettings(BaseSettings):
             # gateway HMAC do NOT need these.
             if self.SUPABASE_URL:
                 if not self.SUPABASE_JWT_AUDIENCE:
-                    raise ValueError(
-                        "SUPABASE_JWT_AUDIENCE required when SUPABASE_URL is set"
-                    )
+                    raise ValueError("SUPABASE_JWT_AUDIENCE required when SUPABASE_URL is set")
                 if not self.JWKS_URL:
-                    raise ValueError(
-                        "JWKS_URL required when SUPABASE_URL is set"
-                    )
+                    raise ValueError("JWKS_URL required when SUPABASE_URL is set")
             if "*" in self.CORS_ORIGINS:
                 raise ValueError("CORS wildcard not allowed in production")
             if not self.SERVICE_TOKEN:
                 raise ValueError("SERVICE_TOKEN required in production")
             if not self.AUTH_LIB_GATEWAY_SIGNING_SECRET:
-                raise ValueError(
-                    "AUTH_LIB_GATEWAY_SIGNING_SECRET required in production"
-                )
+                raise ValueError("AUTH_LIB_GATEWAY_SIGNING_SECRET required in production")
             if not self.AUTH_LIB_SERVICE_TOKEN:
                 raise ValueError("AUTH_LIB_SERVICE_TOKEN required in production")
             for url_field in ("REDIS_URL", "CELERY_BROKER_URL", "DATABASE_URL"):
                 value = getattr(self, url_field)
                 if value and "localhost" in value:
-                    raise ValueError(
-                        f"{url_field} must not point to localhost in production"
-                    )
+                    raise ValueError(f"{url_field} must not point to localhost in production")
         return self

@@ -65,8 +65,7 @@ def add_check_constraint_deferred(
     qtable = _qualified(schema, table)
     qname = _quote(constraint_name)
     op.execute(
-        f"ALTER TABLE {qtable} "
-        f"ADD CONSTRAINT {qname} CHECK ({predicate}) NOT VALID",
+        f"ALTER TABLE {qtable} ADD CONSTRAINT {qname} CHECK ({predicate}) NOT VALID",
     )
     op.execute(f"ALTER TABLE {qtable} VALIDATE CONSTRAINT {qname}")
 

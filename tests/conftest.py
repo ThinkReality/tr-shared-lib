@@ -1,8 +1,8 @@
 """Shared pytest fixtures for tr-shared-lib tests."""
 
-import pytest
 import fakeredis
 import fakeredis.aioredis as fakeredis_aioredis
+import pytest
 
 
 @pytest.fixture

@@ -4,7 +4,9 @@ from tr_shared.webhooks.router import WebhookRouter
 from tr_shared.webhooks.schemas import WebhookEvent
 
 
-def _make_event(provider: str = "propertyfinder", event_type: str = "listing.published") -> WebhookEvent:
+def _make_event(
+    provider: str = "propertyfinder", event_type: str = "listing.published"
+) -> WebhookEvent:
     return WebhookEvent(
         provider=provider,
         event_id="evt-001",

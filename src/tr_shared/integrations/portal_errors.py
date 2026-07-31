@@ -34,7 +34,9 @@ class PortalError(BaseAPIException):
         *,
         portal: str | None = None,
     ) -> None:
-        super().__init__(status_code=502, error="Portal integration error", detail=detail, code=code)
+        super().__init__(
+            status_code=502, error="Portal integration error", detail=detail, code=code
+        )
         self.portal = portal
 
 

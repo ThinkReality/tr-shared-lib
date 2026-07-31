@@ -1,11 +1,8 @@
 """Tests for CircuitBreaker."""
 
-import asyncio
 import time
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
-
-import pytest
 
 from tr_shared.http.circuit_breaker import CircuitBreaker, CircuitState
 

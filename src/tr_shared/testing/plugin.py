@@ -43,9 +43,7 @@ __all__ = ["pytest_collection_modifyitems", "pytest_load_initial_conftests"]
 _STATE: dict[str, Any] = {}
 
 
-def pytest_load_initial_conftests(
-    early_config: Any, parser: Any, args: list[str]
-) -> None:
+def pytest_load_initial_conftests(early_config: Any, parser: Any, args: list[str]) -> None:
     config = find_config(Path(early_config.rootdir))
     if config is None:
         return  # not opted in — do nothing at all
@@ -174,9 +172,7 @@ def _use_override(config: TestingConfig, dsn: str, worker_id: str) -> None:
     )
 
 
-def _export(
-    *, database_url: str, redis_url: str, broker_url: str, result_backend: str
-) -> None:
+def _export(*, database_url: str, redis_url: str, broker_url: str, result_backend: str) -> None:
     # Assignment, not setdefault. The plugin is the single owner of these values;
     # a stale export in the developer's shell is exactly the leak path that makes
     # a "local" suite talk to a remote database.

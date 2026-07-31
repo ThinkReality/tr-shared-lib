@@ -34,16 +34,18 @@ class PrometheusClient:
             await self._client.aclose()
 
     async def get_request_rate(
-        self, service: str, window: str = "5m",
+        self,
+        service: str,
+        window: str = "5m",
     ) -> float:
         """Total request rate (req/s) for a service."""
-        promql = (
-            f'sum(rate(http_server_requests_total{{service="{service}"}}[{window}]))'
-        )
+        promql = f'sum(rate(http_server_requests_total{{service="{service}"}}[{window}]))'
         return await self._query_scalar(promql, default=0.0)
 
     async def get_error_rate(
-        self, service: str, window: str = "5m",
+        self,
+        service: str,
+        window: str = "5m",
     ) -> float:
         """Error rate percentage for a service."""
         promql = (
@@ -53,21 +55,25 @@ class PrometheusClient:
         return await self._query_scalar(promql, default=0.0)
 
     async def get_p95_latency(
-        self, service: str, window: str = "5m",
+        self,
+        service: str,
+        window: str = "5m",
     ) -> float:
         """P95 response time in seconds."""
         promql = (
-            f'histogram_quantile(0.95, '
+            f"histogram_quantile(0.95, "
             f'sum(rate(http_server_request_duration_seconds_bucket{{service="{service}"}}[{window}])) by (le))'
         )
         return await self._query_scalar(promql, default=0.0)
 
     async def get_p99_latency(
-        self, service: str, window: str = "5m",
+        self,
+        service: str,
+        window: str = "5m",
     ) -> float:
         """P99 response time in seconds."""
         promql = (
-            f'histogram_quantile(0.99, '
+            f"histogram_quantile(0.99, "
             f'sum(rate(http_server_request_duration_seconds_bucket{{service="{service}"}}[{window}])) by (le))'
         )
         return await self._query_scalar(promql, default=0.0)
@@ -115,14 +121,19 @@ class PrometheusClient:
         for item in result:
             metric = item.get("metric", {})
             value = item.get("value", [None, "0"])
-            services.append({
-                "service": metric.get("job", "unknown"),
-                "is_up": float(value[1]) == 1.0 if len(value) > 1 else False,
-            })
+            services.append(
+                {
+                    "service": metric.get("job", "unknown"),
+                    "is_up": float(value[1]) == 1.0 if len(value) > 1 else False,
+                }
+            )
         return services
 
     async def get_top_endpoints(
-        self, service: str, limit: int = 10, window: str = "5m",
+        self,
+        service: str,
+        limit: int = 10,
+        window: str = "5m",
     ) -> list[dict]:
         """
         Top endpoints by request rate.
@@ -131,7 +142,7 @@ class PrometheusClient:
             List of dicts with endpoint, method, and request_rate.
         """
         promql = (
-            f'topk({limit}, sum by (http_route, http_method) '
+            f"topk({limit}, sum by (http_route, http_method) "
             f'(rate(http_server_requests_total{{service="{service}"}}[{window}])))'
         )
         result = await self._query(promql)
@@ -139,11 +150,13 @@ class PrometheusClient:
         for item in result:
             metric = item.get("metric", {})
             value = item.get("value", [None, "0"])
-            endpoints.append({
-                "endpoint": metric.get("http_route", metric.get("http.route", "unknown")),
-                "method": metric.get("http_method", metric.get("http.method", "")),
-                "request_rate": float(value[1]) if len(value) > 1 else 0.0,
-            })
+            endpoints.append(
+                {
+                    "endpoint": metric.get("http_route", metric.get("http.route", "unknown")),
+                    "method": metric.get("http_method", metric.get("http.method", "")),
+                    "request_rate": float(value[1]) if len(value) > 1 else 0.0,
+                }
+            )
         return endpoints
 
     async def _query(self, promql: str) -> list[dict]:

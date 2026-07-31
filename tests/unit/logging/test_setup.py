@@ -3,7 +3,6 @@
 import logging
 from unittest.mock import MagicMock
 
-
 from tr_shared.logging.setup import (
     _mask_sensitive_fields,
     configure_logging,

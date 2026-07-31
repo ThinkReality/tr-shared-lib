@@ -110,9 +110,7 @@ class StandardRedisAdapter(BaseRedisAdapter):
         except Exception:
             return False
 
-    async def set(
-        self, key: str, value: str, ttl: int | None = None, nx: bool = False
-    ) -> bool:
+    async def set(self, key: str, value: str, ttl: int | None = None, nx: bool = False) -> bool:
         """Set key to value.
 
         Uses a single atomic ``SET key value EX ttl NX`` call where possible,

@@ -39,6 +39,7 @@ def _load_upstash_adapter():
 
     with patch.dict("sys.modules", fake_modules):
         import tr_shared.cache.adapters.upstash as mod
+
         importlib.reload(mod)
         return mod
 
@@ -87,23 +88,17 @@ def adapter(upstash_mod, mock_client):
 
 class TestInitialization:
     def test_not_available_before_init(self, upstash_mod):
-        a = upstash_mod.UpstashAdapter(
-            rest_url="https://x.upstash.io", rest_token="tok"
-        )
+        a = upstash_mod.UpstashAdapter(rest_url="https://x.upstash.io", rest_token="tok")
         assert a._available is False
 
     def test_client_is_none_before_init(self, upstash_mod):
-        a = upstash_mod.UpstashAdapter(
-            rest_url="https://x.upstash.io", rest_token="tok"
-        )
+        a = upstash_mod.UpstashAdapter(rest_url="https://x.upstash.io", rest_token="tok")
         assert a._client is None
 
     async def test_initialize_sets_available_on_success(self, upstash_mod, mock_client):
         # Patch AsyncUpstashRedis directly on the already-loaded module
         with patch.object(upstash_mod, "AsyncUpstashRedis", return_value=mock_client):
-            a = upstash_mod.UpstashAdapter(
-                rest_url="https://x.upstash.io", rest_token="tok"
-            )
+            a = upstash_mod.UpstashAdapter(rest_url="https://x.upstash.io", rest_token="tok")
             result = await a.initialize()
             assert result is True
             assert a._available is True
@@ -112,9 +107,7 @@ class TestInitialization:
         fake_client = AsyncMock()
         fake_client.ping = AsyncMock(side_effect=Exception("Connection refused"))
         with patch.object(upstash_mod, "AsyncUpstashRedis", return_value=fake_client):
-            a = upstash_mod.UpstashAdapter(
-                rest_url="https://x.upstash.io", rest_token="tok"
-            )
+            a = upstash_mod.UpstashAdapter(rest_url="https://x.upstash.io", rest_token="tok")
             result = await a.initialize()
             assert result is False
             assert a._available is False
@@ -126,9 +119,7 @@ class TestPing:
         assert await adapter.ping() is True
 
     async def test_ping_returns_false_when_not_available(self, upstash_mod):
-        a = upstash_mod.UpstashAdapter(
-            rest_url="https://x.upstash.io", rest_token="tok"
-        )
+        a = upstash_mod.UpstashAdapter(rest_url="https://x.upstash.io", rest_token="tok")
         assert await a.ping() is False
 
     async def test_ping_returns_false_on_exception(self, adapter, mock_client):

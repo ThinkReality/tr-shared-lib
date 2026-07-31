@@ -1,6 +1,5 @@
 """Tests for create_celery_app factory."""
 
-import pytest
 from celery import Celery
 
 from tr_shared.celery.factory import create_celery_app

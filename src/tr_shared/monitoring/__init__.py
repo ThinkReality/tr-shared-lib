@@ -46,6 +46,7 @@ _LAZY_IMPORTS = {
 def __getattr__(name: str):
     if name in _LAZY_IMPORTS:
         import importlib
+
         mod = importlib.import_module(_LAZY_IMPORTS[name])
         obj = getattr(mod, name)
         # Cache in module namespace so the next access is a normal attribute lookup.

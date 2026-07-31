@@ -69,9 +69,7 @@ class CircuitBreaker:
                 if lft:
                     self.last_failure_time = datetime.fromtimestamp(float(lft))
         except Exception:
-            logger.warning(
-                "CircuitBreaker: failed to load state from Redis for %s", self.name
-            )
+            logger.warning("CircuitBreaker: failed to load state from Redis for %s", self.name)
 
     async def _save_state(self) -> None:
         if self._redis is None:
@@ -83,17 +81,13 @@ class CircuitBreaker:
                     "state": self.state.value,
                     "failure_count": str(self.failure_count),
                     "last_failure_time": (
-                        str(self.last_failure_time.timestamp())
-                        if self.last_failure_time
-                        else ""
+                        str(self.last_failure_time.timestamp()) if self.last_failure_time else ""
                     ),
                 },
             )
             await self._redis.expire(self._redis_key, self._state_ttl)
         except Exception:
-            logger.warning(
-                "CircuitBreaker: failed to save state to Redis for %s", self.name
-            )
+            logger.warning("CircuitBreaker: failed to save state to Redis for %s", self.name)
 
     async def is_open(self) -> bool:
         """Return True if requests should be rejected (circuit open)."""

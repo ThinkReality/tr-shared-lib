@@ -1,4 +1,5 @@
 """Tests for Prometheus metrics endpoint helpers."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,17 +12,13 @@ from tr_shared.monitoring.prometheus_endpoint import (
 
 class TestStartPrometheusHttpServer:
     def test_calls_start_http_server(self):
-        with patch(
-            "tr_shared.monitoring.prometheus_endpoint.start_http_server"
-        ) as mock_start:
+        with patch("tr_shared.monitoring.prometheus_endpoint.start_http_server") as mock_start:
             mock_start.return_value = MagicMock()
             start_prometheus_http_server(port=9090)
             mock_start.assert_called_once()
 
     def test_passes_port_to_underlying_server(self):
-        with patch(
-            "tr_shared.monitoring.prometheus_endpoint.start_http_server"
-        ) as mock_start:
+        with patch("tr_shared.monitoring.prometheus_endpoint.start_http_server") as mock_start:
             mock_start.return_value = MagicMock()
             start_prometheus_http_server(port=9091)
             kwargs = mock_start.call_args.kwargs

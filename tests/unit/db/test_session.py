@@ -1,8 +1,8 @@
 """Tests for database session helpers."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tr_shared.db.session import (
@@ -59,7 +59,10 @@ class TestBuildConnectArgs:
     def test_no_overrides_matches_defaults(self):
         result = _build_connect_args("", "", None)
         assert result["statement_cache_size"] == PGBOUNCER_CONNECT_ARGS["statement_cache_size"]
-        assert result["prepared_statement_cache_size"] == PGBOUNCER_CONNECT_ARGS["prepared_statement_cache_size"]
+        assert (
+            result["prepared_statement_cache_size"]
+            == PGBOUNCER_CONNECT_ARGS["prepared_statement_cache_size"]
+        )
         assert result["command_timeout"] == PGBOUNCER_CONNECT_ARGS["command_timeout"]
         assert result["server_settings"]["jit"] == "off"
 
@@ -103,7 +106,8 @@ class TestBuildConnectArgs:
 
     def test_custom_server_settings_merges_not_replaces(self):
         result = _build_connect_args(
-            "admin-panel", "admin",
+            "admin-panel",
+            "admin",
             {"server_settings": {"plan_cache_mode": "force_custom_plan"}},
         )
         assert result["server_settings"]["plan_cache_mode"] == "force_custom_plan"
@@ -113,7 +117,8 @@ class TestBuildConnectArgs:
 
     def test_pgbouncer_safe_keys_always_present(self):
         result = _build_connect_args(
-            "test", "test_schema",
+            "test",
+            "test_schema",
             {"command_timeout": 120, "server_settings": {"extra": "value"}},
         )
         assert result["statement_cache_size"] == 0
@@ -132,9 +137,7 @@ class TestCreateAsyncEngineFactory:
         assert engine.echo is False
 
     def test_echo_true_propagated(self):
-        engine = create_async_engine_factory(
-            "postgresql+asyncpg://localhost/test", echo=True
-        )
+        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test", echo=True)
         assert engine.echo is True
 
     def test_normalises_postgres_url(self):

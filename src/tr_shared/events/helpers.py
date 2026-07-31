@@ -57,9 +57,7 @@ async def publish_event(
     """The one standard publish path: serialize a typed payload, then delegate
     to ``EventProducer.publish``. Rejects untyped (non-EventPayload) data."""
     if not isinstance(payload, EventPayload):
-        raise TypeError(
-            f"payload must be an EventPayload, got {type(payload).__name__}"
-        )
+        raise TypeError(f"payload must be an EventPayload, got {type(payload).__name__}")
     return await producer.publish(
         event_type=event_type,
         tenant_id=tenant_id,

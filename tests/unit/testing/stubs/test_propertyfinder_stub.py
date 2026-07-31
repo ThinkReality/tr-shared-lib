@@ -18,9 +18,7 @@ async def test_token_and_listings_routes() -> None:
         .listings([{"id": "L1", "status": "active"}])
     )
 
-    async with httpx.AsyncClient(
-        transport=stub.build(), base_url="https://example.test"
-    ) as client:
+    async with httpx.AsyncClient(transport=stub.build(), base_url="https://example.test") as client:
         token_resp = await client.post("/oauth/token", json={})
         listings_resp = await client.get("/listings")
 

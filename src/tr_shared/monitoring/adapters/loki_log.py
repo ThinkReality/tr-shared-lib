@@ -18,9 +18,7 @@ class LokiLogAdapter(LogProviderInterface):
         self.batch_size = batch_size
         self.flush_interval = flush_interval
 
-    def create_handler(
-        self, service_name: str, labels: dict[str, str]
-    ) -> logging.Handler:
+    def create_handler(self, service_name: str, labels: dict[str, str]) -> logging.Handler:
         from tr_shared.monitoring.loki_handler import LokiHandler
 
         return LokiHandler(

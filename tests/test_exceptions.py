@@ -25,9 +25,7 @@ class TestBaseAPIException:
         assert exc.error == "Bad request"
 
     def test_detail_message(self):
-        exc = BaseAPIException(
-            status_code=400, error="Bad", detail="more info", code="X_001"
-        )
+        exc = BaseAPIException(status_code=400, error="Bad", detail="more info", code="X_001")
         assert exc.detail_message == "more info"
         assert exc.error_code == "X_001"
 
@@ -37,9 +35,7 @@ class TestBaseAPIException:
         assert d == {"error": {"message": "Bad request"}}
 
     def test_to_dict_full(self):
-        exc = BaseAPIException(
-            status_code=400, error="Bad", detail="detail", code="CODE_001"
-        )
+        exc = BaseAPIException(status_code=400, error="Bad", detail="detail", code="CODE_001")
         d = exc.to_dict()
         assert d == {"error": {"message": "Bad", "code": "CODE_001", "detail": "detail"}}
 
@@ -136,7 +132,10 @@ class TestSubclassContract:
 
     def test_to_dict_full_includes_detail_and_code(self):
         exc = BaseAPIException(
-            status_code=400, error="Bad", detail="bad thing", code="X_001",
+            status_code=400,
+            error="Bad",
+            detail="bad thing",
+            code="X_001",
         )
         assert exc.to_dict() == {
             "error": {"message": "Bad", "code": "X_001", "detail": "bad thing"}

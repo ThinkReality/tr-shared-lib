@@ -49,9 +49,7 @@ class BaseRepository(Generic[T]):
         would silently match zero rows. Fail closed *and* audibly.
         """
         if tenant_id is None:
-            raise ValueError(
-                f"{self.model.__name__}: tenant_id is required and must not be None"
-            )
+            raise ValueError(f"{self.model.__name__}: tenant_id is required and must not be None")
 
     async def get_by_id(self, id: UUID, tenant_id: UUID) -> T | None:
         """Get a single entity by ID, scoped to tenant."""
@@ -89,9 +87,7 @@ class BaseRepository(Generic[T]):
         result = await self.db_session.execute(query)
         return list(result.scalars().all())
 
-    async def find_by_field(
-        self, field_name: str, value: Any, tenant_id: UUID
-    ) -> T | None:
+    async def find_by_field(self, field_name: str, value: Any, tenant_id: UUID) -> T | None:
         """Return one entity where ``field_name == value``, tenant-scoped.
 
         Generic single-column lookup (e.g. by ``name`` or ``slug``). Respects
@@ -166,8 +162,12 @@ class BaseRepository(Generic[T]):
     ) -> int:
         """Count entities for a tenant."""
         self._require_tenant(tenant_id)
-        query = select(func.count()).select_from(self.model).where(
-            self.model.tenant_id == tenant_id,
+        query = (
+            select(func.count())
+            .select_from(self.model)
+            .where(
+                self.model.tenant_id == tenant_id,
+            )
         )
         if hasattr(self.model, "deleted_at"):
             query = query.where(self.model.deleted_at.is_(None))
@@ -178,9 +178,7 @@ class BaseRepository(Generic[T]):
     async def create(self, entity: T) -> T:
         """Add a new entity (caller must set tenant_id on the entity)."""
         if hasattr(entity, "tenant_id") and entity.tenant_id is None:
-            raise ValueError(
-                f"{type(entity).__name__}.tenant_id must be set before create()"
-            )
+            raise ValueError(f"{type(entity).__name__}.tenant_id must be set before create()")
         self.db_session.add(entity)
         await self.db_session.flush()
         await self.db_session.refresh(entity)

@@ -55,8 +55,15 @@ class TestPublish:
         envelope = call_args[0][1]
 
         assert set(envelope.keys()) == {
-            "event_id", "event_type", "version", "tenant_id",
-            "timestamp", "source_service", "actor_id", "data", "metadata",
+            "event_id",
+            "event_type",
+            "version",
+            "tenant_id",
+            "timestamp",
+            "source_service",
+            "actor_id",
+            "data",
+            "metadata",
         }
         assert envelope["event_type"] == "listing.created"
         assert envelope["source_service"] == "listing"
@@ -99,9 +106,7 @@ class TestPublish:
             await p.publish("x", "t1", {})
 
     async def test_redis_failure_translated_to_transport_error(self, producer):
-        producer._redis.xadd = AsyncMock(
-            side_effect=RedisConnectionError("broker down")
-        )
+        producer._redis.xadd = AsyncMock(side_effect=RedisConnectionError("broker down"))
         with pytest.raises(EventPublishTransportError):
             await producer.publish("listing.created", "t1", {})
 

@@ -40,9 +40,7 @@ def _docker_available() -> bool:
         return False
 
 
-requires_docker = pytest.mark.skipif(
-    not _docker_available(), reason="Docker is not reachable"
-)
+requires_docker = pytest.mark.skipif(not _docker_available(), reason="Docker is not reachable")
 
 _PYPROJECT = """
 [project]
@@ -159,8 +157,15 @@ class TestOneContainerServesEveryWorker:
 
         result = subprocess.run(
             [
-                sys.executable, "-m", "pytest", "tests/integration/",
-                "-q", "-p", "no:cacheprovider", "-n", "4",
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/integration/",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "-n",
+                "4",
             ],
             cwd=project,
             capture_output=True,
@@ -177,7 +182,8 @@ class TestOneContainerServesEveryWorker:
         # 1. Exactly one Postgres container exists for this key — not one per worker.
         containers = subprocess.run(
             ["docker", "ps", "-a", "--filter", f"name={pg_container}", "--format", "{{.Names}}"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         ).stdout.split()
         assert containers == [pg_container], containers
 
@@ -227,7 +233,9 @@ class TestOneContainerServesEveryWorker:
 
         first = subprocess.run(cmd, cwd=project, capture_output=True, text=True, env=env)
         assert first.returncode == 0, first.stdout + first.stderr
-        created = _psql(pg_container, "SELECT count(*) FROM pg_database WHERE datname LIKE '%_tmpl_%'")
+        created = _psql(
+            pg_container, "SELECT count(*) FROM pg_database WHERE datname LIKE '%_tmpl_%'"
+        )
 
         # Prove reuse rather than rebuild: drop the marker's row. A rebuilt
         # template would restore it; a reused one will not.
@@ -239,5 +247,8 @@ class TestOneContainerServesEveryWorker:
 
         second = subprocess.run(cmd, cwd=project, capture_output=True, text=True, env=env)
         assert second.returncode == 0, second.stdout + second.stderr
-        assert _psql(pg_container, "SELECT count(*) FROM pg_database WHERE datname LIKE '%_tmpl_%'") == created
+        assert (
+            _psql(pg_container, "SELECT count(*) FROM pg_database WHERE datname LIKE '%_tmpl_%'")
+            == created
+        )
         assert _psql(pg_container, "SELECT count(*) FROM migrated_marker", templates[0]) == "0"

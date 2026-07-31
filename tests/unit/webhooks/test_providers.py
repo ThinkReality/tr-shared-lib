@@ -93,37 +93,45 @@ class TestMetaWebhookVerifier:
 
     def test_handshake_valid_token(self):
         v = MetaWebhookVerifier(verify_token="my-token")
-        result = v.handle_handshake({
-            "hub.mode": "subscribe",
-            "hub.verify_token": "my-token",
-            "hub.challenge": "12345",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "my-token",
+                "hub.challenge": "12345",
+            }
+        )
         assert result == 12345
 
     def test_handshake_wrong_token(self):
         v = MetaWebhookVerifier(verify_token="my-token")
-        result = v.handle_handshake({
-            "hub.mode": "subscribe",
-            "hub.verify_token": "wrong-token",
-            "hub.challenge": "12345",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "wrong-token",
+                "hub.challenge": "12345",
+            }
+        )
         assert result is None
 
     def test_handshake_wrong_mode(self):
         v = MetaWebhookVerifier(verify_token="my-token")
-        result = v.handle_handshake({
-            "hub.mode": "unsubscribe",
-            "hub.verify_token": "my-token",
-            "hub.challenge": "12345",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "unsubscribe",
+                "hub.verify_token": "my-token",
+                "hub.challenge": "12345",
+            }
+        )
         assert result is None
 
     def test_handshake_missing_challenge(self):
         v = MetaWebhookVerifier(verify_token="my-token")
-        result = v.handle_handshake({
-            "hub.mode": "subscribe",
-            "hub.verify_token": "my-token",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "my-token",
+            }
+        )
         assert result is None
 
     def test_handshake_no_params(self):
@@ -133,18 +141,22 @@ class TestMetaWebhookVerifier:
 
     def test_handshake_invalid_challenge_value(self):
         v = MetaWebhookVerifier(verify_token="my-token")
-        result = v.handle_handshake({
-            "hub.mode": "subscribe",
-            "hub.verify_token": "my-token",
-            "hub.challenge": "not-a-number",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "my-token",
+                "hub.challenge": "not-a-number",
+            }
+        )
         assert result is None
 
     def test_handshake_empty_verify_token(self):
         v = MetaWebhookVerifier(verify_token="")
-        result = v.handle_handshake({
-            "hub.mode": "subscribe",
-            "hub.verify_token": "",
-            "hub.challenge": "12345",
-        })
+        result = v.handle_handshake(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "",
+                "hub.challenge": "12345",
+            }
+        )
         assert result is None

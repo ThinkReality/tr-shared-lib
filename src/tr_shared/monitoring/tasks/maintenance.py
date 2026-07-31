@@ -61,9 +61,7 @@ def cleanup_old_monitoring_logs(
                     try:
                         partition_date = date(int(parts[0]), int(parts[1]), int(parts[2]))
                         if partition_date < cutoff:
-                            conn.execute(text(
-                                f"DROP TABLE IF EXISTS monitoring.{tablename}"
-                            ))
+                            conn.execute(text(f"DROP TABLE IF EXISTS monitoring.{tablename}"))
                             dropped += 1
                     except (ValueError, IndexError):
                         continue
@@ -71,7 +69,8 @@ def cleanup_old_monitoring_logs(
             if dropped:
                 logger.info(
                     "Dropped %d old monitoring partitions (cutoff: %s)",
-                    dropped, cutoff,
+                    dropped,
+                    cutoff,
                 )
     except Exception as exc:
         logger.error("cleanup_old_monitoring_logs failed: %s", exc)

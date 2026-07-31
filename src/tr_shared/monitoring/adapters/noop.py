@@ -25,9 +25,7 @@ class NoopMetricsAdapter(MetricsProviderInterface):
 class NoopLogAdapter(LogProviderInterface):
     """Log adapter that does nothing — disables log shipping."""
 
-    def create_handler(
-        self, service_name: str, labels: dict[str, str]
-    ) -> logging.Handler:
+    def create_handler(self, service_name: str, labels: dict[str, str]) -> logging.Handler:
         return logging.NullHandler()
 
 

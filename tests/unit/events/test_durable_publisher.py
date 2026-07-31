@@ -18,7 +18,9 @@ class TestDurableEventPublisher:
     async def test_insert_uses_caller_session(self):
         session = _make_session(in_txn=True)
         publisher = DurableEventPublisher(
-            session=session, schema="admin", source_service="admin-panel",
+            session=session,
+            schema="admin",
+            source_service="admin-panel",
         )
         rid = await publisher.publish(
             event_type="admin.integration.platform.created",
@@ -43,10 +45,14 @@ class TestDurableEventPublisher:
     async def test_source_service_injected_into_metadata(self):
         session = _make_session(in_txn=True)
         publisher = DurableEventPublisher(
-            session=session, schema="admin", source_service="admin-panel",
+            session=session,
+            schema="admin",
+            source_service="admin-panel",
         )
         await publisher.publish(
-            event_type="admin.x", tenant_id="t", data={},
+            event_type="admin.x",
+            tenant_id="t",
+            data={},
         )
         params = session.execute.call_args[0][1]
         metadata = json.loads(params["metadata"])
@@ -55,7 +61,9 @@ class TestDurableEventPublisher:
     async def test_caller_metadata_merged(self):
         session = _make_session(in_txn=True)
         publisher = DurableEventPublisher(
-            session=session, schema="admin", source_service="admin-panel",
+            session=session,
+            schema="admin",
+            source_service="admin-panel",
         )
         await publisher.publish(
             event_type="admin.x",
@@ -71,11 +79,15 @@ class TestDurableEventPublisher:
     async def test_raises_when_no_transaction(self):
         session = _make_session(in_txn=False)
         publisher = DurableEventPublisher(
-            session=session, schema="admin", source_service="admin-panel",
+            session=session,
+            schema="admin",
+            source_service="admin-panel",
         )
         with pytest.raises(RuntimeError, match="open SQLAlchemy transaction"):
             await publisher.publish(
-                event_type="admin.x", tenant_id="t", data={},
+                event_type="admin.x",
+                tenant_id="t",
+                data={},
             )
         session.execute.assert_not_called()
 
@@ -88,7 +100,9 @@ class TestDurableEventPublisher:
             table_name="outbox_v2",
         )
         await publisher.publish(
-            event_type="x", tenant_id="t", data={},
+            event_type="x",
+            tenant_id="t",
+            data={},
         )
         stmt = str(session.execute.call_args[0][0])
         assert "INSERT INTO admin.outbox_v2" in stmt

@@ -5,7 +5,6 @@ import hmac
 
 from tr_shared.webhooks.verifier import HMACVerifier, WebhookVerifier
 
-
 SECRET = "test-secret-32-characters-long!"
 BODY = b'{"event":"listing.published","id":"123"}'
 

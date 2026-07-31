@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from tr_shared.testing.guards import (
     Exemption,
     assert_environment_vocabulary,
@@ -59,18 +60,12 @@ class TestG2Sqlite:
 class TestG5AuthChain:
     def test_catches_dependency_overrides(self) -> None:
         """The form that made an earlier guard useless — 28 files used it."""
-        assert detect_auth_chain_bypass(
-            "app.dependency_overrides[require_auth] = lambda: ctx"
-        )
-        assert detect_auth_chain_bypass(
-            "app.dependency_overrides[optional_auth] = lambda: None"
-        )
+        assert detect_auth_chain_bypass("app.dependency_overrides[require_auth] = lambda: ctx")
+        assert detect_auth_chain_bypass("app.dependency_overrides[optional_auth] = lambda: None")
 
     def test_catches_the_middleware_monkeypatch(self) -> None:
         # tr-lead-management/tests/integration/conftest.py:27
-        assert detect_auth_chain_bypass(
-            "GatewayHMACMiddleware.dispatch = _passthrough_dispatch"
-        )
+        assert detect_auth_chain_bypass("GatewayHMACMiddleware.dispatch = _passthrough_dispatch")
 
     def test_catches_monkeypatch_setattr(self) -> None:
         assert detect_auth_chain_bypass(
@@ -78,9 +73,7 @@ class TestG5AuthChain:
         )
 
     def test_catches_the_bypass_flag(self) -> None:
-        assert detect_auth_chain_bypass(
-            'os.environ["AUTH_LIB_DEV_MODE_BYPASS"] = "true"'
-        )
+        assert detect_auth_chain_bypass('os.environ["AUTH_LIB_DEV_MODE_BYPASS"] = "true"')
 
     def test_allows_the_sanctioned_helper(self) -> None:
         """signed_client runs every real layer, so it must not trip the guard."""
@@ -90,13 +83,12 @@ class TestG5AuthChain:
         )
 
     def test_allows_overriding_unrelated_dependencies(self) -> None:
-        assert not detect_auth_chain_bypass(
-            "app.dependency_overrides[get_session] = _override"
-        )
+        assert not detect_auth_chain_bypass("app.dependency_overrides[get_session] = _override")
 
     def test_assert_helper_fails(self, tmp_path: Path) -> None:
         root = _tree(
-            tmp_path, "integration/conftest.py",
+            tmp_path,
+            "integration/conftest.py",
             "GatewayHMACMiddleware.dispatch = _passthrough",
         )
         with pytest.raises(AssertionError, match="auth chain"):
@@ -119,9 +111,7 @@ class TestG7SchemaConstruction:
 
     def test_ignores_prose_that_lowercases_into_the_pattern(self) -> None:
         """The exact false positive that made the first version unusable."""
-        assert not detect_schema_construction(
-            '"""Tests for CredentialTypeCreate schema."""'
-        )
+        assert not detect_schema_construction('"""Tests for CredentialTypeCreate schema."""')
         assert not detect_schema_construction('"""Drops schema residue between runs."""')
 
     def test_assert_helper_fails(self, tmp_path: Path) -> None:
@@ -218,9 +208,7 @@ class TestG11InfraSkips:
             assert_no_infra_skips(root)
 
     def test_allows_a_legitimate_skip(self, tmp_path: Path) -> None:
-        root = _tree(
-            tmp_path, "unit/test_x.py", 'pytest.skip("only meaningful on Windows")'
-        )
+        root = _tree(tmp_path, "unit/test_x.py", 'pytest.skip("only meaningful on Windows")')
         assert_no_infra_skips(root)
 
 
@@ -269,9 +257,9 @@ class TestG13EnvironmentVocabulary:
         four of these through. `guard-the-invariant-not-the-instance-list`.
         """
         for spelling in ("qa", "uat", "Production", "DEVELOPMENT"):
-            assert detect_environment_vocabulary(
-                f'if [ "$ENVIRONMENT" = "{spelling}" ]; then'
-            ), spelling
+            assert detect_environment_vocabulary(f'if [ "$ENVIRONMENT" = "{spelling}" ]; then'), (
+                spelling
+            )
 
     def test_allows_the_canonical_four(self) -> None:
         assert not detect_environment_vocabulary(
@@ -290,29 +278,29 @@ class TestG13EnvironmentVocabulary:
 
     def test_ignores_interpolation_in_messages(self) -> None:
         assert not detect_environment_vocabulary(
-            'echo "FATAL: migrations failed — refusing to start in \'${ENVIRONMENT}\'."'
+            "echo \"FATAL: migrations failed — refusing to start in '${ENVIRONMENT}'.\""
         )
 
     def test_ignores_comments(self) -> None:
         assert not detect_environment_vocabulary('# was: [ "$ENVIRONMENT" = "dev" ]')
 
     def test_handles_the_bracket_and_reverse_forms(self) -> None:
-        assert detect_environment_vocabulary('if [[ $ENVIRONMENT == dev ]]; then')
+        assert detect_environment_vocabulary("if [[ $ENVIRONMENT == dev ]]; then")
         assert detect_environment_vocabulary('if [ "dev" = "$ENVIRONMENT" ]; then')
-        assert not detect_environment_vocabulary('if [[ $ENVIRONMENT == staging ]]; then')
+        assert not detect_environment_vocabulary("if [[ $ENVIRONMENT == staging ]]; then")
 
     def test_catches_a_case_block(self) -> None:
-        source = '''case "$ENVIRONMENT" in
+        source = """case "$ENVIRONMENT" in
   dev|local) run_migrations ;;
   production) ;;
-esac'''
+esac"""
         assert detect_environment_vocabulary(source) == [2]
 
     def test_allows_a_canonical_case_block(self) -> None:
-        source = '''case "$ENVIRONMENT" in
+        source = """case "$ENVIRONMENT" in
   development|test) run_migrations ;;
   *) ;;
-esac'''
+esac"""
         assert not detect_environment_vocabulary(source)
 
     def test_assert_helper_fails(self, tmp_path: Path) -> None:
