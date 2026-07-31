@@ -8,8 +8,12 @@ def test_pf_platform_name_exact_string() -> None:
     assert K.PF_PLATFORM_NAME == "propertyfinder"
 
 
-def test_pf_auth_url_matches_token_manager_reference() -> None:
-    assert K.PF_AUTH_URL == "https://auth.propertyfinder.com/auth/oauth/v1/token"
+def test_pf_auth_url_is_the_atlas_token_endpoint() -> None:
+    """PF Atlas, not OAuth2. The old `auth.propertyfinder.com/auth/oauth/v1/token`
+    was a standard client-credentials endpoint; Atlas replaced it with a plain
+    JSON POST under the same host as the rest of the API."""
+    assert K.PF_AUTH_URL == "https://atlas.propertyfinder.com/v1/auth/token"
+    assert K.PF_AUTH_URL.startswith(K.PF_API_BASE_URL)
 
 
 def test_all_pf_webhook_events_has_13() -> None:

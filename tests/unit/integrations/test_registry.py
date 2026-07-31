@@ -1,5 +1,7 @@
 """Tests for the IntegrationConfigClient DI registry."""
 
+import asyncio
+
 import pytest
 
 from tr_shared.integrations import (
@@ -28,10 +30,10 @@ def test_init_and_get_roundtrip() -> None:
         init_integration_config_client(client)
         assert get_integration_config_client() is client
     finally:
-        # __aclose not called here; just drop the HTTP client synchronously
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(client.close())
+        # Own loop, not the ambient one. `asyncio.get_event_loop()` returns
+        # whatever loop the process last set as current — which another test in
+        # the same session may already have closed.
+        asyncio.run(client.close())
 
 
 def test_reset_clears_registration() -> None:

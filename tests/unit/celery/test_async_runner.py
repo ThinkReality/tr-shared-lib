@@ -1,205 +1,156 @@
-"""Tests for run_async_in_celery helper.
+"""Tests for the persistent worker event loop.
 
-TDD suite covering four scenarios:
-(a) happy path — coroutine runs and result is returned
-(b) running-loop detection branch — falls back to manually-created loop
-(c) engine.dispose(close=True) is called before the loop is created
-(d) pending tasks are cancelled during fallback-loop cleanup
+The contract this file pins is the *reason the module exists*: one event loop
+per worker process, shared by every task, torn down once at worker shutdown.
+
+An earlier version of this suite tested the opposite design — a fresh
+``asyncio.run()`` per task with ``engine.dispose(close=True)`` in front of it.
+That design was replaced because it drained the connection pool on every task
+and left async resources bound to a closed loop. The tests were not replaced
+with it, so they asserted behaviour the module had deliberately dropped.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from tr_shared.celery.async_runner import run_async_in_celery
+from tr_shared.celery import async_runner
+from tr_shared.celery.async_runner import run_async_in_celery, shutdown_worker_loop
 
 
-def _make_engine() -> MagicMock:
-    engine = MagicMock()
-    engine.dispose = MagicMock()
-    return engine
+@pytest.fixture(autouse=True)
+def _fresh_worker_loop():
+    """The loop is a module global. Without this, one test's loop leaks into
+    the next and loop-identity assertions become meaningless."""
+    shutdown_worker_loop()
+    yield
+    shutdown_worker_loop()
 
 
-async def _returns_value(value):
+async def _returns(value):
     return value
 
 
-async def _raises(exc_type):
-    raise exc_type("boom")
+async def _raises():
+    raise ValueError("boom")
 
 
-class TestHappyPath:
+class TestRunAsyncInCelery:
     def test_returns_coroutine_result(self):
-        engine = _make_engine()
+        assert run_async_in_celery(_returns(42)) == 42
 
-        result = run_async_in_celery(
-            _returns_value(42),
-            engine=engine,
-            service_name="test-svc",
-        )
-
-        assert result == 42
+    def test_returns_none_result(self):
+        assert run_async_in_celery(_returns(None)) is None
 
     def test_propagates_exception_from_coroutine(self):
-        engine = _make_engine()
-
         with pytest.raises(ValueError, match="boom"):
-            run_async_in_celery(
-                _raises(ValueError),
-                engine=engine,
-                service_name="test-svc",
-            )
+            run_async_in_celery(_raises())
 
-    def test_works_with_none_return(self):
-        engine = _make_engine()
+    def test_the_same_loop_serves_every_call(self):
+        """The whole point of the module. A per-task loop would make each call
+        see a different one, and every pooled async resource would die with it."""
+        run_async_in_celery(_returns(1))
+        first = async_runner._worker_loop
 
-        async def returns_none():
-            return None
+        run_async_in_celery(_returns(2))
 
-        result = run_async_in_celery(returns_none(), engine=engine, service_name="svc")
-        assert result is None
+        assert async_runner._worker_loop is first
+        assert not first.is_closed()
 
+    def test_a_resource_bound_to_the_loop_survives_the_next_call(self):
+        """Behavioural form of the above. A Future is bound to the loop that
+        created it, which is what makes it a valid probe — ``asyncio.Event``,
+        ``Lock`` and ``Queue`` stopped binding at construction in 3.10 and would
+        pass here even with a fresh loop per task.
 
-class TestEngineDispose:
-    def test_dispose_called_with_close_true(self):
-        engine = _make_engine()
+        Under the old per-task-loop design the second call raised
+        ``RuntimeError: Event loop is closed`` — the exact failure the
+        persistent loop exists to prevent.
+        """
 
-        run_async_in_celery(_returns_value("ok"), engine=engine, service_name="svc")
+        async def make_future():
+            return asyncio.get_running_loop().create_future()
 
-        engine.dispose.assert_called_once_with(close=True)
+        future = run_async_in_celery(make_future())
 
-    def test_dispose_exception_does_not_abort_run(self):
-        """A broken dispose() must not prevent the coroutine from running."""
-        engine = _make_engine()
-        engine.dispose.side_effect = RuntimeError("pool already closed")
+        async def resolve_it():
+            # Scheduled, not set inline: an already-resolved Future is awaited
+            # without ever touching a loop, so setting the result first would
+            # make this pass on any loop at all.
+            asyncio.get_running_loop().call_soon(future.set_result, "resolved")
+            return await future
 
-        result = run_async_in_celery(_returns_value("still ok"), engine=engine, service_name="svc")
-
-        assert result == "still ok"
-
-    def test_dispose_called_before_asyncio_run(self):
-        """dispose() must precede asyncio.run() in the call order."""
-        engine = _make_engine()
-        call_order: list[str] = []
-
-        engine.dispose.side_effect = lambda **_: call_order.append("dispose")
-
-        original_asyncio_run = asyncio.run
-
-        def tracking_run(coro, **kwargs):
-            call_order.append("asyncio.run")
-            return original_asyncio_run(coro, **kwargs)
-
-        with patch("tr_shared.celery.async_runner.asyncio.run", side_effect=tracking_run):
-            run_async_in_celery(_returns_value(1), engine=engine, service_name="svc")
-
-        assert call_order == ["dispose", "asyncio.run"]
+        assert run_async_in_celery(resolve_it()) == "resolved"
 
 
-class TestRunningLoopFallback:
-    def test_fallback_loop_used_when_running_loop_detected(self):
-        """When a running loop exists, the helper must still execute the
-        coroutine and return the result (not raise RuntimeError)."""
-        engine = _make_engine()
+class TestDeprecatedParameters:
+    def test_engine_is_accepted_and_never_disposed(self):
+        """``engine`` is kept only so existing callers keep working. Disposing
+        it per task is exactly the behaviour this module removed: it drains the
+        pool every task while the loop it is bound to stays alive."""
+        engine = MagicMock()
 
-        mock_loop = MagicMock()
-        mock_loop.run_until_complete.return_value = "from-fallback"
-        mock_loop.is_closed.return_value = False
+        assert run_async_in_celery(_returns("ok"), engine=engine) == "ok"
 
-        # all_tasks() must return an empty iterable so cleanup logic is a no-op
-        with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop),
-            patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[]),
-        ):
-            result = run_async_in_celery(
-                _returns_value("from-fallback"),
-                engine=engine,
-                service_name="test-svc",
-            )
+        engine.dispose.assert_not_called()
 
-        assert result == "from-fallback"
-
-    def test_new_event_loop_created_on_running_loop_detection(self):
-        engine = _make_engine()
-
-        mock_loop = MagicMock()
-        mock_loop.run_until_complete.return_value = None
-
-        with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop) as new_loop_mock,
-            patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[]),
-        ):
-            run_async_in_celery(_returns_value(None), engine=engine, service_name="svc")
-
-        new_loop_mock.assert_called_once()
-
-    def test_event_loop_closed_after_fallback(self):
-        engine = _make_engine()
-
-        mock_loop = MagicMock()
-        mock_loop.run_until_complete.return_value = None
-
-        with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop),
-            patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[]),
-        ):
-            run_async_in_celery(_returns_value(None), engine=engine, service_name="svc")
-
-        mock_loop.close.assert_called_once()
+    def test_service_name_is_accepted(self):
+        assert run_async_in_celery(_returns("ok"), service_name="svc") == "ok"
 
 
-class TestPendingTaskCancellation:
-    def test_pending_tasks_cancelled_during_cleanup(self):
-        engine = _make_engine()
+class TestShutdownWorkerLoop:
+    def test_closes_the_loop_and_clears_the_global(self):
+        run_async_in_celery(_returns(1))
+        loop = async_runner._worker_loop
 
-        task1 = MagicMock()
-        task1.done.return_value = False
-        task1.cancel = MagicMock()
+        shutdown_worker_loop()
 
-        task2 = MagicMock()
-        task2.done.return_value = False
-        task2.cancel = MagicMock()
+        assert loop.is_closed()
+        assert async_runner._worker_loop is None
 
-        mock_loop = MagicMock()
-        mock_loop.run_until_complete.return_value = None
+    def test_is_idempotent(self):
+        run_async_in_celery(_returns(1))
 
-        with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop),
-            patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[task1, task2]),
-            patch("tr_shared.celery.async_runner.asyncio.gather", return_value=AsyncMock()),
-        ):
-            run_async_in_celery(_returns_value(None), engine=engine, service_name="svc")
+        shutdown_worker_loop()
+        shutdown_worker_loop()
 
-        task1.cancel.assert_called_once()
-        task2.cancel.assert_called_once()
+        assert async_runner._worker_loop is None
 
-    def test_already_done_tasks_not_cancelled(self):
-        """Tasks already done must not be cancelled — only pending ones."""
-        engine = _make_engine()
+    def test_is_safe_before_any_task_has_run(self):
+        shutdown_worker_loop()
 
-        done_task = MagicMock()
-        done_task.done.return_value = True
-        done_task.cancel = MagicMock()
+        assert async_runner._worker_loop is None
 
-        mock_loop = MagicMock()
-        mock_loop.run_until_complete.return_value = None
+    def test_accepts_signal_kwargs(self):
+        """Wired directly to Celery's ``worker_process_shutdown``, which sends
+        sender/pid/exitcode. A bare ``def f()`` here would raise at shutdown."""
+        run_async_in_celery(_returns(1))
 
-        with (
-            patch("tr_shared.celery.async_runner.asyncio.get_running_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.new_event_loop", return_value=mock_loop),
-            patch("tr_shared.celery.async_runner.asyncio.set_event_loop"),
-            patch("tr_shared.celery.async_runner.asyncio.all_tasks", return_value=[done_task]),
-            patch("tr_shared.celery.async_runner.asyncio.gather"),
-        ):
-            run_async_in_celery(_returns_value(None), engine=engine, service_name="svc")
+        shutdown_worker_loop(sender=object(), pid=123, exitcode=0)
 
-        done_task.cancel.assert_not_called()
+        assert async_runner._worker_loop is None
+
+    def test_cancels_tasks_still_pending(self):
+        """A task left running by one Celery task must not keep the process
+        alive or vanish silently — shutdown cancels it."""
+
+        async def spawn_never_finishing_task():
+            return asyncio.ensure_future(asyncio.sleep(3600))
+
+        pending = run_async_in_celery(spawn_never_finishing_task())
+        assert not pending.done()
+
+        shutdown_worker_loop()
+
+        assert pending.cancelled()
+
+    def test_a_later_call_gets_a_fresh_working_loop(self):
+        run_async_in_celery(_returns(1))
+        first = async_runner._worker_loop
+        shutdown_worker_loop()
+
+        assert run_async_in_celery(_returns(2)) == 2
+
+        assert async_runner._worker_loop is not first
+        assert not async_runner._worker_loop.is_closed()

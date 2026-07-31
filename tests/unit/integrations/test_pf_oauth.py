@@ -1,11 +1,15 @@
 """Tests for fetch_pf_access_token()."""
 
-import base64
+import json
 
 import httpx
 import pytest
 
-from tr_shared.integrations import IntegrationConfigError, fetch_pf_access_token
+from tr_shared.integrations import (
+    PF_AUTH_URL,
+    IntegrationConfigError,
+    fetch_pf_access_token,
+)
 
 
 def _make_client(transport: httpx.MockTransport) -> httpx.AsyncClient:
@@ -14,13 +18,20 @@ def _make_client(transport: httpx.MockTransport) -> httpx.AsyncClient:
 
 @pytest.mark.asyncio
 async def test_happy_path_returns_token_and_expires_in() -> None:
+    """The Atlas contract: credentials in a JSON body, camelCase response.
+
+    Not OAuth2 client-credentials — there is no Basic auth header, no `scope`
+    and no `grant_type`. Asserting the absence of the header matters: sending
+    the secret twice would widen where it can leak.
+    """
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
         captured["auth_header"] = request.headers.get("Authorization")
         captured["content_type"] = request.headers.get("Content-Type")
-        captured["body"] = request.content
-        return httpx.Response(200, json={"access_token": "tk-abc", "expires_in": 3600})
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"accessToken": "tk-abc", "expiresIn": 3600})
 
     async with _make_client(httpx.MockTransport(handler)) as client:
         token, expires_in = await fetch_pf_access_token(
@@ -29,11 +40,10 @@ async def test_happy_path_returns_token_and_expires_in() -> None:
 
     assert token == "tk-abc"
     assert expires_in == 3600
-    expected = base64.b64encode(b"my-key:my-secret").decode()
-    assert captured["auth_header"] == f"Basic {expected}"
+    assert captured["url"] == PF_AUTH_URL
+    assert captured["auth_header"] is None
     assert captured["content_type"] == "application/json"
-    assert b'"scope":"openid"' in captured["body"]
-    assert b'"grant_type":"client_credentials"' in captured["body"]
+    assert captured["body"] == {"apiKey": "my-key", "apiSecret": "my-secret"}
 
 
 @pytest.mark.asyncio
@@ -93,20 +103,38 @@ async def test_non_json_response_raises() -> None:
 @pytest.mark.asyncio
 async def test_missing_access_token_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"expires_in": 3600})
+        return httpx.Response(200, json={"expiresIn": 3600})
 
     async with _make_client(httpx.MockTransport(handler)) as client:
         with pytest.raises(IntegrationConfigError) as exc:
             await fetch_pf_access_token("k", "s", http_client=client)
-    assert "access_token" in str(exc.value)
+    assert "accessToken" in str(exc.value)
 
 
 @pytest.mark.asyncio
 async def test_missing_expires_in_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"access_token": "tk"})
+        return httpx.Response(200, json={"accessToken": "tk"})
 
     async with _make_client(httpx.MockTransport(handler)) as client:
         with pytest.raises(IntegrationConfigError) as exc:
             await fetch_pf_access_token("k", "s", http_client=client)
-    assert "expires_in" in str(exc.value)
+    assert "expiresIn" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_snake_case_token_response_is_rejected() -> None:
+    """A well-formed OAuth2 response is NOT a valid Atlas response.
+
+    Without this, swapping the reader back to `access_token` would leave every
+    other test in this file green — the happy path would simply stop being
+    exercised by the shape the API actually returns.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"access_token": "tk", "expires_in": 3600})
+
+    async with _make_client(httpx.MockTransport(handler)) as client:
+        with pytest.raises(IntegrationConfigError) as exc:
+            await fetch_pf_access_token("k", "s", http_client=client)
+    assert "accessToken" in str(exc.value)
