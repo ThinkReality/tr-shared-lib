@@ -86,9 +86,41 @@ class TestRunNeedsInfrastructure:
     def test_flags_do_not_defeat_unit_detection(self, tree) -> None:
         assert run_needs_infrastructure(["-q", "-x", "tests/unit/"], root=tree) is False
 
-    def test_marker_selection_provisions(self, tree) -> None:
-        """`-m integration` over a unit-shaped path still needs infrastructure."""
-        assert run_needs_infrastructure(["tests/unit/"], "integration", root=tree) is True
+    def test_marker_selection_without_paths_provisions(self, tree) -> None:
+        """`pytest -m integration` with no path arguments collects everything."""
+        assert run_needs_infrastructure([], "integration", root=tree) is True
+
+    def test_marker_selection_over_an_integration_path_provisions(self, tree) -> None:
+        assert run_needs_infrastructure(["tests/integration/"], "integration", root=tree) is True
+
+    def test_marker_selection_over_a_mixed_path_set_provisions(self, tree) -> None:
+        assert (
+            run_needs_infrastructure(
+                ["tests/unit/", "tests/integration/"], "integration", root=tree
+            )
+            is True
+        )
+
+    def test_marker_selection_over_only_unit_paths_does_not_provision(self, tree) -> None:
+        """`pytest tests/unit/ -m integration` can select nothing, so provisioning it
+        is guaranteed waste — a container started, migrated and waited on for a run
+        with zero selectable tests.
+
+        Safe because the lane marker is *derived from the path*
+        (``plugin.pytest_collection_modifyitems``), so a test under a unit path
+        cannot carry the integration marker. This used to return True, which cost
+        tr-shared-lib's own unit lane ~90s per run and made it fail outright
+        whenever the Docker daemon was busy.
+        """
+        assert run_needs_infrastructure(["tests/unit/"], "integration", root=tree) is False
+
+    def test_marker_selection_over_only_unit_paths_still_respects_a_tie(self, tree) -> None:
+        """`lane_for_path` resolves `integration` for a path carrying both segments,
+        so this is not a unit-only path set and must still provision."""
+        (tree / "tests/integration/unit").mkdir(parents=True)
+        assert (
+            run_needs_infrastructure(["tests/integration/unit/"], "integration", root=tree) is True
+        )
 
     def test_negated_marker_does_not_provision(self, tree) -> None:
         assert run_needs_infrastructure(["tests/unit/"], "not integration", root=tree) is False
