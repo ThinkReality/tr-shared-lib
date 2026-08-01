@@ -5,6 +5,27 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] - 2026-08-01
+
+### Added
+- `tr_shared.phone.to_e164(value, default_region="AE") -> str | None` — normalizes a raw
+  phone string to E.164 for a valid, plausibly-WhatsApp-reachable number, `None`
+  otherwise. Never raises: unparseable, invalid, or non-mobile-reachable input (including
+  landlines) all return `None`. Behind a new opt-in `phone` extra (`phonenumbers>=8.13.0`)
+  so services that never touch phone data don't pull the dependency.
+
+### Why
+Owner-phone ingestion (DLD) needs one SSOT for turning free-text phone strings into a
+dialable, WhatsApp-reachable format instead of each service re-implementing ad hoc
+parsing. `to_e164` deliberately returns `None` for valid-but-non-mobile numbers such as
+landlines — mobile-reachability is the intended semantics, not general E.164 conversion,
+so a valid landline is treated the same as an invalid number by design.
+
+### Migration
+None. New opt-in extra — add `tr-shared-lib[phone]` (or the `phone` extra alongside your
+existing extras) to pull in `phonenumbers`; services that don't need phone normalization
+are unaffected.
+
 ## [0.53.0] - 2026-07-31
 
 ### Added

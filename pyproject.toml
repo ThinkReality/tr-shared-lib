@@ -1,6 +1,6 @@
 [project]
 name = "tr-shared-lib"
-version = "0.53.0"
+version = "0.54.0"
 description = "Shared library for ThinkRealty microservices"
 requires-python = ">=3.13"
 dependencies = [
@@ -44,6 +44,7 @@ monitoring-prometheus = [
 monitoring-otlp = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
 ]
+phone = ["phonenumbers>=8.13.0"]
 rate-limiter = [
     "redis>=5.0.0",
     "fastapi>=0.109.0",
@@ -67,7 +68,7 @@ testing = [
     "celery>=5.3.0",
 ]
 all = [
-    "tr-shared-lib[redis,celery,db,http,middleware,logging,auth,monitoring,cache,rate-limiter,webhooks,integrations]",
+    "tr-shared-lib[redis,celery,db,http,middleware,logging,auth,monitoring,cache,phone,rate-limiter,webhooks,integrations]",
 ]
 # Loaded by pytest in every venv that installs this library. It is INERT unless
 # the service declares [tool.tr_testing] in its own pyproject — see
