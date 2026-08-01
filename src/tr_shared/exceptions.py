@@ -1,6 +1,8 @@
 # Error code format: {SERVICE_PREFIX}_{CATEGORY}_{NUMBER}
 # e.g. LISTING_VALIDATION_001, CMS_NOT_FOUND_002
 
+from typing import Any
+
 from fastapi import HTTPException
 
 _REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "error_code")
@@ -13,8 +15,9 @@ class BaseAPIException(HTTPException):
         error: str,
         detail: str | None = None,
         code: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
-        super().__init__(status_code=status_code, detail=error)
+        super().__init__(status_code=status_code, detail=error, headers=headers)
         self.error = error
         self.detail_message = detail
         self.error_code = code
@@ -24,7 +27,10 @@ class BaseAPIException(HTTPException):
         super().__init_subclass__(**kwargs)
         original_init = cls.__init__
 
-        def _verified_init(self: "BaseAPIException", *args: object, **kw: object) -> None:
+        # `Any`, not `object`: this is a pass-through wrapper around an arbitrary
+        # subclass __init__, so mypy must not try to match the forwarded *args
+        # against the base signature it happens to see here.
+        def _verified_init(self: "BaseAPIException", *args: Any, **kw: Any) -> None:
             original_init(self, *args, **kw)
             missing = [a for a in _REQUIRED_ATTRS if not hasattr(self, a)]
             if missing:
@@ -56,10 +62,25 @@ class ValidationError(BaseAPIException):
 
 
 class AuthenticationError(BaseAPIException):
-    """Authentication required or failed (401)."""
+    """Authentication required or failed (401).
 
-    def __init__(self, detail: str = "Authentication required", code: str = "AUTH_001") -> None:
-        super().__init__(status_code=401, error="Authentication failed", detail=detail, code=code)
+    ``headers`` exists so a 401 can carry its ``WWW-Authenticate`` challenge,
+    which RFC 9110 §11.6.1 requires of every 401 response.
+    """
+
+    def __init__(
+        self,
+        detail: str = "Authentication required",
+        code: str = "AUTH_001",
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(
+            status_code=401,
+            error="Authentication failed",
+            detail=detail,
+            code=code,
+            headers=headers,
+        )
 
 
 class AuthorizationError(BaseAPIException):
@@ -100,9 +121,13 @@ class RateLimitError(BaseAPIException):
         code: str = "RATE_LIMIT_001",
         retry_after: int | None = None,
     ) -> None:
-        super().__init__(status_code=429, error="Rate limit exceeded", detail=detail, code=code)
-        if retry_after is not None:
-            self.headers = {"Retry-After": str(retry_after)}
+        super().__init__(
+            status_code=429,
+            error="Rate limit exceeded",
+            detail=detail,
+            code=code,
+            headers=None if retry_after is None else {"Retry-After": str(retry_after)},
+        )
 
 
 class DatabaseError(BaseAPIException):

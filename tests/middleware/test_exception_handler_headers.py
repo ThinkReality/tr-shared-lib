@@ -9,7 +9,7 @@ the handler to surface self.headers; nothing enforced it until this file.
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from tr_shared.exceptions import RateLimitError
+from tr_shared.exceptions import AuthenticationError, RateLimitError
 from tr_shared.middleware import register_exception_handlers
 
 
@@ -26,6 +26,14 @@ def _client() -> TestClient:
         raise HTTPException(
             status_code=401,
             detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.get("/needs-auth-typed")
+    async def needs_auth_typed() -> None:
+        raise AuthenticationError(
+            detail="Authentication required",
+            code="AUTHLIB_AUTH_001",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -60,6 +68,21 @@ def test_http_exception_handler_emits_www_authenticate() -> None:
 
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_typed_authentication_error_emits_www_authenticate() -> None:
+    """RFC 9110 §11.6.1 requires a challenge on every 401.
+
+    ``BaseAPIException`` took no ``headers`` argument until this change, so
+    converting shared-auth-lib's raw ``HTTPException`` 401 to the typed exception
+    would have silently dropped the fleet's only ``WWW-Authenticate`` header —
+    ``auth_dependencies.py`` is its sole producer, and nothing asserted it there.
+    """
+    response = _client().get("/needs-auth-typed")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json()["error"]["code"] == "AUTHLIB_AUTH_001"
 
 
 def test_exception_without_headers_still_responds() -> None:
