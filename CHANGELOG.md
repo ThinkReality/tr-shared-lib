@@ -13,12 +13,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keys no settings class declares. Every service's Settings is `extra="ignore"`, so a renamed
   or typo'd key is discarded silently; this is how a dev environment ended up pointed at
   production PropertyFinder. The collector unions every reachable `BaseSettings` subclass with
-  `env_prefix` applied, so `AUTH_LIB_*` and module-level settings are not reported as orphans.
+  `env_prefix` applied, excluding classes defined in test modules (see Fixed below), so
+  `AUTH_LIB_*` and module-level settings are not reported as orphans.
 - `tr_shared.testing.assert_no_orphan_env_keys(repo_root, *, extra_classes=())` — asserts
   every `.env.example` key has an owner: a settings field, or a name referenced in a compose
   file, Dockerfile, shell script or non-Python source. Runs on the committed template, not the
-  gitignored `.env`, so it gates in CI rather than failing per-machine. Registered as **G13**
-  in `docs/shared/TR_Testing_Standard.md` §10.
+  gitignored `.env`, so it gates in CI rather than failing per-machine. Registered as **G15**
+  in `docs/shared/TR_Testing_Standard.md` §10 (corrected post-release: originally logged here
+  as G13, which was already taken by the shell environment-vocabulary guard).
 
 ### Fixed
 - Error responses now surface `exc.headers`. `Retry-After` on a 429 and `WWW-Authenticate` on a
