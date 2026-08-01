@@ -4,10 +4,12 @@ format. Owned by whichever service ingests the raw data (never by a downstream c
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberType
 
-_CONTACTABLE_TYPES = frozenset({
-    PhoneNumberType.MOBILE,
-    PhoneNumberType.FIXED_LINE_OR_MOBILE,
-})
+_CONTACTABLE_TYPES = frozenset(
+    {
+        PhoneNumberType.MOBILE,
+        PhoneNumberType.FIXED_LINE_OR_MOBILE,
+    }
+)
 
 
 def to_e164(value: str | None, default_region: str = "AE") -> str | None:
