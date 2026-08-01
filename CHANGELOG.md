@@ -5,6 +5,43 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0] - 2026-08-01
+
+### Added
+- `tr_shared.config.log_unclaimed_env_keys(env_file=".env") -> list[str]` and
+  `tr_shared.config.unclaimed_env_keys(env_file, classes=None) -> list[str]` — name the env
+  keys no settings class declares. Every service's Settings is `extra="ignore"`, so a renamed
+  or typo'd key is discarded silently; this is how a dev environment ended up pointed at
+  production PropertyFinder. The collector unions every reachable `BaseSettings` subclass with
+  `env_prefix` applied, so `AUTH_LIB_*` and module-level settings are not reported as orphans.
+- `tr_shared.testing.assert_no_orphan_env_keys(repo_root, *, extra_classes=())` — asserts
+  every `.env.example` key has an owner: a settings field, or a name referenced in a compose
+  file, Dockerfile, shell script or non-Python source. Runs on the committed template, not the
+  gitignored `.env`, so it gates in CI rather than failing per-machine. Registered as **G13**
+  in `docs/shared/TR_Testing_Standard.md` §10.
+
+### Fixed
+- Error responses now surface `exc.headers`. `Retry-After` on a 429 and `WWW-Authenticate` on a
+  401 were built by the raising code and then dropped by the handler. Transport-controlled
+  headers (`content-length`, `content-type`, `transfer-encoding`, `connection`) are filtered
+  out — a forged `Content-Length` is a request-smuggling primitive, not a header to pass on.
+- Settings classes defined in test modules are excluded from owner auto-discovery. A fixture
+  class that declared a key marked a genuinely-orphaned key as claimed — a false negative in
+  the guard. Explicit `classes=` / `extra_classes=` are unaffected.
+- The `.env.example` exemption scans `*.go` as well as compose/Dockerfile/shell. WAM's Go bot
+  reads `WHATSMEOW_DB_PATH` and `CREWAI_BASE_URL` via `os.Getenv`; both were reported as
+  orphans the guard told developers to delete.
+- That same scan now skips `.worktrees` alongside `.venv`, `.git` and `node_modules`, matching
+  `guards.iter_shell_files`. A worktree holds a copy of the repo at another revision, so a key
+  consumed only on another branch could look claimed on this one.
+
+### Changed
+- **Breaking (no known consumers):** `reachable_settings_classes()` → `config_owner_classes()`,
+  and `assert_env_example_is_declared()` → `assert_no_orphan_env_keys()`. Both were added in
+  the unreleased range above and are renamed before first release: the first no longer returns
+  everything reachable, and the second now matches the `assert_no_*` family used by every other
+  guard in the testing standard's §10.
+
 ## [0.54.0] - 2026-08-01
 
 ### Added
