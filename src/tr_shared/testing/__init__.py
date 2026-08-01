@@ -23,7 +23,7 @@ installed.
 """
 
 from tr_shared.testing.config import TestingConfig, find_config
-from tr_shared.testing.env_contract import assert_env_example_is_declared
+from tr_shared.testing.env_contract import assert_no_orphan_env_keys
 from tr_shared.testing.guards import (
     assert_no_auth_chain_bypass,
     assert_no_env_mutation_in_conftest,
@@ -59,7 +59,7 @@ __all__ = [
     "POISON_REDIS_URL",
     "Exemption",
     "TestingConfig",
-    "assert_env_example_is_declared",
+    "assert_no_orphan_env_keys",
     "assert_exemptions_are_machine_verified",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
