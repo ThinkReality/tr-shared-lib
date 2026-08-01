@@ -1,6 +1,8 @@
 # Error code format: {SERVICE_PREFIX}_{CATEGORY}_{NUMBER}
 # e.g. LISTING_VALIDATION_001, CMS_NOT_FOUND_002
 
+from typing import Any
+
 from fastapi import HTTPException
 
 _REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "error_code")
@@ -25,7 +27,10 @@ class BaseAPIException(HTTPException):
         super().__init_subclass__(**kwargs)
         original_init = cls.__init__
 
-        def _verified_init(self: "BaseAPIException", *args: object, **kw: object) -> None:
+        # `Any`, not `object`: this is a pass-through wrapper around an arbitrary
+        # subclass __init__, so mypy must not try to match the forwarded *args
+        # against the base signature it happens to see here.
+        def _verified_init(self: "BaseAPIException", *args: Any, **kw: Any) -> None:
             original_init(self, *args, **kw)
             missing = [a for a in _REQUIRED_ATTRS if not hasattr(self, a)]
             if missing:

@@ -104,12 +104,6 @@ src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function d
 src/tr_shared/cache/factory.py:0: error: Cannot assign to a type  [misc]
 src/tr_shared/cache/factory.py:0: note: Error code "misc" not covered by "type: ignore[assignment]" comment
 src/tr_shared/cache/factory.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
-src/tr_shared/exceptions.py:0: error: Argument 2 has incompatible type "*tuple[object, ...]"; expected "int"  [arg-type]
-src/tr_shared/exceptions.py:0: error: Argument 2 has incompatible type "*tuple[object, ...]"; expected "str"  [arg-type]
-src/tr_shared/exceptions.py:0: error: Argument 2 has incompatible type "*tuple[object, ...]"; expected "str | None"  [arg-type]
-src/tr_shared/exceptions.py:0: error: Argument 3 has incompatible type "**dict[str, object]"; expected "int"  [arg-type]
-src/tr_shared/exceptions.py:0: error: Argument 3 has incompatible type "**dict[str, object]"; expected "str"  [arg-type]
-src/tr_shared/exceptions.py:0: error: Argument 3 has incompatible type "**dict[str, object]"; expected "str | None"  [arg-type]
 src/tr_shared/monitoring/prometheus_endpoint.py:0: error: Function is missing a return type annotation  [no-untyped-def]
 src/tr_shared/monitoring/prometheus_endpoint.py:0: error: Function is missing a return type annotation  [no-untyped-def]
 src/tr_shared/monitoring/prometheus_endpoint.py:0: error: Function is missing a return type annotation  [no-untyped-def]

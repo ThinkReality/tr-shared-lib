@@ -1,3 +1,5 @@
+from typing import Any
+
 from tr_shared.middleware.correlation_id import CorrelationIDMiddleware
 from tr_shared.middleware.error_handler import GlobalErrorHandlerMiddleware
 from tr_shared.middleware.exception_handlers import (
@@ -30,7 +32,7 @@ _LAZY_IMPORTS = {
 }
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name in _LAZY_IMPORTS:
         import importlib
 
