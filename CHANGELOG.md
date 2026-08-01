@@ -5,6 +5,31 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.0] - 2026-08-02
+
+### Added
+- `BaseAPIException` accepts `headers`, forwarded to `HTTPException`. Two subclasses already
+  hand-rolled this — `RateLimitError` assigned `self.headers` after `super().__init__`, and
+  content-platform's `CMSBaseException` did the same — because the base would not take it.
+  Both now go through the base. `AuthenticationError` forwards `headers` so a 401 can carry
+  the `WWW-Authenticate` challenge RFC 9110 §11.6.1 requires.
+
+  This unblocked shared-auth-lib's authorization convergence: `auth_dependencies.py` is the
+  fleet's only producer of `WWW-Authenticate`, and converting its raw `HTTPException` to the
+  typed exception would have dropped the header silently — nothing asserted it there.
+
+### Fixed
+- `tr_shared.middleware` no longer imports `APIIdempotencyMiddleware` eagerly. It is the only
+  member requiring the `redis` extra, so `from tr_shared.middleware import
+  register_exception_handlers` raised `ModuleNotFoundError: redis` for any consumer without
+  it — shared-auth-lib pins `[http,logging]` and so could not reach the error handlers every
+  service is required to install. Now a lazy `__getattr__` export, matching
+  `tr_shared.monitoring`'s db/celery instrumentation. Importing the name still works.
+- Webhook endpoint errors emit the canonical envelope. Four responses answered with
+  `{"error": "<string>"}` — `error` must always be an object — and carried no correlation id:
+  rate-limited (`WEBHOOK_RATE_LIMIT_001`), invalid signature (`WEBHOOK_AUTH_001`), invalid
+  JSON (`WEBHOOK_VALIDATION_001`) and failed Meta handshake (`WEBHOOK_AUTH_002`).
+
 ## [0.55.0] - 2026-08-01
 
 ### Added

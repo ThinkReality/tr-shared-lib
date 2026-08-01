@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from tr_shared.contracts.headers import HttpHeader
+from tr_shared.schemas.error_envelope import build_error_envelope
 from tr_shared.webhooks.idempotency import WebhookIdempotencyGuard
 from tr_shared.webhooks.providers.meta import MetaWebhookVerifier
 from tr_shared.webhooks.router import WebhookRouter
@@ -28,6 +29,15 @@ def _extract_field(payload: dict[str, Any], field_names: list[str]) -> str:
         if value is not None:
             return str(value)
     return ""
+
+
+def _correlation_id(request: Request) -> str | None:
+    """Correlation id for an error envelope built outside the exception handlers.
+
+    Webhook routes answer before CorrelationIDMiddleware has populated
+    ``request.state``, so the header is the only source available here.
+    """
+    return request.headers.get(HttpHeader.CORRELATION_ID.value)
 
 
 def _get_client_ip(request: Request) -> str | None:
@@ -113,7 +123,11 @@ def _register_provider_endpoints(
                 if not result.allowed:
                     return JSONResponse(
                         status_code=429,
-                        content={"error": "Rate limit exceeded"},
+                        content=build_error_envelope(
+                            message="Rate limit exceeded",
+                            code="WEBHOOK_RATE_LIMIT_001",
+                            correlation_id=_correlation_id(request),
+                        ),
                         headers={
                             HttpHeader.RATE_LIMIT_LIMIT.value: str(result.limit),
                             HttpHeader.RATE_LIMIT_REMAINING.value: str(result.remaining),
@@ -136,7 +150,11 @@ def _register_provider_endpoints(
                 logger.warning("Invalid webhook signature: provider=%s", pn)
                 return JSONResponse(
                     status_code=401,
-                    content={"error": "Invalid webhook signature"},
+                    content=build_error_envelope(
+                        message="Invalid webhook signature",
+                        code="WEBHOOK_AUTH_001",
+                        correlation_id=_correlation_id(request),
+                    ),
                 )
 
         try:
@@ -144,7 +162,11 @@ def _register_provider_endpoints(
         except (json.JSONDecodeError, ValueError):
             return JSONResponse(
                 status_code=400,
-                content={"error": "Invalid JSON payload"},
+                content=build_error_envelope(
+                    message="Invalid JSON payload",
+                    code="WEBHOOK_VALIDATION_001",
+                    correlation_id=_correlation_id(request),
+                ),
             )
 
         # When the provider supplies no id field, derive a deterministic id from
@@ -259,5 +281,9 @@ def _register_provider_endpoints(
                 return PlainTextResponse(str(challenge))
             return JSONResponse(
                 status_code=403,
-                content={"error": "Verification failed"},
+                content=build_error_envelope(
+                    message="Verification failed",
+                    code="WEBHOOK_AUTH_002",
+                    correlation_id=_correlation_id(request),
+                ),
             )

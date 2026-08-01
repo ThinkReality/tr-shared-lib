@@ -13,8 +13,9 @@ class BaseAPIException(HTTPException):
         error: str,
         detail: str | None = None,
         code: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
-        super().__init__(status_code=status_code, detail=error)
+        super().__init__(status_code=status_code, detail=error, headers=headers)
         self.error = error
         self.detail_message = detail
         self.error_code = code
@@ -56,10 +57,25 @@ class ValidationError(BaseAPIException):
 
 
 class AuthenticationError(BaseAPIException):
-    """Authentication required or failed (401)."""
+    """Authentication required or failed (401).
 
-    def __init__(self, detail: str = "Authentication required", code: str = "AUTH_001") -> None:
-        super().__init__(status_code=401, error="Authentication failed", detail=detail, code=code)
+    ``headers`` exists so a 401 can carry its ``WWW-Authenticate`` challenge,
+    which RFC 9110 §11.6.1 requires of every 401 response.
+    """
+
+    def __init__(
+        self,
+        detail: str = "Authentication required",
+        code: str = "AUTH_001",
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(
+            status_code=401,
+            error="Authentication failed",
+            detail=detail,
+            code=code,
+            headers=headers,
+        )
 
 
 class AuthorizationError(BaseAPIException):
@@ -100,9 +116,13 @@ class RateLimitError(BaseAPIException):
         code: str = "RATE_LIMIT_001",
         retry_after: int | None = None,
     ) -> None:
-        super().__init__(status_code=429, error="Rate limit exceeded", detail=detail, code=code)
-        if retry_after is not None:
-            self.headers = {"Retry-After": str(retry_after)}
+        super().__init__(
+            status_code=429,
+            error="Rate limit exceeded",
+            detail=detail,
+            code=code,
+            headers=None if retry_after is None else {"Retry-After": str(retry_after)},
+        )
 
 
 class DatabaseError(BaseAPIException):
