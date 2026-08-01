@@ -14,6 +14,24 @@ def _correlation_id(request: Request) -> str | None:
     return getattr(request.state, "correlation_id", None)
 
 
+# Transport-level headers JSONResponse already owns: Content-Length/Content-Type are
+# derived from the body it serializes, Transfer-Encoding/Connection are hop-by-hop and
+# server-owned. An exception overriding any of these can desync the response from what
+# the client is told to expect — e.g. a forged Content-Length larger than the real body
+# leaves an HTTP/1.1 client blocked waiting for bytes that never arrive. Only
+# application-level headers (Retry-After, WWW-Authenticate, ...) may pass through.
+_TRANSPORT_HEADERS = frozenset(
+    {"content-length", "content-type", "transfer-encoding", "connection"}
+)
+
+
+def _safe_headers(exc: Exception) -> dict[str, str] | None:
+    headers = getattr(exc, "headers", None)
+    if not headers:
+        return headers
+    return {k: v for k, v in headers.items() if k.lower() not in _TRANSPORT_HEADERS}
+
+
 async def base_api_exception_handler(request: Request, exc: BaseAPIException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
@@ -23,6 +41,7 @@ async def base_api_exception_handler(request: Request, exc: BaseAPIException) ->
             correlation_id=_correlation_id(request),
             detail=exc.detail_message,
         ),
+        headers=_safe_headers(exc),
     )
 
 
@@ -34,6 +53,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             code=f"HTTP_{exc.status_code}",
             correlation_id=_correlation_id(request),
         ),
+        headers=_safe_headers(exc),
     )
 
 
