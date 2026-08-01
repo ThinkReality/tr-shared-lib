@@ -352,3 +352,39 @@ def test_exact_case_key_is_not_reported_unclaimed_for_case_sensitive_class(
     path = env_file("AUTH_LIB_Mixed_Case=x\n")
 
     assert unclaimed_env_keys(path, classes=(_CaseSensitivePrefixed,)) == []
+
+
+class _SettingsDefinedInATestModule(BaseSettings):
+    """A fixture class, not service config. Its module is part of the test tree,
+    which is exactly what makes it ineligible to own a key."""
+
+    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+
+    A_KEY_NO_SERVICE_DECLARES: str = "x"
+
+
+def test_a_test_defined_settings_class_never_claims_a_key(tmp_path: Path) -> None:
+    """M4: auto-discovery must not treat test fixture classes as config owners.
+
+    Without this, a fixture that happens to declare a key turns a real orphan
+    into a clean result — a false negative in the guard whose entire job is finding
+    keys nothing owns.
+    """
+    env = tmp_path / ".env.example"
+    env.write_text("A_KEY_NO_SERVICE_DECLARES=1\n", encoding="utf-8")
+
+    assert _SettingsDefinedInATestModule.model_fields  # the class is live and reachable
+    assert unclaimed_env_keys(env) == ["A_KEY_NO_SERVICE_DECLARES"]
+
+
+def test_explicitly_passed_classes_are_still_honoured(tmp_path: Path) -> None:
+    """The exclusion applies to inference, never to what a caller states outright.
+
+    `classes=` is the caller's intent. The .env.example assertion helper's
+    `extra_classes=` rides on it, and the lib's own contract tests pass fixture
+    classes there deliberately.
+    """
+    env = tmp_path / ".env.example"
+    env.write_text("A_KEY_NO_SERVICE_DECLARES=1\n", encoding="utf-8")
+
+    assert unclaimed_env_keys(env, classes=(_SettingsDefinedInATestModule,)) == []

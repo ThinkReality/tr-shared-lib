@@ -124,11 +124,38 @@ def _declared_env_keys(*classes: type[BaseSettings]) -> set[str]:
     return case_sensitive_declared | case_insensitive_declared
 
 
-def reachable_settings_classes() -> set[type[BaseSettings]]:
-    """Every imported BaseSettings subclass, transitively.
+def _is_test_defined(cls: type[BaseSettings]) -> bool:
+    """True when the class is declared inside the test tree.
 
-    Called at startup, after the app's modules are imported, so module-level
-    settings classes (realty-hub) and library ones (AuthLibSettings) are present.
+    The rule, not a list of instances: a settings class that lives in test code is
+    a fixture, never this service's configuration. Encoded as three module-path
+    shapes because pytest's import modes produce all three — a packaged test
+    module (``tests.config.test_x``), a rootdir-relative one (``test_x``), and a
+    conftest (``tests.conftest`` / ``conftest``).
+    """
+    module = cls.__module__
+    segments = module.split(".")
+    return "tests" in segments or "conftest" in segments or segments[-1].startswith("test_")
+
+
+def config_owner_classes() -> set[type[BaseSettings]]:
+    """Settings classes eligible to own this service's config.
+
+    Every imported BaseSettings subclass, transitively, minus those defined in
+    test modules. Called at startup, after the app's modules are imported, so
+    module-level settings classes (realty-hub) and library ones (AuthLibSettings)
+    are present.
+
+    Test-defined classes are excluded because this function INFERS ownership from
+    what happens to be imported. Under pytest that set includes fixture classes,
+    and a fixture declaring a key would mark a genuinely-orphaned key as claimed —
+    a false negative in the guard. Callers who mean to include a specific class
+    say so through ``unclaimed_env_keys(classes=...)`` or the .env.example guard's
+    ``extra_classes=``; this exclusion never touches those.
+
+    Named for what it returns, not for the walk it performs: it was
+    ``reachable_settings_classes`` while it returned everything reachable, and
+    that name stopped being true the moment the exclusion landed.
     """
     seen: set[type[BaseSettings]] = set()
     stack = list(BaseSettings.__subclasses__())
@@ -138,7 +165,7 @@ def reachable_settings_classes() -> set[type[BaseSettings]]:
             continue
         seen.add(cls)
         stack.extend(cls.__subclasses__())
-    return seen
+    return {cls for cls in seen if not _is_test_defined(cls)}
 
 
 def unclaimed_env_keys(
@@ -154,7 +181,7 @@ def unclaimed_env_keys(
     class can never stand in for a case-sensitive class's exact-match
     requirement.
     """
-    owners = classes if classes is not None else tuple(reachable_settings_classes())
+    owners = classes if classes is not None else tuple(config_owner_classes())
     case_sensitive_declared, case_insensitive_declared = _declared_env_keys_by_sensitivity(*owners)
     parsed = parse_env_keys(env_file)
     return sorted(

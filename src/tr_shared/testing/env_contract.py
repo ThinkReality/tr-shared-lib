@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
-from tr_shared.config.env_audit import reachable_settings_classes, unclaimed_env_keys
+from tr_shared.config.env_audit import config_owner_classes, unclaimed_env_keys
 
 _SHELL_GLOBS = ("docker-compose*.yml", "docker-compose*.yaml", "Dockerfile*", "*.sh")
 
@@ -38,7 +38,7 @@ def assert_env_example_is_declared(
     example = repo_root / ".env.example"
     assert example.is_file(), f"{example} is missing — it is the Railway config template"
 
-    owners = tuple(reachable_settings_classes()) + extra_classes
+    owners = tuple(config_owner_classes()) + extra_classes
     unowned = set(unclaimed_env_keys(example, classes=owners))
     orphans = sorted(unowned - _shell_consumed(repo_root, unowned))
 
