@@ -1,4 +1,13 @@
-"""Shared API monitoring — OpenTelemetry + provider abstraction + Layer 2 persistence."""
+"""Shared API monitoring — OpenTelemetry + provider abstraction.
+
+Prometheus / OTLP / Loki only. The "Layer 2" half — a PersistenceMiddleware that
+buffered every request into Redis, Celery tasks that flushed and aggregated it into a
+separate ``monitoring`` Postgres schema, and the SQLAlchemy models for that schema —
+was deleted 2026-08-03. It never ran: every part of it was gated on
+``MONITORING_DB_URL``, which was set in no ``.env`` and no ``.env.example`` in the
+workspace, so the tasks logged "skipping" hourly and the middleware was never
+installed. Prometheus + Grafana already covered the same ground.
+"""
 
 from tr_shared.monitoring.factory import (
     LogProvider,
@@ -14,8 +23,6 @@ from tr_shared.monitoring.interfaces import (
 from tr_shared.monitoring.loki_handler import LokiHandler
 from tr_shared.monitoring.middleware import MetricsMiddleware
 from tr_shared.monitoring.path_normalizer import normalize_path
-from tr_shared.monitoring.persistence import PersistenceMiddleware
-from tr_shared.monitoring.prometheus_client import PrometheusClient
 from tr_shared.monitoring.setup import setup_monitoring
 
 __all__ = [
@@ -28,8 +35,6 @@ __all__ = [
     "TraceProviderInterface",
     "LokiHandler",
     "MetricsMiddleware",
-    "PersistenceMiddleware",
-    "PrometheusClient",
     "normalize_path",
     "setup_monitoring",
     # Opt-in instrumentation (lazy — require db / celery extras respectively)

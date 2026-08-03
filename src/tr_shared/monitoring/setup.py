@@ -35,8 +35,6 @@ def setup_monitoring(
     otlp_endpoint: str = "",
     excluded_paths: frozenset[str] | None = None,
     business_domain_classifier: Callable[[str], str | None] | None = None,
-    enable_persistence: bool = False,
-    redis_url: str = "",
     loki_url: str = "",
     environment: str = "",
     metrics_provider: str = "prometheus",
@@ -52,9 +50,6 @@ def setup_monitoring(
     Args:
         prometheus_port: Set to 0 to skip starting the standalone server
             (use ``create_metrics_router`` instead for same-port serving).
-        enable_persistence: Enable Layer 2 request persistence to Redis
-            buffer (flushed to central monitoring DB by Celery tasks).
-        redis_url: Required when *enable_persistence* is True.
         loki_url: When set, a log handler is attached to the root logger.
     """
     metrics_adapter = MonitoringProviderFactory.create_metrics_provider(provider=metrics_provider)
@@ -94,16 +89,6 @@ def setup_monitoring(
             span_exporter=span_exporter,
         )
 
-    if enable_persistence and redis_url:
-        from tr_shared.monitoring.persistence import PersistenceMiddleware
-
-        app.add_middleware(
-            PersistenceMiddleware,
-            service_name=service_name,
-            redis_url=redis_url,
-            excluded_paths=excluded_paths,
-        )
-
     if loki_url:
         log_adapter = MonitoringProviderFactory.create_log_provider(
             provider=log_provider,
@@ -127,7 +112,6 @@ def setup_monitoring(
             "service": service_name,
             "prometheus_port": prometheus_port,
             "tracing": enable_tracing,
-            "persistence": enable_persistence and bool(redis_url),
             "log_shipping": bool(loki_url),
             "metrics_provider": metrics_provider,
             "log_provider": log_provider,
