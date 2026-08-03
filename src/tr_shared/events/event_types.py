@@ -133,6 +133,7 @@ class HREvents:
     PAYROLL_REJECTED = "hr.payroll.rejected"
     JOB_POSTING_PUBLISHED = "hr.job_posting.published"
     JOB_POSTING_CLOSED = "hr.job_posting.closed"
+    JOB_POSTING_ARCHIVED = "hr.job_posting.archived"
     OFFER_SENT = "hr.offer.sent"
     OFFER_ACCEPTED = "hr.offer.accepted"
     APPLICATION_SUBMITTED = "hr.application.submitted"

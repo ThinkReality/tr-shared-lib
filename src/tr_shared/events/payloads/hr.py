@@ -60,7 +60,10 @@ class HRJobPostingPublishedV1(HREventV1):
 
 
 class HRJobPostingClosedV1(HREventV1):
-    """hr.job_posting.closed."""
+    """hr.job_posting.closed / hr.job_posting.archived.
+
+    Reused for both events — they differ only in `action` ("closed" vs "archived").
+    """
 
     job_id: str
     title: str

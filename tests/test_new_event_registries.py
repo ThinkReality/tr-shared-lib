@@ -49,6 +49,12 @@ def test_wam_events():
     assert WAMEvents.LEAD_QUALIFIED == "wam.lead.qualified"
 
 
+def test_hr_job_posting_archived_event():
+    from tr_shared.events.event_types import HREvents
+
+    assert HREvents.JOB_POSTING_ARCHIVED == "hr.job_posting.archived"
+
+
 def test_new_registries_exported_from_events_package():
     from tr_shared.events import NotificationEvents as NE
     from tr_shared.events import TaskEvents as TE

@@ -99,6 +99,7 @@ _JOB_CLOSE = {
     "job_id": "j1",
     "title": "Engineer",
 }
+_JOB_ARCHIVE = {**_JOB_CLOSE, "action": "archived", "notification_event": "hr_job_posting_archived"}
 
 
 @pytest.mark.parametrize(
@@ -114,6 +115,7 @@ _JOB_CLOSE = {
         ("hr.sync.failed", _SYNC, HRSyncFailedV1),
         ("hr.job_posting.published", _JOB_PUB, HRJobPostingPublishedV1),
         ("hr.job_posting.closed", _JOB_CLOSE, HRJobPostingClosedV1),
+        ("hr.job_posting.archived", _JOB_ARCHIVE, HRJobPostingClosedV1),
     ],
 )
 def test_roundtrip_matches_emitted_dict(event_type, data, model):
