@@ -134,6 +134,51 @@ class TestNoHandlerDLQRouting:
             assert "No handler" not in str(call)
 
 
+class TestIgnoredEvents:
+    """An 'ignored' event type is expected-but-unhandled: ack silently, never DLQ."""
+
+    async def test_ignored_event_does_not_move_to_dlq(self):
+        consumer = _make_consumer(with_dlq=True)
+        consumer.register_ignored("notification.sent")
+        result = await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
+        assert result == (True, True)  # acknowledged, no retry
+        consumer._dlq.move.assert_not_awaited()
+
+    async def test_ignored_event_does_not_warn(self):
+        consumer = _make_consumer(with_dlq=True)
+        consumer.register_ignored("notification.sent")
+        with patch("tr_shared.events.consumer.logger") as mock_logger:
+            await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
+        mock_logger.warning.assert_not_called()
+
+    async def test_ignored_event_works_without_dlq_configured(self):
+        consumer = _make_consumer(with_dlq=False)
+        consumer.register_ignored("notification.sent")
+        result = await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
+        assert result == (True, True)
+
+    async def test_unregistered_event_still_moves_to_dlq(self):
+        """Regression guard: registering one ignored event type must not
+        suppress DLQ routing for a genuinely unhandled, unregistered one."""
+        consumer = _make_consumer(with_dlq=True)
+        consumer.register_ignored("notification.sent")
+        result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
+        assert result == (True, True)
+        consumer._dlq.move.assert_awaited_once()
+
+    async def test_registered_handler_takes_precedence_over_ignored(self):
+        """If an event type is both registered as a real handler AND marked
+        ignored (shouldn't normally happen, but must not silently swallow a
+        real handler), the handler must still run."""
+        consumer = _make_consumer(with_dlq=True)
+        handler = AsyncMock()
+        consumer.register_handler("user.created", handler)
+        consumer.register_ignored("user.created")
+        await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
+        handler.assert_awaited_once()
+        consumer._dlq.move.assert_not_awaited()
+
+
 def _malformed_data() -> dict:
     """Data that triggers a JSON parse error in EventEnvelope.from_flat()."""
     return {
