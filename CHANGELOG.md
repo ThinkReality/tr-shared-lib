@@ -5,6 +5,36 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.0] - 2026-08-03
+
+### Removed
+- **The Layer 2 DB-monitoring pipeline, in full.** `monitoring/persistence.py`
+  (`PersistenceMiddleware`), `monitoring/redis_buffer.py`, `monitoring/models.py` (the
+  `monitoring` schema's SQLAlchemy models) and the whole `monitoring/tasks/` package
+  (`flush_monitoring_buffer`, `aggregate_hourly_metrics`, `aggregate_daily_metrics`,
+  `create_next_day_partition`, `cleanup_old_monitoring_logs`).
+
+  It never ran. Every entry point was gated on `MONITORING_DB_URL`, which was set in no
+  `.env` and no `.env.example` anywhere in the workspace — so `enable_persistence` was
+  always False and the five Celery tasks logged "skipping, not configured" on every tick,
+  hourly, in four services. Prometheus + Grafana already covered the same ground; this was
+  a second, unpopulated stack.
+
+  **Breaking, but inertly so:** `setup_monitoring()` drops the `enable_persistence` and
+  `redis_url` parameters, and its startup log line drops the `"persistence"` key. Every
+  fleet caller passed `enable_persistence=bool(settings.MONITORING_DB_URL)` — i.e. `False` —
+  and none reads the return value. All four callers were updated in the same change.
+- `BaseServiceSettings.MONITORING_DB_URL` and `.MONITORING_ENABLED`. The first had one
+  reader per service (the beat-schedule gate, now gone); the second had **zero readers
+  fleet-wide** and was still being set to `"true"` in `docker-compose.dev.local.yml`.
+- `monitoring/prometheus_client.py` (`PrometheusClient`). Not part of the Layer 2 stack —
+  it queried live Prometheus over HTTP — but its sole consumer was crm-core's
+  `system-monitoring` admin endpoint, deleted the same day. Zero importers remain.
+  `prometheus_endpoint.py` (the `/metrics` mount) is untouched and unrelated.
+
+`MetricsMiddleware`, the provider factory and adapters, `normalize_path`, `instruments`,
+tracing, Loki, and the db/celery instrumentation are all unchanged.
+
 ## [0.56.0] - 2026-08-02
 
 ### Added

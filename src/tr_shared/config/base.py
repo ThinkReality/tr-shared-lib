@@ -65,8 +65,6 @@ class BaseServiceSettings(BaseSettings):
     ENABLE_TRACING: bool = False
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
 
-    MONITORING_ENABLED: bool = False
-    MONITORING_DB_URL: str = ""
     LOKI_URL: str = ""
 
     def get_cors_origins(self) -> list[str]:
