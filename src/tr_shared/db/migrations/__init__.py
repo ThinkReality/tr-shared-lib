@@ -24,12 +24,14 @@ from tr_shared.db.migrations.include_object import (
     make_service_include_name,
     make_service_include_object,
 )
+from tr_shared.db.migrations.merge_gate import assert_migrations_are_merged
 from tr_shared.db.migrations.runner import run_async_migrations
 
 __all__ = [
     "CrossSchemaFKError",
     "UNDELIVERED_EVENTS_COLUMNS",
     "add_check_constraint_deferred",
+    "assert_migrations_are_merged",
     "add_fk_deferred",
     "bootstrap_schema_and_version_table",
     "concurrent_index_context",

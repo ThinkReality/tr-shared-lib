@@ -1,8 +1,34 @@
 """Database utilities: Supavisor URL conversion + SQL query helpers."""
 
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlsplit, urlunparse
 
 LIKE_ESCAPE_CHAR = "\\"
+
+LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "postgres-test", "db"})
+"""Hosts that count as a database on this machine.
+
+SSOT for a question two guards ask: the testing plugin's G1 check (a non-local
+TEST DSN is a hard failure, never a skip) and the migration merge gate (an
+unmerged revision may not reach a non-local database). Restating it in either
+place is how the two drift apart.
+"""
+
+LOCAL_DB_HOST_PREFIX = "tr-test-"
+"""Prefix of the testcontainers-provisioned Postgres used by the integration lane."""
+
+
+def is_local_dsn(dsn: str) -> bool:
+    """Whether *dsn* points at a database on this machine.
+
+    A DSN that cannot be parsed returns ``False``. Both callers use this to
+    decide whether a destructive action is permitted, so unknown must never read
+    as safe.
+    """
+    try:
+        host = (urlsplit(dsn).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in LOCAL_DB_HOSTS or host.startswith(LOCAL_DB_HOST_PREFIX)
 
 
 def escape_like(value: str) -> str:

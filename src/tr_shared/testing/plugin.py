@@ -255,10 +255,11 @@ def _assert_local(dsn: str) -> None:
     """
     from urllib.parse import urlsplit
 
-    host = (urlsplit(dsn).hostname or "").lower()
-    allowed = {"localhost", "127.0.0.1", "::1", "postgres", "postgres-test", "db"}
-    if host in allowed or host.startswith("tr-test-"):
+    from tr_shared.db.utils import is_local_dsn
+
+    if is_local_dsn(dsn):
         return
+    host = (urlsplit(dsn).hostname or "").lower()
     raise SystemExit(
         f"TEST_DATABASE_URL points at a non-local host ({host!r}). Refusing to run: "
         "test fixtures TRUNCATE and DROP DATABASE, and the remote database is the "
