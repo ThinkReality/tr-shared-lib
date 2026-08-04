@@ -67,6 +67,29 @@ which is exactly how every service's ``app/cli/migrate.py`` runner drives it.
 """
 
 
+def _unwrap_alembic_context(alembic_context: Any) -> Any:
+    """Return the real ``EnvironmentContext`` behind ``alembic.context``.
+
+    ``alembic.context`` is a MODULE-level proxy, and it only proxies *callables*
+    plus class-level non-callables (``langhelpers._add_proxied_attribute``).
+    ``context_opts`` is set in ``EnvironmentContext.__init__``, so it is an
+    INSTANCE attribute and never appears on the proxy — reading it there raises
+    ``AttributeError`` and, because this guard fails closed, every command would
+    be treated as a history write.
+
+    ``_install_proxy`` does publish the live instance as ``_proxy`` for the
+    duration of a run, which is the only route to it. Verified against Alembic
+    1.18.4: inside ``env.py``, ``context._proxy`` is the ``EnvironmentContext``
+    and ``context_opts["fn"].__name__`` is ``display_version`` for ``current``
+    and ``upgrade`` for ``upgrade``.
+
+    Callers that already hold a real ``EnvironmentContext`` are passed through
+    unchanged. Outside a run ``_proxy`` is absent or ``None``, which leaves the
+    caller's object in place and lets the fail-closed path do its job.
+    """
+    return getattr(alembic_context, "_proxy", None) or alembic_context
+
+
 def _is_history_write(alembic_context: Any) -> bool:
     """Whether this Alembic invocation will write the version table.
 
@@ -76,10 +99,11 @@ def _is_history_write(alembic_context: Any) -> bool:
     """
     if alembic_context is None:
         return True
+    ctx = _unwrap_alembic_context(alembic_context)
     try:
-        if alembic_context.is_offline_mode():
+        if ctx.is_offline_mode():
             return False
-        fn = alembic_context.context_opts.get("fn")
+        fn = ctx.context_opts.get("fn")
     except (AttributeError, TypeError):
         return True
     name = getattr(fn, "__name__", None)

@@ -39,6 +39,26 @@ class _Ctx:
         return self._offline
 
 
+class _ProxyCtx:
+    """Models `alembic.context` — the MODULE-level proxy env.py actually holds.
+
+    The proxy exposes only callables and class-level non-callables, so
+    `context_opts` (an instance attribute) is NOT reachable on it; the live
+    `EnvironmentContext` is published as `_proxy` for the duration of a run.
+    Reading `context_opts` off the proxy raises AttributeError and, since the
+    guard fails closed, every command reads as a history write — which is
+    exactly how `alembic current` got blocked in tr-crm-core before this shape
+    was modelled here.
+    """
+
+    def __init__(self, inner: _Ctx | None):
+        if inner is not None:
+            self._proxy = inner
+
+    def __getattr__(self, name: str):  # everything else is genuinely absent
+        raise AttributeError(name)
+
+
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(("git", *args), cwd=repo, check=True, capture_output=True)
 
@@ -124,6 +144,39 @@ def test_an_undeterminable_command_fails_closed(tmp_path, ctx):
 
     with pytest.raises(SystemExit):
         assert_migrations_are_merged(_REMOTE, _versions(repo), alembic_context=ctx)
+
+
+@pytest.mark.parametrize(
+    "fn_name",
+    ["retrieve_migrations", "display_version", "nothing", "do_ensure_version"],
+)
+def test_read_only_commands_are_not_gated_through_the_module_proxy(tmp_path, fn_name):
+    """The regression that shipped: env.py holds the PROXY, not the
+    EnvironmentContext. Reading `context_opts` off the proxy raises, the guard
+    fails closed, and `alembic current` gets blocked on any branch holding an
+    unmerged migration."""
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    _assert(_REMOTE, _versions(repo), alembic_context=_ProxyCtx(_Ctx(fn_name)))
+
+
+def test_history_writing_commands_are_still_gated_through_the_module_proxy(tmp_path):
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    with pytest.raises(SystemExit):
+        _assert(_REMOTE, _versions(repo), alembic_context=_ProxyCtx(_Ctx("upgrade")))
+
+
+def test_a_proxy_with_no_live_instance_fails_closed(tmp_path):
+    """Outside a run `_proxy` is absent — nothing can be determined, so treat it
+    as a write rather than waving it through."""
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    with pytest.raises(SystemExit):
+        _assert(_REMOTE, _versions(repo), alembic_context=_ProxyCtx(None))
 
 
 def test_the_writing_fn_names_are_pinned():
