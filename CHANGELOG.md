@@ -5,6 +5,26 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.62.0] - 2026-08-06
+
+### Added
+- `BaseServiceSettings.validate_slack_webhook` — a configured `SLACK_ERROR_WEBHOOK_URL`
+  must be a real Slack webhook outside `development`/`test`. Empty stays supported and
+  means "alerting off": `GlobalErrorHandlerMiddleware` returns before building a message.
+
+  A *placeholder* was worse than empty and had no check at all. tr-media-service ran on
+  `https://hooks.slack.com/services/YOUR/WEBHOOK/URL` on stage: it looks configured, the
+  POST 404s, the failure is caught and written to the log as "Failed to send Slack
+  alert", and the alert reaches nobody. The value came from a service `.env.example`,
+  which is where Railway variables are seeded from.
+
+  A prefix check alone does not catch it — the placeholder has the right prefix. The
+  validator also requires three non-empty path ids and rejects placeholder words.
+  Staging is validated, not just production: staging is where it was found.
+
+> **Changelog gap:** versions 0.58.0 – 0.61.1 shipped without entries here. This file
+> resumes at 0.62.0; read `git log` for what landed in between.
+
 ## [0.57.0] - 2026-08-03
 
 ### Removed

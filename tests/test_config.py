@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from tr_shared.config.base import BaseServiceSettings
+from tr_shared.config.base import SLACK_WEBHOOK_PREFIX, BaseServiceSettings
 
 # Minimal valid production config — reused across tests.
 # Does NOT include SUPABASE_URL — downstream services don't need it.
@@ -93,3 +93,71 @@ class TestBaseServiceSettings:
         s = BaseServiceSettings(**_PROD_SUPABASE)
         assert s.ENVIRONMENT == "production"
         assert s.JWKS_URL != ""
+
+
+class TestSlackWebhookValidation:
+    """A configured error webhook must be real outside dev/test.
+
+    The failure this prevents is silent: a placeholder looks configured, the
+    POST 404s, the error handler catches it and logs "Failed to send Slack
+    alert", and nobody is alerted. tr-media-service ran that way on stage.
+    """
+
+    # Assembled rather than written out. GitHub push protection matches the
+    # SHAPE of a Slack webhook, not just known-live values, so even a synthetic
+    # literal of the right form is rejected at push time — as this file proved
+    # twice. Never write a webhook-shaped literal, and never paste a live one.
+    REAL = SLACK_WEBHOOK_PREFIX + "/".join(("T" + "0" * 10, "B" + "0" * 10, "x" * 24))
+
+    def test_the_exact_placeholder_found_on_stage_is_rejected(self):
+        with pytest.raises(ValidationError, match="placeholder words"):
+            BaseServiceSettings(
+                **{
+                    **_PROD_BASE,
+                    "SLACK_ERROR_WEBHOOK_URL": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+                }
+            )
+
+    def test_a_real_webhook_is_accepted(self):
+        s = BaseServiceSettings(**{**_PROD_BASE, "SLACK_ERROR_WEBHOOK_URL": self.REAL})
+        assert s.SLACK_ERROR_WEBHOOK_URL == self.REAL
+
+    def test_empty_is_allowed_it_means_alerting_is_off(self):
+        """Empty is the error handler's own disabled path — not a defect."""
+        s = BaseServiceSettings(**{**_PROD_BASE, "SLACK_ERROR_WEBHOOK_URL": ""})
+        assert s.SLACK_ERROR_WEBHOOK_URL == ""
+
+    def test_a_non_slack_url_is_rejected(self):
+        with pytest.raises(ValidationError, match="does not start with"):
+            BaseServiceSettings(
+                **{**_PROD_BASE, "SLACK_ERROR_WEBHOOK_URL": "https://example.com/hook"}
+            )
+
+    def test_a_truncated_path_is_rejected(self):
+        with pytest.raises(ValidationError, match="three non-empty ids"):
+            BaseServiceSettings(
+                **{
+                    **_PROD_BASE,
+                    "SLACK_ERROR_WEBHOOK_URL": "https://hooks.slack.com/services/T1/B2",
+                }
+            )
+
+    def test_staging_is_validated_not_just_production(self):
+        """Staging is where the placeholder was actually found."""
+        staging = {**_PROD_BASE, "ENVIRONMENT": "staging"}
+        with pytest.raises(ValidationError, match="placeholder words"):
+            BaseServiceSettings(
+                **{
+                    **staging,
+                    "SLACK_ERROR_WEBHOOK_URL": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+                }
+            )
+
+    def test_development_is_not_validated(self):
+        """A developer pasting a dummy value must not be blocked from booting."""
+        s = BaseServiceSettings(
+            SERVICE_NAME="svc",
+            ENVIRONMENT="development",
+            SLACK_ERROR_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        )
+        assert s.is_local

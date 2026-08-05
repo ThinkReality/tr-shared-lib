@@ -5,6 +5,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.contracts.environment import Environment
 
+SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/services/"
+"""Every real Slack incoming webhook starts with this."""
+
+_PLACEHOLDER_PATH_SEGMENTS = frozenset(
+    {"your", "webhook", "url", "xxx", "changeme", "placeholder", "example", "token", "secret"}
+)
+"""Words that never appear as a real webhook path segment.
+
+A real webhook path is three opaque ids — a team id, a bot id, then a ~24-char
+token. The prefix check alone is not enough: the value shipped on
+tr-media-service was ``https://hooks.slack.com/services/YOUR/WEBHOOK/URL``,
+which has the right prefix and is still nobody's webhook.
+
+Do not paste a live webhook here or into a test fixture as an example. GitHub
+push protection rejected this very commit when an illustrative one was real.
+"""
+
 
 class BaseServiceSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -110,4 +127,44 @@ class BaseServiceSettings(BaseSettings):
                 value = getattr(self, url_field)
                 if value and "localhost" in value:
                     raise ValueError(f"{url_field} must not point to localhost in production")
+        return self
+
+    @model_validator(mode="after")
+    def validate_slack_webhook(self) -> "BaseServiceSettings":
+        """A configured error webhook must be a real one, outside dev and test.
+
+        Empty is a supported state and means "no Slack alerting": the error
+        handler checks the value and returns before building a message, so
+        nothing is logged and nothing is attempted.
+
+        A *placeholder* is strictly worse than empty. It looks configured, so
+        nobody goes looking; the POST 404s; the failure is caught and written to
+        the log as "Failed to send Slack alert"; and the alert reaches no one.
+        tr-media-service ran on ``.../services/YOUR/WEBHOOK/URL`` on stage — a
+        service believed to be alerting that had never sent an alert.
+
+        Staging is included deliberately. Production is not the only place this
+        matters, and staging is where the placeholder was actually found.
+        """
+        if self.is_local or not self.SLACK_ERROR_WEBHOOK_URL:
+            return self
+
+        url = self.SLACK_ERROR_WEBHOOK_URL
+        problem = ""
+        if not url.startswith(SLACK_WEBHOOK_PREFIX):
+            problem = f"it does not start with {SLACK_WEBHOOK_PREFIX}"
+        else:
+            segments = url[len(SLACK_WEBHOOK_PREFIX) :].split("/")
+            if len(segments) != 3 or not all(segments):
+                problem = "the path after /services/ is not three non-empty ids"
+            elif any(segment.lower() in _PLACEHOLDER_PATH_SEGMENTS for segment in segments):
+                problem = "the path contains placeholder words rather than real ids"
+
+        if problem:
+            raise ValueError(
+                f"SLACK_ERROR_WEBHOOK_URL is not a usable Slack webhook in "
+                f"{self.ENVIRONMENT}: {problem}. Set a real webhook, or leave it "
+                "empty to turn error alerting off — empty is honest, a placeholder "
+                "silently sends every alert nowhere."
+            )
         return self
