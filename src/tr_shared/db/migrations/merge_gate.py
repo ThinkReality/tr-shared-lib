@@ -39,15 +39,39 @@ so both ``run_migrations_offline`` and ``run_migrations_online`` are covered::
     assert_migrations_are_merged(
         url, Path(__file__).parent / "versions", alembic_context=context
     )
+
+DELIBERATE, EXPLICIT ESCAPE HATCH — a genuinely private, single-developer
+database (a per-developer dev-tier Supabase project nobody else's checkout
+points at) is not the shared-state case conditions 1-3 exist for, but its DSN
+is not `localhost` either, so ``is_local_dsn`` cannot recognise it. Setting
+``TR_MIGRATIONS_SKIP_MERGE_CHECK=true`` skips the git comparison for that run.
+
+Two conditions must BOTH hold, mirroring ``AUTH_LIB_DEV_MODE_BYPASS``'s own
+double-guard shape (shared-auth-lib): the flag alone is one leftover env var
+away from silently disabling protection on a database that turns out to
+matter. ``ENVIRONMENT`` must also read as ``development`` or ``test`` — the
+flag is inert wherever staging/production loads its real config, by design,
+regardless of what the flag says. This is checked from ``os.environ``
+directly rather than a settings object: the module has no framework
+dependency today and importing one service's settings class here would
+break that for the other seven.
+
+Every skip prints a warning naming the (redacted) DSN host — never silent,
+so a flag left set after a DSN change is visible in the run's own output,
+not just in a diff of ``.env``.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 from tr_shared.db.utils import is_local_dsn
+
+_DEV_ENVIRONMENTS = frozenset({"development", "test"})
 
 __all__ = ["HISTORY_WRITING_ALEMBIC_FNS", "assert_migrations_are_merged"]
 
@@ -148,6 +172,21 @@ def _redact(dsn: str) -> str:
     return dsn.rsplit("@", 1)[-1]
 
 
+def _skip_merge_check_requested() -> bool:
+    """Whether the explicit, opt-in escape hatch applies to this run.
+
+    Both conditions are read fresh from ``os.environ`` on every call rather
+    than cached — this runs once per Alembic invocation (a new process), so
+    there is nothing to cache, and reading fresh is what lets a test toggle
+    both vars per-case without reimporting the module.
+    """
+    flag = os.environ.get("TR_MIGRATIONS_SKIP_MERGE_CHECK", "").strip().lower()
+    if flag not in ("1", "true", "yes"):
+        return False
+    environment = os.environ.get("ENVIRONMENT", "").strip().lower()
+    return environment in _DEV_ENVIRONMENTS
+
+
 def _merged_blobs(repo: Path, integration_ref: str, rel_dir: str) -> dict[str, str]:
     """Map ``path -> blob sha`` for *rel_dir* as of *integration_ref*.
 
@@ -229,6 +268,16 @@ def assert_migrations_are_merged(
         # No git, or no checkout: the deploy image. Nothing to prove.
         return
     repo = Path(toplevel.stdout.strip()).resolve()
+
+    if _skip_merge_check_requested():
+        print(
+            f"tr_shared.db.migrations: TR_MIGRATIONS_SKIP_MERGE_CHECK is set — "
+            f"skipping the shared-database merge check for {_redact(dsn)}. Only "
+            "safe for a private, single-developer database nobody else's "
+            "checkout points at. Unset this if that ever stops being true.",
+            file=sys.stderr,
+        )
+        return
 
     ref_check = _git(repo, "rev-parse", "--verify", "--quiet", integration_ref)
     if ref_check is None or ref_check.returncode != 0:

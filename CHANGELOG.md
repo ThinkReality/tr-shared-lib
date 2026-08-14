@@ -5,6 +5,30 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.63.0] - 2026-08-15
+
+### Added
+- **`TR_MIGRATIONS_SKIP_MERGE_CHECK`** — an explicit, opt-in escape hatch for
+  `assert_migrations_are_merged` (`db/migrations/merge_gate.py`). A genuinely
+  private, single-developer dev-tier database (e.g. a per-service Supabase
+  project nobody else's checkout points at) is not the shared-mutable-state
+  case the merge guard exists for, but its DSN is a real remote host, so
+  `is_local_dsn` cannot recognise it — every history-writing `alembic
+  upgrade`/`downgrade`/`stamp` against it was blocked until the revision
+  existed on `origin/stage`, which forces a "push to the integration branch
+  before you can test locally" ordering that doesn't fit a feature-branch
+  workflow.
+
+  Setting the flag skips the git comparison for that run. Mirrors
+  `AUTH_LIB_DEV_MODE_BYPASS`'s (shared-auth-lib) own double-guard shape on
+  purpose: the flag alone is not enough — `ENVIRONMENT` must also read as
+  `development` or `test`, so a leftover flag is inert anywhere
+  staging/production loads its real config, and every skip prints a warning
+  naming the (redacted) DSN host so it is never silent. Read from
+  `os.environ` directly rather than a settings object — the module has no
+  framework dependency today, and importing one service's settings class
+  here would create one for the other seven.
+
 ## [0.57.0] - 2026-08-03
 
 ### Removed

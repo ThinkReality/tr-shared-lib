@@ -6,6 +6,7 @@ the stub. ``git update-ref refs/remotes/origin/stage`` fabricates the integratio
 ref without needing a second repository.
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -349,6 +350,90 @@ def test_an_unmerged_init_py_is_not_a_revision(tmp_path):
 
 
 # --- The integration ref is a real parameter ------------------------------
+
+
+# --- The explicit skip-check escape hatch ---------------------------------
+
+
+def test_skip_flag_alone_does_not_bypass_without_dev_environment(tmp_path, monkeypatch):
+    """The flag alone must not be enough -- ENVIRONMENT must also read as a dev
+    context, mirroring AUTH_LIB_DEV_MODE_BYPASS's own double-guard shape. A
+    leftover flag in a config that isn't actually pointed at a private DB must
+    stay inert."""
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", "true")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    with pytest.raises(SystemExit):
+        _assert(_REMOTE, _versions(repo))
+
+
+@pytest.mark.parametrize("environment", ["staging", "production", "Staging", ""])
+def test_skip_flag_is_inert_outside_development_and_test(tmp_path, monkeypatch, environment):
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", "true")
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    with pytest.raises(SystemExit):
+        _assert(_REMOTE, _versions(repo))
+
+
+@pytest.mark.parametrize("environment", ["development", "test", "DEVELOPMENT", " Test "])
+def test_skip_flag_bypasses_when_environment_is_a_dev_context(tmp_path, monkeypatch, environment):
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", "true")
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    _assert(_REMOTE, _versions(repo))
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", "", "  "])
+def test_skip_flag_requires_an_affirmative_value(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", value)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    with pytest.raises(SystemExit):
+        _assert(_REMOTE, _versions(repo))
+
+
+def test_skip_flag_prints_a_loud_warning_naming_the_dsn_host(tmp_path, monkeypatch, capsys):
+    """Silent skips are how a real footgun hides. The warning must still redact
+    the password even though it names the host."""
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", "true")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    _assert(_REMOTE, _versions(repo))
+
+    captured = capsys.readouterr()
+    assert "TR_MIGRATIONS_SKIP_MERGE_CHECK" in captured.err
+    assert "pooler.supabase.com" in captured.err
+    assert "sup3rs3cret" not in captured.err
+
+
+def test_skip_flag_does_not_bypass_locality_or_read_only_checks(tmp_path, monkeypatch):
+    """The flag only ever short-circuits the git comparison. It must not become
+    a second, wider bypass for conditions 1 and 2, which have their own reasons
+    to hold regardless of this flag."""
+    monkeypatch.setenv("TR_MIGRATIONS_SKIP_MERGE_CHECK", "true")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    repo = _repo(tmp_path)
+    (_versions(repo) / "0002_unmerged.py").write_text("revision = '0002'\n")
+
+    # Still requires a git checkout to exist -- deleting the .git dir removes
+    # the one thing this flag's short-circuit is placed after.
+    shutil.rmtree(repo / ".git")
+
+    # No .git: falls through the "no checkout" early-return regardless of the
+    # flag, same as the deploy image case -- proving the flag doesn't grant
+    # unconditional passage before that point.
+    _assert(_REMOTE, _versions(repo))
 
 
 def test_the_integration_ref_is_actually_used_for_the_comparison(tmp_path):
