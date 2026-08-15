@@ -67,6 +67,11 @@ DUBIZZLE_PLATFORM_NAME: Final[str] = PortalSlug.DUBIZZLE.value
 and auth scheme as Bayut, managed separately. Legacy alias of
 ``PortalSlug.DUBIZZLE``."""
 
+HIKCENTRAL_PLATFORM_NAME: Final[str] = PortalSlug.HIKCENTRAL.value
+"""platform_name (slug) for the HikCentral biometric attendance/access-control
+portal (per-tenant admin connect, poll-only — no webhooks). Legacy alias of
+``PortalSlug.HIKCENTRAL``."""
+
 KNOWN_PLATFORM_NAMES: Final[frozenset[str]] = KNOWN_PLATFORM_SLUGS
 """All platform_name (slug) values the admin panel manages. Derived from
 :data:`tr_shared.integrations.portal_identity.PORTAL_REGISTRY`. The admin CHECK

@@ -21,7 +21,7 @@ def test_all_slugs_are_lowercase_no_spaces() -> None:
 
 def test_known_platform_slugs_are_the_connectable_platforms() -> None:
     assert P.KNOWN_PLATFORM_SLUGS == frozenset(
-        {"propertyfinder", "bayut", "dubizzle", "gemini"},
+        {"propertyfinder", "bayut", "dubizzle", "gemini", "hikcentral"},
     )
     assert "website" not in P.KNOWN_PLATFORM_SLUGS
 
@@ -50,6 +50,19 @@ def test_meta_is_webhook_only_lead_portal() -> None:
     assert meta.user_id_key is None
     assert "meta" not in P.KNOWN_PLATFORM_SLUGS
     assert "meta" not in P.LISTING_PORTAL_SLUGS
+
+
+def test_hikcentral_is_connectable_non_listing_platform() -> None:
+    hikcentral = P.PORTAL_REGISTRY[PortalSlug.HIKCENTRAL]
+    assert hikcentral.slug is PortalSlug.HIKCENTRAL
+    assert hikcentral.display_name == "HikCentral"
+    assert hikcentral.is_connectable_platform is True
+    assert hikcentral.is_listing_portal is False
+    assert hikcentral.is_externally_publishable is False
+    assert hikcentral.user_id_key is None
+    assert "hikcentral" in P.KNOWN_PLATFORM_SLUGS
+    assert "hikcentral" not in P.LISTING_PORTAL_SLUGS
+    assert "hikcentral" not in P.EXTERNALLY_PUBLISHABLE_SLUGS
 
 
 def test_user_id_keys_match_portal_info_contract() -> None:

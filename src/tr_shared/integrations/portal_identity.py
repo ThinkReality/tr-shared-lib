@@ -12,10 +12,12 @@ listing-target flag can never drift apart across services. Derived collections
 :data:`PORTAL_USER_ID_KEYS`, :data:`PORTAL_PROVIDER_KEYS`) are **computed** from
 the registry — change a fact in one place.
 
-Extending: add a :class:`PortalSlug` member + a :data:`PORTAL_REGISTRY` entry. A
-new *connectable platform* also requires a data migration + CHECK-constraint
-regen on ``admin.admin_panel_listing_platform_configs`` (the constraint is
-generated from :data:`KNOWN_PLATFORM_SLUGS`).
+Extending: add a :class:`PortalSlug` member + a :data:`PORTAL_REGISTRY` entry.
+No CHECK constraint exists on ``admin.admin_panel_listing_platform_configs``
+today — ``platform_name`` is an unconstrained ``VARCHAR(100)``, validity
+enforced only by ``RegistrarFactory`` in application code (confirmed against
+the live baseline migration, 2026-08-15). If that constraint is ever added, it
+must be generated from :data:`KNOWN_PLATFORM_SLUGS`, not hand-maintained.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ class PortalSlug(StrEnum):
     DUBIZZLE = "dubizzle"
     GEMINI = "gemini"
     META = "meta"
+    HIKCENTRAL = "hikcentral"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +128,13 @@ PORTAL_REGISTRY: Final[dict[PortalSlug, PortalIdentity]] = {
         slug=PortalSlug.META,
         display_name="Meta (Facebook Lead Ads)",
         is_connectable_platform=False,
+        is_listing_portal=False,
+        is_externally_publishable=False,
+    ),
+    PortalSlug.HIKCENTRAL: PortalIdentity(
+        slug=PortalSlug.HIKCENTRAL,
+        display_name="HikCentral",
+        is_connectable_platform=True,
         is_listing_portal=False,
         is_externally_publishable=False,
     ),
