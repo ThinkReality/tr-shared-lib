@@ -28,6 +28,11 @@ from tr_shared.integrations.exceptions import (
     IntegrationConfigError,
     IntegrationConfigNotFound,
 )
+from tr_shared.integrations.hikcentral import (
+    hikcentral_get_version,
+    hikcentral_probe_attendance,
+    sign_hikcentral_request,
+)
 from tr_shared.integrations.models import IntegrationConfig
 from tr_shared.integrations.pf_oauth import fetch_pf_access_token
 from tr_shared.integrations.portal_errors import (
@@ -95,6 +100,9 @@ __all__ = [
     "PUBLIC_CONFIG_KEYS",
     "fetch_pf_access_token",
     "sanitize_public_config",
+    "sign_hikcentral_request",
+    "hikcentral_get_version",
+    "hikcentral_probe_attendance",
     "init_integration_config_client",
     "get_integration_config_client",
     "reset_integration_config_client",
