@@ -57,6 +57,7 @@ def test_platform_name_aliases_are_slugs() -> None:
     assert K.BAYUT_PLATFORM_NAME == "bayut"
     assert K.DUBIZZLE_PLATFORM_NAME == "dubizzle"
     assert K.GEMINI_PLATFORM_NAME == "gemini"
+    assert K.HIKCENTRAL_PLATFORM_NAME == "hikcentral"
 
 
 def test_known_platform_names_has_all_connectable_platforms() -> None:
@@ -66,6 +67,7 @@ def test_known_platform_names_has_all_connectable_platforms() -> None:
             K.BAYUT_PLATFORM_NAME,
             K.DUBIZZLE_PLATFORM_NAME,
             K.GEMINI_PLATFORM_NAME,
+            K.HIKCENTRAL_PLATFORM_NAME,
         },
     )
 
