@@ -4,9 +4,16 @@ Only built for integrations with REAL cross-service duplication — verified by
 reading, not assumed. PropertyFinder and Bayut are each hand-mocked independently
 in three services today (crm-core, content-platform, lead-management), with three
 genuinely different mocking mechanics (``httpx.MockTransport``, patched client
-internals, patched ``httpx.AsyncClient``). Supabase, Gemini, HikCentral and SuprSend
-are single-service or non-existent stubs — no duplication to remove, so nothing is
+internals, patched ``httpx.AsyncClient``). Supabase, Gemini and SuprSend remain
+single-service or non-existent stubs — no duplication to remove, so nothing is
 built here for them; adding fakes with nothing to deduplicate would be speculative.
+
+HikCentral is the exception as of the per-tenant integration
+(plans/2026-08-15-hikcentral-per-tenant-integration.md): tr-crm-core's
+``HikCentralRegistrar`` (connect-flow validation) and tr-people-finance's
+``HikCentralAPI`` (HR domain client) both call the same two HTTP endpoints
+through the shared ``tr_shared.integrations.hikcentral`` signing functions —
+real, planned duplication, not speculative.
 
 ``MockTransportBuilder`` (``http_stub.py``) is the one real mechanism this module
 standardizes on: it drives the actual ``httpx.AsyncClient``/``httpx.Client`` a
