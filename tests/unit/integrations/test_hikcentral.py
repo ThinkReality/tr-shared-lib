@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import ipaddress
 import socket
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -184,8 +185,31 @@ class TestHikcentralProbeAttendance:
             await hikcentral_probe_attendance(client, "https://hik.example", "key", "secret")
 
         req = captured["body"]["attendanceReportRequest"]
+        today = date.today()
+        yesterday = today - timedelta(days=1)
         assert req["pageSize"] == 1
-        assert req["queryInfo"]["endTime"] - req["queryInfo"]["beginTime"] == 24 * 60 * 60 * 1000
+        assert req["queryInfo"]["beginTime"] == f"{yesterday.isoformat()}T00:00:00 04:00"
+        assert req["queryInfo"]["endTime"] == f"{today.isoformat()}T23:59:59 04:00"
+
+    @pytest.mark.asyncio
+    async def test_begin_end_time_are_strings_not_epoch_ms(self) -> None:
+        """Regression test: HikCentral's device rejected epoch-millisecond ints
+        with "Incorrect request parameter. [beginTime parameter error]" —
+        confirmed against the live device. beginTime/endTime must be strings."""
+        captured = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            import json as _json
+
+            captured["body"] = _json.loads(request.content)
+            return httpx.Response(200, json={"code": "0", "msg": "Success", "data": {}})
+
+        async with _make_client(httpx.MockTransport(handler)) as client:
+            await hikcentral_probe_attendance(client, "https://hik.example", "key", "secret")
+
+        req = captured["body"]["attendanceReportRequest"]
+        assert isinstance(req["queryInfo"]["beginTime"], str)
+        assert isinstance(req["queryInfo"]["endTime"], str)
 
     @pytest.mark.asyncio
     async def test_unlicensed_module_raises(self) -> None:

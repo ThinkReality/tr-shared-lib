@@ -5,6 +5,19 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.1] - 2026-08-17
+
+### Fixed
+- **`hikcentral_probe_attendance` sent `beginTime`/`endTime` as epoch-millisecond
+  integers** — the live device rejects this with `"Incorrect request parameter.
+  [beginTime parameter error]"`, misclassified as `HIKCENTRAL_LICENSE_001`
+  ("unlicensed") since the probe treats any non-`"0"` response code as a license
+  failure. Confirmed against a real device: credentials/HMAC were valid the
+  whole time, only the payload shape was wrong. Both fields are now strings,
+  matching tr-people-finance's `hikcentral_query_window()` — the proven-working
+  production caller of this same `/api/attendance/v1/report` endpoint —
+  including its literal `" 04:00"` offset suffix (space, no `+`).
+
 ## [0.66.0] - 2026-08-16
 
 ### Fixed
