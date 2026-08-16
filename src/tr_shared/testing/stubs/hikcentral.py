@@ -30,9 +30,7 @@ class HikCentralStub:
     def version(self, *, success: bool = True, msg: str = "Success") -> "HikCentralStub":
         """GET /api/common/v1/version — the auth probe."""
         body: dict[str, Any] = (
-            {"code": "0", "msg": msg, "data": ""}
-            if success
-            else {"code": "1", "msg": msg}
+            {"code": "0", "msg": msg, "data": ""} if success else {"code": "1", "msg": msg}
         )
         self._builder.route("GET", r"/api/common/v1/version$", json=body)
         return self

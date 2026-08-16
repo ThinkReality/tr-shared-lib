@@ -35,7 +35,9 @@ __all__ = [
 ]
 
 
-def sign_hikcentral_request(method: str, path: str, secret_key: str, app_key: str) -> dict[str, str]:
+def sign_hikcentral_request(
+    method: str, path: str, secret_key: str, app_key: str
+) -> dict[str, str]:
     """Compute HikCentral Artemis auth headers for one request.
 
     Pure function, no I/O. `path` is normalized to always start with
