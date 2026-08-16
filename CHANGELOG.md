@@ -5,6 +5,31 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.0] - 2026-08-16
+
+### Fixed
+- **SSRF guard added to `integrations/hikcentral.py`'s connect-time probes**
+  (`hikcentral_get_version`, `hikcentral_probe_attendance`). Both made outbound
+  HTTP calls to a tenant-admin-supplied `base_url` with zero address validation
+  — found in adversarial security review of tr-crm-core#58/tr-people-finance#41,
+  both consumers of this module. `_assert_safe_hikcentral_host` now resolves the
+  host and rejects loopback, link-local (169.254.0.0/16 — cloud metadata, the #1
+  SSRF target), multicast, and reserved/unspecified addresses before any request
+  is issued. RFC1918/private-LAN ranges are deliberately still allowed —
+  HikCentral devices are on-prem hardware, blocking private ranges would break
+  the actual feature.
+
+### v0.65.0 is a dead tag — do not pin to it
+`v0.65.0` exists on this repo and will never be deleted (tags are frozen, see
+root `CLAUDE.md`'s Upgrading Shared Libs section), but it points at
+`b17568a` — a lockfile/formatting-only commit that **predates** the SSRF fix
+above. It was cut by mistake against `main`'s tip before the fix branch had
+been merged, discovered only when a consumer's relock produced a version
+conflict with `shared-auth-lib`'s own pin. The fix was then properly merged to
+`main` and re-tagged as `v0.66.0` — that is the first version that actually
+contains it. If you're reading tag history and `v0.65.0` looks like the
+natural pin, it is not: use `v0.66.0` or later.
+
 ## [0.63.0] - 2026-08-15
 
 ### Added
