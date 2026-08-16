@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import socket
+
 import httpx
 import pytest
 
 from tr_shared.exceptions import ServiceUnavailableError
 from tr_shared.integrations.hikcentral import hikcentral_get_version, hikcentral_probe_attendance
 from tr_shared.testing.stubs.hikcentral import HikCentralStub
+
+_REAL_GETADDRINFO = socket.getaddrinfo
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns_for_hik_test_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """hikcentral_get_version/hikcentral_probe_attendance resolve `base_url`'s
+    host before calling out (SSRF guard) — `hik.test` (RFC 2606) never
+    resolves in real DNS, so fake it to a safe public IP here."""
+
+    def _stub(host: str, *args: object, **kwargs: object) -> list:
+        if host == "hik.test":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("203.0.113.10", 0))]
+        return _REAL_GETADDRINFO(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _stub)
 
 
 @pytest.mark.asyncio
