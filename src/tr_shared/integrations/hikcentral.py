@@ -21,8 +21,11 @@ plans/2026-08-15-hikcentral-per-tenant-integration.md, Key design decision 1.
 import base64
 import hashlib
 import hmac
+import ipaddress
+import socket
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -33,6 +36,69 @@ __all__ = [
     "hikcentral_get_version",
     "hikcentral_probe_attendance",
 ]
+
+
+def _assert_safe_hikcentral_host(base_url: str) -> None:
+    """Reject a `base_url` that resolves somewhere it can never legitimately be.
+
+    HikCentral devices are on-prem LAN hardware — the whole point of this
+    integration is connecting to a tenant's private-range IP (the plan's own
+    connect-form placeholder is `192.168.1.100`), so RFC1918/ULA ranges are
+    NOT blocked here; that would break the feature. What IS blocked is the
+    address classes that are NEVER a real HikCentral box: loopback (the
+    server probing itself), link-local (169.254.0.0/16 — cloud metadata
+    endpoints, the #1 SSRF target), multicast, and reserved/unspecified.
+
+    Resolves the hostname and checks the resolved IP(s), not the string —
+    a bare `host in {"localhost", ...}` denylist is trivially bypassed by an
+    alternate IP encoding or a DNS record pointed at 127.0.0.1. Every
+    resolved address must be safe, or the whole `base_url` is rejected.
+
+    Known limitation: this check and the actual connection are two separate
+    DNS resolutions (`httpx` resolves again internally), so a short-TTL
+    record could rebind between them (TOCTOU). Accepted for this integration
+    given the caller is a per-tenant admin, not an anonymous request — not a
+    complete SSRF fix for an untrusted-caller boundary.
+
+    Raises:
+        ServiceUnavailableError: scheme is not http/https, hostname is
+            missing/unresolvable, or any resolved address is unsafe.
+    """
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise ServiceUnavailableError(
+            detail=f"HikCentral base_url must use http(s), got scheme {parsed.scheme!r}",
+            code="HIKCENTRAL_UNSAFE_URL_001",
+        )
+    hostname = parsed.hostname
+    if not hostname:
+        raise ServiceUnavailableError(
+            detail="HikCentral base_url has no hostname",
+            code="HIKCENTRAL_UNSAFE_URL_001",
+        )
+
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise ServiceUnavailableError(
+            detail=f"HikCentral base_url host {hostname!r} could not be resolved: {exc}",
+            code="HIKCENTRAL_UNSAFE_URL_002",
+        ) from exc
+
+    for family, _, _, _, sockaddr in addr_infos:
+        raw_ip = sockaddr[0]
+        ip = ipaddress.ip_address(raw_ip)
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ServiceUnavailableError(
+                detail=f"HikCentral base_url host {hostname!r} resolves to a disallowed address ({raw_ip})",
+                code="HIKCENTRAL_UNSAFE_URL_003",
+            )
 
 
 def sign_hikcentral_request(
@@ -85,9 +151,12 @@ async def hikcentral_get_version(
     breaking the signature (looks like wrong credentials, not a URL bug).
 
     Raises:
-        ServiceUnavailableError: on network failure or non-2xx response.
+        ServiceUnavailableError: `base_url` resolves to a disallowed
+            address (see `_assert_safe_hikcentral_host`), on network
+            failure, or on a non-2xx response.
     """
     normalized_base = base_url.rstrip("/")
+    _assert_safe_hikcentral_host(normalized_base)
     path = "/api/common/v1/version"
     url = f"{normalized_base}{path}"
     headers = sign_hikcentral_request("GET", path, secret_key, app_key)
@@ -136,10 +205,12 @@ async def hikcentral_probe_attendance(
     correctly. Capability probe only; does not paginate or aggregate.
 
     Raises:
-        ServiceUnavailableError: on network failure, non-2xx, or a
-            HikCentral-reported failure code.
+        ServiceUnavailableError: `base_url` resolves to a disallowed
+            address (see `_assert_safe_hikcentral_host`), on network
+            failure, non-2xx, or a HikCentral-reported failure code.
     """
     normalized_base = base_url.rstrip("/")
+    _assert_safe_hikcentral_host(normalized_base)
     path = "/api/attendance/v1/report"
     url = f"{normalized_base}{path}"
     headers = sign_hikcentral_request("POST", path, secret_key, app_key)

@@ -7,16 +7,46 @@ bit-for-bit — this module is the single source of truth both services share.
 import base64
 import hashlib
 import hmac
+import ipaddress
+import socket
 
 import httpx
 import pytest
 
 from tr_shared.exceptions import ServiceUnavailableError
 from tr_shared.integrations.hikcentral import (
+    _assert_safe_hikcentral_host,
     hikcentral_get_version,
     hikcentral_probe_attendance,
     sign_hikcentral_request,
 )
+
+_REAL_GETADDRINFO = socket.getaddrinfo
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns_for_placeholder_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every existing test in this file uses `hik.example`, a hostname that
+    is guaranteed by RFC 2606 to never resolve — the SSRF guard added to
+    hikcentral_get_version/hikcentral_probe_attendance now does a real
+    `socket.getaddrinfo` before every call, which would fail all of them.
+    Resolve any non-literal-IP hostname to a fixed safe public IP; literal
+    IPs (used by TestAssertSafeHikcentralHost below to test the guard
+    itself) pass through to the real resolver, which handles them without
+    any network I/O."""
+
+    def _stub(host: str, *args: object, **kwargs: object) -> list:
+        if host.endswith(".invalid"):
+            # RFC 2606: guaranteed to never resolve — let the real resolver
+            # fail it, for the dedicated unresolvable-hostname test.
+            return _REAL_GETADDRINFO(host, *args, **kwargs)  # type: ignore[arg-type]
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("203.0.113.10", 0))]
+        return _REAL_GETADDRINFO(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _stub)
 
 
 def _make_client(transport: httpx.MockTransport) -> httpx.AsyncClient:
@@ -179,3 +209,62 @@ class TestHikcentralProbeAttendance:
             await hikcentral_probe_attendance(client, "https://hik.example/", "key", "secret")
         assert captured["url"] == "https://hik.example/api/attendance/v1/report"
         assert "//api" not in captured["url"]
+
+
+class TestAssertSafeHikcentralHost:
+    """SSRF guard: block addresses that are never a real HikCentral device,
+    allow the private-LAN ranges the feature actually targets."""
+
+    def test_loopback_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("https://127.0.0.1:8443")
+
+    def test_ipv6_loopback_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("https://[::1]:8443")
+
+    def test_link_local_cloud_metadata_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("http://169.254.169.254")
+
+    def test_multicast_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("http://224.0.0.1")
+
+    def test_non_http_scheme_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("ftp://192.168.1.100")
+
+    def test_missing_hostname_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("https:///no-host")
+
+    def test_unresolvable_hostname_rejected(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _assert_safe_hikcentral_host("https://this-host-does-not-exist.invalid")
+
+    def test_private_lan_address_allowed(self) -> None:
+        """The actual, intended use case — a real HikCentral box on a
+        tenant's on-prem LAN. Must NOT be blocked."""
+        _assert_safe_hikcentral_host("https://192.168.1.100:8443")
+
+    def test_public_address_allowed(self) -> None:
+        _assert_safe_hikcentral_host("https://203.0.113.10")
+
+    @pytest.mark.asyncio
+    async def test_get_version_rejects_loopback_before_any_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+            raise AssertionError("request must never be sent for a loopback base_url")
+
+        async with _make_client(httpx.MockTransport(handler)) as client:
+            with pytest.raises(ServiceUnavailableError):
+                await hikcentral_get_version(client, "http://127.0.0.1", "key", "secret")
+
+    @pytest.mark.asyncio
+    async def test_probe_attendance_rejects_link_local_before_any_request(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+            raise AssertionError("request must never be sent for a link-local base_url")
+
+        async with _make_client(httpx.MockTransport(handler)) as client:
+            with pytest.raises(ServiceUnavailableError):
+                await hikcentral_probe_attendance(client, "http://169.254.169.254", "key", "secret")
