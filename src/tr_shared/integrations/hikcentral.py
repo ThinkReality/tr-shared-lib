@@ -24,6 +24,7 @@ import hmac
 import ipaddress
 import socket
 import time
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -217,15 +218,22 @@ async def hikcentral_probe_attendance(
     headers["Accept"] = "application/json"
     headers["Content-Type"] = "application/json"
 
-    now_ms = int(time.time() * 1000)
-    one_day_ms = 24 * 60 * 60 * 1000
+    # beginTime/endTime are device-validated strings, not epoch milliseconds —
+    # sending an int here reads as a well-formed request but the device
+    # rejects it with "Incorrect request parameter. [beginTime parameter
+    # error]". Format mirrors tr-people-finance's hikcentral_query_window()
+    # default path (app/modules/hr/services/attendance/calculations.py),
+    # the proven-working production caller of this same endpoint — including
+    # its literal " 04:00" suffix (space, no '+').
+    today = date.today()
+    yesterday = today - timedelta(days=1)
     payload = {
         "attendanceReportRequest": {
             "pageNo": 1,
             "pageSize": 1,
             "queryInfo": {
-                "beginTime": now_ms - one_day_ms,
-                "endTime": now_ms,
+                "beginTime": f"{yesterday.isoformat()}T00:00:00 04:00",
+                "endTime": f"{today.isoformat()}T23:59:59 04:00",
                 "sortInfo": {"sortField": 1, "sortType": 1},
                 "personID": [],
             },
