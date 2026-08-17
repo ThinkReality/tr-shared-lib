@@ -5,6 +5,33 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.3] - 2026-08-17
+
+### Fixed
+- **`exc_info=True` was silently dropped in JSON/production logs** —
+  `configure_logging`'s `ProcessorFormatter` was built with the legacy
+  singular `processor=renderer` kwarg, which only runs the renderer itself
+  and never a traceback processor. Every `logger.error(..., exc_info=True)`
+  fleet-wide rendered as the literal `{"exc_info": true, ...}` in JSON output
+  instead of a real traceback — production debugging had to reconstruct root
+  causes from message context alone. Confirmed dev/text output
+  (`ConsoleRenderer`) was unaffected; this was a JSON-path-only defect.
+  Fixed by switching to the current `processors=[...]` list API:
+  `remove_processors_meta` (strips internal `_record`/`_from_structlog` keys)
+  → `format_exc_info` (JSON path only — renders a plain-text `exception`
+  field; `dict_tracebacks` was considered and rejected, it leaks frame
+  locals by default) → the renderer.
+
+### v0.66.2 is a dead tag — do not pin to it
+`v0.66.2` exists on this repo and will never be deleted (tags are frozen, see
+root `CLAUDE.md`'s Upgrading Shared Libs section), but it points at `0c3f7da`
+— the same commit `v0.66.1` points at. It was cut against a feature branch's
+tip (`fix/hikcentral-attendance-probe-time-format`, not yet merged to `main`)
+before the exc_info fix above had even been committed, so it contains
+**neither** the fix nor anything past `v0.66.1`. Same failure shape as
+`v0.65.0` below: discovered before any consumer relocked against it. Use
+`v0.66.3` or later.
+
 ## [0.66.1] - 2026-08-17
 
 ### Fixed

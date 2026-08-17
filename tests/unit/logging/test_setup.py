@@ -1,7 +1,10 @@
 """Tests for configure_logging and get_logger."""
 
+import json
 import logging
 from unittest.mock import MagicMock
+
+import structlog
 
 from tr_shared.logging.setup import (
     _mask_sensitive_fields,
@@ -115,3 +118,54 @@ class TestConfigureLogging:
         finally:
             root.handlers.clear()
             root.handlers.extend(original_handlers)
+
+
+class TestExcInfoRendering:
+    def test_json_format_renders_traceback_on_exc_info(self, capsys):
+        """exc_info=True in JSON mode must render a real traceback, not a
+        literal boolean. Proven empirically: current setup.py drops it."""
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        try:
+            root.handlers.clear()
+            structlog.reset_defaults()
+            configure_logging(log_level="INFO", log_format="json")
+            logger = get_logger("test.exc_info")
+            try:
+                raise ValueError("boom")
+            except ValueError:
+                logger.error("failed", exc_info=True)
+
+            captured = capsys.readouterr()
+            payload = json.loads(captured.out.strip().splitlines()[-1])
+            assert "Traceback" in payload.get("exception", ""), (
+                f"expected rendered traceback in 'exception' field, got: {payload}"
+            )
+            assert "ValueError" in payload.get("exception", "")
+        finally:
+            root.handlers.clear()
+            root.handlers.extend(original_handlers)
+            structlog.reset_defaults()
+
+    def test_text_format_still_uses_console_renderer(self, capsys):
+        """dev/text output must keep rendering via ConsoleRenderer, unaffected
+        by the JSON-only exc_info fix."""
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        try:
+            root.handlers.clear()
+            structlog.reset_defaults()
+            configure_logging(log_level="INFO", log_format="text")
+            logger = get_logger("test.exc_info_text")
+            try:
+                raise ValueError("boom")
+            except ValueError:
+                logger.error("failed", exc_info=True)
+
+            captured = capsys.readouterr()
+            assert "Traceback" in captured.out
+            assert "ValueError" in captured.out
+        finally:
+            root.handlers.clear()
+            root.handlers.extend(original_handlers)
+            structlog.reset_defaults()
