@@ -78,8 +78,15 @@ def configure_logging(
         cache_logger_on_first_use=True,
     )
 
+    formatter_processors: list[structlog.types.Processor] = [
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ]
+    if log_format == "json":
+        formatter_processors.append(structlog.processors.format_exc_info)
+    formatter_processors.append(renderer)
+
     formatter = structlog.stdlib.ProcessorFormatter(
-        processor=renderer,
+        processors=formatter_processors,
         foreign_pre_chain=shared_processors,
     )
 
