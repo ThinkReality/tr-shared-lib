@@ -115,7 +115,6 @@ class EventConsumer:
 
         self._redis: redis.Redis | None = None
         self._handlers: dict[str, EventHandler] = {}
-        self._ignored: set[str] = set()
         self._running = False
         self._dlq: DeadLetterHandler | None = None
         self._retry_state: RetryStateStore | None = None
@@ -180,14 +179,6 @@ class EventConsumer:
     def register_handler(self, event_type: str, handler: EventHandler) -> None:
         self._handlers[event_type] = handler
 
-    def register_ignored(self, event_type: str) -> None:
-        """Declare an event type as expected-but-unhandled: ack it silently,
-        never move it to the DLQ. Use for self-published fire-and-forget
-        events a consumer group reads back on its own stream with nothing to
-        do — e.g. an audit-trail event the same service publishes and would
-        otherwise DLQ as "no handler registered" on every occurrence."""
-        self._ignored.add(event_type)
-
     def handler(self, event_type: str) -> Callable[[EventHandler], EventHandler]:
         def decorator(func: EventHandler) -> EventHandler:
             self.register_handler(event_type, func)
@@ -243,40 +234,17 @@ class EventConsumer:
 
         handler = self._resolve_handler(envelope.event_type)
         if handler is None:
-            if envelope.event_type in self._ignored:
-                logger.debug(
-                    "Ignored event type acked without a handler",
-                    extra={"event_type": envelope.event_type, "event_id": envelope.event_id},
-                )
-                return True, True
-            if self._dlq:
-                try:
-                    await self._dlq.move(
-                        message_id,
-                        data,
-                        f"No handler registered for event type: {envelope.event_type}",
-                    )
-                except Exception:
-                    logger.exception(
-                        "DLQ move failed for unhandled event type %s — continuing", message_id
-                    )
-                logger.warning(
-                    "No handler registered for event type — moved to DLQ",
-                    extra={
-                        "event_type": envelope.event_type,
-                        "event_id": envelope.event_id,
-                        "stream": self._stream_name,
-                    },
-                )
-            else:
-                logger.warning(
-                    "No handler registered for event type — no DLQ configured, discarding",
-                    extra={
-                        "event_type": envelope.event_type,
-                        "event_id": envelope.event_id,
-                        "stream": self._stream_name,
-                    },
-                )
+            # One stream feeds every group, so most events are not ours. Not an error.
+            # Dead-lettering them filled the capped DLQ and pushed out real failures.
+            logger.debug(
+                "Event type not handled by this consumer group — acked",
+                extra={
+                    "event_type": envelope.event_type,
+                    "event_id": envelope.event_id,
+                    "consumer_group": self._consumer_group,
+                    "stream": self._stream_name,
+                },
+            )
             return True, True
 
         try:

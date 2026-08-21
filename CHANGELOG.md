@@ -5,6 +5,21 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.67.0] - 2026-08-21
+
+### Changed
+- **BREAKING — an unhandled event type is now acked, not dead-lettered.** One stream
+  feeds every consumer group, so most events are not a given group's. Dead-lettering
+  them filled the capped DLQ and pushed out real failures: on staging, 4,000 of the
+  4,000 newest entries were "No handler registered" and none was a real failure. The
+  DLQ still takes malformed payloads, handler exceptions and exhausted retries.
+
+### Removed
+- **BREAKING — `EventConsumer.register_ignored()`.** It made each consumer list the
+  events it did *not* handle, which no one can keep correct. Now that unhandled types
+  are acked by default it does nothing, so it is deleted rather than kept as a no-op.
+  Drop the call; no replacement.
+
 ## [0.66.3] - 2026-08-17
 
 ### Fixed

@@ -92,91 +92,58 @@ def _flat_envelope_data(event_type: str = "user.created", event_id: str = "evt-1
     }
 
 
-class TestNoHandlerDLQRouting:
-    async def test_no_handler_moves_to_dlq_when_configured(self):
+class TestUnhandledEventTypesAreAcked:
+    """One stream feeds every group, so most events are not ours. Ack them.
+    Dead-lettering them filled the capped DLQ and pushed out real failures."""
+
+    async def test_unhandled_event_type_is_never_dead_lettered(self):
         consumer = _make_consumer(with_dlq=True)
         result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
-        assert result == (True, True)  # acknowledged, no retry
-        consumer._dlq.move.assert_awaited_once()
-        args = consumer._dlq.move.call_args[0]
-        assert args[0] == "msg-1"
-        assert "No handler registered for event type: order.created" in args[2]
+        assert result == (True, True)  # acked, no retry
+        consumer._dlq.move.assert_not_awaited()
 
-    async def test_no_handler_logs_warning_when_dlq_configured(self):
+    async def test_unhandled_event_type_does_not_warn(self):
+        """Warning per unhandled event would just move the noise into the logs."""
         consumer = _make_consumer(with_dlq=True)
         with patch("tr_shared.events.consumer.logger") as mock_logger:
             await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
-        mock_logger.warning.assert_called_once()
-        warning_msg = mock_logger.warning.call_args[0][0]
-        assert "handler" in warning_msg.lower()
-
-    async def test_no_handler_logs_warning_when_no_dlq_configured(self):
-        consumer = _make_consumer(with_dlq=False)
-        with patch("tr_shared.events.consumer.logger") as mock_logger:
-            result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
-        assert result == (True, True)
-        mock_logger.warning.assert_called_once()
-        warning_msg = mock_logger.warning.call_args[0][0]
-        assert "no dlq" in warning_msg.lower() or "handler" in warning_msg.lower()
-
-    async def test_registered_handler_does_not_move_to_dlq(self):
-        consumer = _make_consumer(with_dlq=True)
-        consumer.register_handler("user.created", AsyncMock())
-        await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
-        consumer._dlq.move.assert_not_awaited()
-
-    async def test_registered_handler_does_not_warn(self):
-        consumer = _make_consumer()
-        consumer.register_handler("user.created", AsyncMock())
-        with patch("tr_shared.events.consumer.logger") as mock_logger:
-            await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
-        for call in mock_logger.warning.call_args_list:
-            assert "No handler" not in str(call)
-
-
-class TestIgnoredEvents:
-    """An 'ignored' event type is expected-but-unhandled: ack silently, never DLQ."""
-
-    async def test_ignored_event_does_not_move_to_dlq(self):
-        consumer = _make_consumer(with_dlq=True)
-        consumer.register_ignored("notification.sent")
-        result = await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
-        assert result == (True, True)  # acknowledged, no retry
-        consumer._dlq.move.assert_not_awaited()
-
-    async def test_ignored_event_does_not_warn(self):
-        consumer = _make_consumer(with_dlq=True)
-        consumer.register_ignored("notification.sent")
-        with patch("tr_shared.events.consumer.logger") as mock_logger:
-            await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
         mock_logger.warning.assert_not_called()
+        mock_logger.error.assert_not_called()
 
-    async def test_ignored_event_works_without_dlq_configured(self):
+    async def test_unhandled_event_type_is_acked_without_a_dlq_configured(self):
         consumer = _make_consumer(with_dlq=False)
-        consumer.register_ignored("notification.sent")
-        result = await consumer._process_message("msg-1", _flat_envelope_data("notification.sent"))
-        assert result == (True, True)
-
-    async def test_unregistered_event_still_moves_to_dlq(self):
-        """Regression guard: registering one ignored event type must not
-        suppress DLQ routing for a genuinely unhandled, unregistered one."""
-        consumer = _make_consumer(with_dlq=True)
-        consumer.register_ignored("notification.sent")
         result = await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
         assert result == (True, True)
-        consumer._dlq.move.assert_awaited_once()
 
-    async def test_registered_handler_takes_precedence_over_ignored(self):
-        """If an event type is both registered as a real handler AND marked
-        ignored (shouldn't normally happen, but must not silently swallow a
-        real handler), the handler must still run."""
+    async def test_the_dlq_still_receives_malformed_messages(self):
+        """Proves the DLQ still works, rather than being switched off."""
+        consumer = _make_consumer(with_dlq=True)
+        result = await consumer._process_message("msg-1", _malformed_data())
+        assert result == (True, True)
+        consumer._dlq.move.assert_awaited_once()
+        assert "Malformed" in consumer._dlq.move.call_args[0][2]
+
+    async def test_a_registered_handler_still_runs(self):
         consumer = _make_consumer(with_dlq=True)
         handler = AsyncMock()
         consumer.register_handler("user.created", handler)
-        consumer.register_ignored("user.created")
         await consumer._process_message("msg-1", _flat_envelope_data("user.created"))
         handler.assert_awaited_once()
         consumer._dlq.move.assert_not_awaited()
+
+    async def test_a_wildcard_handler_still_matches(self):
+        """The ack path must not run before `_resolve_handler` tries `prefix.*`."""
+        consumer = _make_consumer(with_dlq=True)
+        handler = AsyncMock()
+        consumer.register_handler("order.*", handler)
+        await consumer._process_message("msg-1", _flat_envelope_data("order.created"))
+        handler.assert_awaited_once()
+        consumer._dlq.move.assert_not_awaited()
+
+    async def test_register_ignored_is_gone(self):
+        """Deleted, not kept as a no-op: that would be a second dead way to say
+        the same thing. Callers just drop the call."""
+        assert not hasattr(EventConsumer, "register_ignored")
 
 
 def _malformed_data() -> dict:
