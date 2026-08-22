@@ -74,5 +74,5 @@ jobs:
           uv run pytest
           tests/unit/events tests/integration tests/contracts
           tests/test_consumer.py tests/test_version_parity.py
-          tests/unit/test_phone.py
+          tests/unit/test_phone.py tests/unit/test_vault_service.py
           --no-cov

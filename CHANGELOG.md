@@ -5,6 +5,23 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.68.0] - 2026-08-22
+
+### Added
+- **`VaultService` — the Supabase Vault write path.** `tr_shared.vault` owned only
+  the startup read path (`resolve_vault_secrets`); anything needing to *store* a
+  secret had to re-implement `vault.*` SQL locally. `VaultService` adds
+  `create_secret` / `read_secret` / `update_secret` / `delete_secret` with the
+  session injected by the caller, so the write joins the caller's transaction.
+  A named create deletes any stale row of that name first — `vault.secrets.name`
+  has a real unique constraint, so a partial write would otherwise block every
+  later store under that name with an unhandled `IntegrityError`.
+  Timeout is a constructor parameter (`timeout_seconds`, default 5.0), not a
+  settings read: a shared library cannot see a service's own config. A timeout
+  raises `ServiceUnavailableError` and leaves the session unusable — roll it back.
+  Errors are the generic `tr_shared` types and codes.
+  `resolve_vault_secrets` is unchanged; its contract stays "startup is never blocked".
+
 ## [0.67.0] - 2026-08-21
 
 ### Changed
