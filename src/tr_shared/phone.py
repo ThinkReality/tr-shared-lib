@@ -14,8 +14,9 @@ _CONTACTABLE_TYPES = frozenset(
 
 def to_e164(value: str | None, default_region: str = "AE") -> str | None:
     """Parse `value` as a phone number, defaulting to `default_region` when no country code is
-    present. Returns E.164 for a valid, plausibly-WhatsApp-reachable number; None otherwise.
-    Never raises — every failure mode (unparseable, invalid, landline) returns None."""
+    present. Returns E.164 for any valid, parseable number — landline included. Never raises;
+    unparseable or invalid input returns None. Says nothing about WhatsApp reachability — see
+    `is_whatsapp_reachable`."""
     if not value:
         return None
     try:
@@ -24,6 +25,12 @@ def to_e164(value: str | None, default_region: str = "AE") -> str | None:
         return None
     if not phonenumbers.is_valid_number(parsed):
         return None
-    if phonenumbers.number_type(parsed) not in _CONTACTABLE_TYPES:
-        return None
     return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+
+def is_whatsapp_reachable(e164: str) -> bool:
+    """Whether an E.164 number is plausibly reachable on WhatsApp — mobile or
+    fixed-line-or-mobile only, never a pure landline. Takes the output of `to_e164`, not raw
+    input."""
+    parsed = phonenumbers.parse(e164, None)
+    return phonenumbers.number_type(parsed) in _CONTACTABLE_TYPES

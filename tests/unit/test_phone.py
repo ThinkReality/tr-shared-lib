@@ -1,4 +1,4 @@
-from tr_shared.phone import to_e164
+from tr_shared.phone import is_whatsapp_reachable, to_e164
 
 
 def test_uae_mobile_with_plus_and_country_code():
@@ -40,6 +40,14 @@ def test_non_digit_garbage_returns_none():
     assert to_e164("N/A") is None
 
 
-def test_landline_returns_none():
-    # UAE landline (04 prefix, Dubai) — not WhatsApp-reachable, must not pass as a mobile.
-    assert to_e164("+97142345678") is None
+def test_landline_still_canonicalizes():
+    # UAE landline (04 prefix, Dubai) — a real contact fact, to_e164 no longer drops it.
+    assert to_e164("+97142345678") == "+97142345678"
+
+
+def test_whatsapp_reachable_true_for_mobile():
+    assert is_whatsapp_reachable(to_e164("+971501234567")) is True
+
+
+def test_whatsapp_reachable_false_for_landline():
+    assert is_whatsapp_reachable(to_e164("+97142345678")) is False
