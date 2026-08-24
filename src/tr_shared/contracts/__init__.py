@@ -1,3 +1,4 @@
+from tr_shared.contracts.emirates import Emirate
 from tr_shared.contracts.entity_types import EntityType
 from tr_shared.contracts.enums import Channel, CommentAction, Priority
 from tr_shared.contracts.environment import Environment
@@ -15,6 +16,7 @@ __all__ = [
     "GLOSSARY",
     "Channel",
     "CommentAction",
+    "Emirate",
     "EntitlementModuleField",
     "EntityType",
     "Environment",

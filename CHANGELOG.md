@@ -5,6 +5,36 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.0] - 2026-08-24
+
+### Added
+- **`Emirate` — the seven emirates, promoted to `tr_shared.contracts`.** The enum
+  was owned by tr-content-platform (`listing/core/enums.py`), where it
+  CHECK-constrains `listing_listings.uae_emirate` and is registered as a mirrored
+  vocabulary. tr-crm-core now stores an emirate on the tenant's company profile
+  too, so the choice was to promote it or let a second service declare its own —
+  which would have been a third spelling of a vocabulary the fleet already
+  enumerates, guards, and mirrors by hand in
+  `tr-crm-frontend/lib/constants/emirates.ts`.
+
+  Same reasoning and same shape as `PortalSyncStatus` in
+  `contracts.s2s.listing_internal`: being owned by one service is not a reason to
+  declare it there once a second service has to agree on the values. Values are
+  unchanged, so the vocabulary snapshot and the frontend mirror are untouched.
+
+  **Only the vocabulary moved.** `PERMIT_REQUIRED_EMIRATES` is a listing business
+  rule, and `normalize_emirate` / `split_emirate_region` exist to absorb what
+  specific portals emit (Bayut puts Al Ain at breadcrumb depth 1, PropertyFinder
+  writes `abu_dhabi`). Both stay in tr-content-platform with the reasons that
+  produced them — `contracts/` is declarations only.
+
+  Adding or removing a member still requires a forward migration in
+  tr-content-platform to regenerate the CHECK constraint, plus a frontend mirror
+  update.
+
+> **Note:** `0.69.0` was tagged and consumed (shared-auth-lib pins it) without a
+> CHANGELOG entry. Left as-is rather than reconstructed after the fact.
+
 ## [0.68.0] - 2026-08-22
 
 ### Added
