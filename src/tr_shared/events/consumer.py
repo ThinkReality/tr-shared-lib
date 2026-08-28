@@ -337,6 +337,17 @@ class EventConsumer:
                 # because some redis-py versions subclass it there.
                 continue
             except redis.ConnectionError:
+                # `stop()` closes the socket while this read is parked in
+                # `xreadgroup(block=…)`, so a shutdown surfaces here as a
+                # ConnectionError that is expected, not a fault. Without this
+                # check every clean shutdown logged an ERROR traceback, then
+                # reconnected the socket it had just closed and slept 5s before
+                # `while self._running` noticed — that sleep was ~5s of every
+                # consumer's ~6s shutdown. `stop()` sets `_running` False BEFORE
+                # it disconnects, which is what makes the flag readable here.
+                if not self._running:
+                    logger.info("Consumer connection closed during shutdown")
+                    break
                 logger.exception("Redis connection error")
                 try:
                     await self.disconnect()
@@ -386,6 +397,10 @@ class EventConsumer:
             except asyncio.CancelledError:
                 break
             except Exception:
+                # Same shutdown race as _consume_loop: this loop can be mid-XAUTOCLAIM
+                # when stop() closes the socket underneath it.
+                if not self._running:
+                    break
                 logger.exception("Error in claimer loop")
                 await asyncio.sleep(self._claimer_poll_interval)
 

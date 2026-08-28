@@ -5,6 +5,39 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.1] - 2026-08-27
+
+### Fixed
+- **A clean consumer shutdown no longer logs an ERROR traceback, reconnects, and
+  sleeps 5 seconds.** `EventConsumer.stop()` sets `_running = False` and then
+  closes the socket while `_consume_loop` is parked in `xreadgroup(block=…)`. The
+  read raised `redis.ConnectionError`, and the handler treated it as a fault: it
+  logged via `logger.exception`, tore down and **re-opened** the connection it had
+  just closed, then `await asyncio.sleep(5)` before `while self._running` finally
+  noticed it should stop.
+
+  Measured on a live consumer: signal at `14:48:21.807`, ConnectionError at
+  `14:48:21.818`, process exit at ~`14:48:27`. Effectively the whole ~6s of every
+  consumer shutdown in the fleet was that sleep — on all four crm-core /
+  lead-management consumers, on every deploy.
+
+  Both loops now treat a failure raised while `not self._running` as the expected
+  end of a shutdown and break quietly. The running path is untouched: a real Redis
+  blip still logs `Redis connection error` at ERROR and still reconnects, which is
+  covered by its own test so the fix cannot widen into silencing an outage.
+
+  Note for anyone reading old logs: before this version, `Redis connection error`
+  meant *either* a genuine connection loss *or* a completely normal shutdown, with
+  nothing to tell them apart.
+
+  **Deliberately not guarded:** `_consume_loop`'s trailing
+  `except Exception: logger.exception("Unexpected error in consumer loop")` keeps its
+  ERROR log and its 1s sleep even during a shutdown. Only `redis.ConnectionError` was
+  ever observed on that path, and that branch is the "I do not know what this is"
+  case — silencing it while `not self._running` would hide a genuine shutdown bug for
+  a second of saved teardown. If a shutdown is ever seen surfacing there, guard it
+  then, with the failure in hand.
+
 ## [0.70.0] - 2026-08-24
 
 ### Added
