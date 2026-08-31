@@ -33,6 +33,11 @@ from tr_shared.events.exceptions import (
     EventPublishError,
     EventPublishTransportError,
 )
+from tr_shared.events.group_health import (
+    DEFAULT_LIVENESS_MULTIPLIER,
+    GroupHealth,
+    consumer_group_health,
+)
 from tr_shared.events.helpers import (
     make_event_producer,
     parse_payload,
@@ -48,6 +53,11 @@ from tr_shared.events.pii import hash_pii
 from tr_shared.events.producer import EventProducer
 from tr_shared.events.retry_policy import RetryPolicy
 from tr_shared.events.retry_state import RetryStateStore
+from tr_shared.events.supervisor import (
+    SHUTDOWN_SIGNALS,
+    SupervisableConsumer,
+    run_supervised_consumer,
+)
 
 __all__ = [
     "ActivityEvents",
@@ -55,6 +65,7 @@ __all__ = [
     "CMSEvents",
     "DEAD_LETTER_SUFFIX",
     "DEFAULT_DRAINER_INTERVAL_SECONDS",
+    "DEFAULT_LIVENESS_MULTIPLIER",
     "DLQ_FIELD_CONSUMER_GROUP",
     "DLQ_FIELD_FAILURE_REASON",
     "DLQ_FIELD_ORIGINAL_DATA",
@@ -62,7 +73,6 @@ __all__ = [
     "DLQ_FIELD_ORIGINAL_STREAM",
     "DLQ_FIELD_TIMESTAMP",
     "DeadLetterHandler",
-    "dead_letter_stream_name",
     "DealEvents",
     "DurableEventPublisher",
     "EventConsumer",
@@ -72,6 +82,7 @@ __all__ = [
     "EventPublishError",
     "EventPublishTransportError",
     "FinanceEvents",
+    "GroupHealth",
     "HREvents",
     "InMemoryIdempotencyChecker",
     "LMSEvents",
@@ -81,12 +92,17 @@ __all__ = [
     "NotificationEvents",
     "RetryPolicy",
     "RetryStateStore",
+    "SHUTDOWN_SIGNALS",
+    "SupervisableConsumer",
     "TaskEvents",
     "WAMEvents",
+    "consumer_group_health",
     "create_outbox_drainer_task",
+    "dead_letter_stream_name",
     "drain_outbox",
     "hash_pii",
     "make_event_producer",
     "parse_payload",
     "publish_event",
+    "run_supervised_consumer",
 ]

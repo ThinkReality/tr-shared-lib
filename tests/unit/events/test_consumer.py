@@ -4,6 +4,8 @@ import json
 from collections import OrderedDict
 from unittest.mock import AsyncMock, patch
 
+import redis
+
 from tr_shared.events.consumer import EventConsumer, InMemoryIdempotencyChecker
 from tr_shared.events.dead_letter import DeadLetterHandler, dead_letter_stream_name
 from tr_shared.events.retry_policy import RetryPolicy
@@ -340,3 +342,124 @@ class TestPelRetryAndOrphanRecovery:
 
         deleted = [c.args[2] for c in consumer._redis.xgroup_delconsumer.call_args_list]
         assert deleted == ["zombie"]
+
+
+class TestShutdownIsNotAFault:
+    """`stop()` closes the socket while `_consume_loop` is parked in
+    `xreadgroup(block=…)`. That surfaces as a ConnectionError which is expected,
+    not a fault — and the pre-fix handler treated it as a fault: it logged an
+    ERROR traceback, reconnected the socket it had just closed, and slept 5s
+    before `while self._running` noticed. Measured on a live consumer, that
+    sleep was ~5s of a ~6s shutdown, on every consumer in the fleet.
+
+    Every test here must enter the loop with `_running` TRUE and flip it inside
+    the read, the way `stop()` does. A test that sets `_running = False` up front
+    never executes the loop body at all, so the guard is never reached and the
+    test passes with the fix reverted — that exact mistake was caught here by
+    mutation, not by review.
+    """
+
+    def _consumer(self) -> EventConsumer:
+        consumer = EventConsumer(
+            redis_url="redis://localhost:6379/0",
+            stream_name="s",
+            consumer_group="g",
+            consumer_name="c",
+        )
+        consumer._redis = AsyncMock()
+        consumer._running = True
+        return consumer
+
+    def _stopping_read(self, consumer: EventConsumer):
+        """What `stop()` does: flip the flag, then close the socket under the read."""
+
+        async def read(**_kwargs):
+            consumer._running = False
+            raise redis.ConnectionError("Connection closed by server.")
+
+        return read
+
+    async def test_connection_error_during_shutdown_does_not_reconnect(self):
+        consumer = self._consumer()
+        consumer._redis.xreadgroup.side_effect = self._stopping_read(consumer)
+        consumer.connect = AsyncMock()
+
+        with patch("tr_shared.events.consumer.asyncio.sleep", new=AsyncMock()) as slept:
+            await consumer._consume_loop()
+
+        consumer.connect.assert_not_awaited()
+        slept.assert_not_awaited()
+
+    async def test_connection_error_during_shutdown_is_not_logged_as_an_error(self):
+        consumer = self._consumer()
+        consumer._redis.xreadgroup.side_effect = self._stopping_read(consumer)
+
+        with patch("tr_shared.events.consumer.logger") as log:
+            await consumer._consume_loop()
+
+        log.exception.assert_not_called()
+
+    async def test_connection_error_while_running_still_reconnects_and_logs(self):
+        """The same line means a real Redis blip when the consumer IS running —
+        that path must keep its ERROR log and its retry, or this fix would
+        silence a genuine outage."""
+        consumer = self._consumer()
+        calls = {"n": 0}
+
+        async def fail_once(**_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise redis.ConnectionError("blip")
+            consumer._running = False
+            return []
+
+        consumer._redis.xreadgroup.side_effect = fail_once
+        consumer.connect = AsyncMock()
+        consumer.disconnect = AsyncMock()
+
+        with (
+            patch("tr_shared.events.consumer.logger") as log,
+            patch("tr_shared.events.consumer.asyncio.sleep", new=AsyncMock()),
+        ):
+            await consumer._consume_loop()
+
+        consumer.connect.assert_awaited()
+        log.exception.assert_called_once_with("Redis connection error")
+
+    async def test_claimer_loop_exits_quietly_on_shutdown(self):
+        consumer = self._consumer()
+
+        async def claim(**_kwargs):
+            consumer._running = False
+            raise redis.ConnectionError("Connection closed by server.")
+
+        consumer._redis.xautoclaim.side_effect = claim
+
+        with (
+            patch("tr_shared.events.consumer.logger") as log,
+            patch("tr_shared.events.consumer.asyncio.sleep", new=AsyncMock()),
+        ):
+            await consumer._claimer_loop()
+
+        log.exception.assert_not_called()
+
+    async def test_claimer_loop_still_logs_a_real_failure(self):
+        consumer = self._consumer()
+        calls = {"n": 0}
+
+        async def claim(**_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("boom")
+            consumer._running = False
+            return (b"0-0", [], [])
+
+        consumer._redis.xautoclaim.side_effect = claim
+
+        with (
+            patch("tr_shared.events.consumer.logger") as log,
+            patch("tr_shared.events.consumer.asyncio.sleep", new=AsyncMock()),
+        ):
+            await consumer._claimer_loop()
+
+        log.exception.assert_called_once_with("Error in claimer loop")
