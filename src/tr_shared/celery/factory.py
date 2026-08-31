@@ -23,7 +23,40 @@ Usage in any service (~10 lines instead of 45-111)::
     )
 """
 
+import socket
+
 from celery import Celery
+
+# Kernel-level dead-peer detection for a connection blocked in BRPOP.
+#
+# kombu already sets redis-py's `health_check_interval` (default 25s), and it
+# does not help here: redis-py pings *before issuing a command* on a pooled
+# connection, and a worker spends nearly all its time already blocked inside
+# BRPOP, where no command is pending. Nothing in userspace notices the peer
+# going away — the read simply never returns and no exception is raised, so
+# `broker_connection_retry`, which only fires on a raised error, never runs.
+#
+# tr-api-gateway lost its broker connection at 2026-08-29 02:52 UTC this way.
+# Its control channel (separate pub/sub socket) reconnected normally, so
+# `inspect()` kept answering and every probe reported a healthy worker, while
+# beat published 2/min into a queue nobody drained for 2.6 days.
+#
+# Linux defaults TCP_KEEPIDLE to 7200s, so `socket_keepalive` alone is nearly
+# inert; these options are what make detection take ~90s instead of ~2h.
+# Constant names differ by platform — macOS has no TCP_KEEPIDLE — so each is
+# looked up rather than assumed, and an absent one is simply skipped.
+_KEEPALIVE_TUNING = (("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 3))
+
+TCP_KEEPALIVE_OPTIONS = {
+    option: value
+    for name, value in _KEEPALIVE_TUNING
+    if (option := getattr(socket, name, None)) is not None
+}
+
+BROKER_TRANSPORT_OPTIONS = {
+    "socket_keepalive": True,
+    "socket_keepalive_options": TCP_KEEPALIVE_OPTIONS,
+}
 
 
 def create_celery_app(
@@ -67,6 +100,13 @@ def create_celery_app(
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         broker_connection_retry_on_startup=True,
+        broker_transport_options=dict(BROKER_TRANSPORT_OPTIONS),
+        # The result backend is a second connection with its own settings, and
+        # its own corpse in the same incident. `redis_*` keys configure it;
+        # `broker_transport_options` does not reach it.
+        redis_socket_keepalive=True,
+        redis_retry_on_timeout=True,
+        redis_backend_health_check_interval=30,
         task_time_limit=task_time_limit,
         task_soft_time_limit=task_soft_time_limit,
         worker_prefetch_multiplier=worker_prefetch_multiplier,
@@ -90,6 +130,17 @@ def create_celery_app(
         app.conf.task_default_dead_letter_queue = dead_letter_queue
 
     if extra_config:
-        app.conf.update(extra_config)
+        # `broker_transport_options` is merged, never replaced. `conf.update`
+        # would swap the whole dict, so a caller adding one unrelated option
+        # (a visibility timeout, say) would silently drop the keepalive
+        # settings above and reopen the failure they exist to prevent.
+        overrides = dict(extra_config)
+        caller_transport = overrides.pop("broker_transport_options", None)
+        if caller_transport:
+            app.conf.broker_transport_options = {
+                **BROKER_TRANSPORT_OPTIONS,
+                **caller_transport,
+            }
+        app.conf.update(overrides)
 
     return app
