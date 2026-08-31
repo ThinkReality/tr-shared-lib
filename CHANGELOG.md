@@ -5,6 +5,56 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.0] - 2026-08-29
+
+Minor, not a patch: two new public modules. `0.70.1` was already taken by the
+shutdown fix on this branch, and the tag must mirror the `version` field.
+
+### Added
+- **`tr_shared.events.group_health`** — `consumer_group_health(client, stream, group,
+  *, block_ms)`, the one correct way to read a consumer group's liveness and backlog.
+  Written here because it was written twice in tr-crm-core and read wrong three ways:
+
+  - `lag` is reported by Redis as *present and nil* whenever it cannot reconcile
+    `entries-read` — after any `XDEL` past the group's read position, or for a group
+    created at a mid-stream id. redis-py surfaces that as `None`, so
+    `int(group.get("lag", 0))` raises `TypeError`: the `.get` default never fires
+    because the key **is** there. `lag` is now `int | None` and is never coerced —
+    unknown and zero are different answers.
+  - Liveness comes from per-consumer `idle`, not from `consumers > 0`, which counts
+    registrations rather than processes.
+  - `inactive` is deliberately never read. Redis >= 7.2 defines it as time since the
+    last *successful* read, so it is `-1` before a consumer's first read and grows
+    without bound for a healthy consumer on a quiet stream.
+
+  Only `RedisError` and `OSError` are caught (they do not share an ancestor — both
+  clauses are load-bearing). A `TypeError` from the helper's own arithmetic propagates,
+  because reporting our bug to ops as "the consumer is down" is what sent the last
+  investigation the wrong way.
+
+- **`tr_shared.events.supervisor`** — `run_supervised_consumer(get_consumer, *, setup,
+  teardown, logger)`. The SIGTERM/SIGINT scaffolding existed character-for-character in
+  four modules across two repos, and exactly one had a test pinning the call: deleting
+  `_install_shutdown_handlers(...)` left crm-core at 1414 passed and lead-management at
+  2 passed. Two hooks and no more — a third would mean the helper is being shaped by one
+  awkward call site.
+
+### Changed
+- **A cleanly stopped `EventConsumer` now deregisters itself** (`XGROUP DELCONSUMER`),
+  so `XINFO CONSUMERS` stops listing processes that no longer exist. Previously `stop()`
+  issued no deregistration and `_sweep_zombie_consumers()` only ran at `connect()` with a
+  24h idle floor, so every stopped consumer stayed counted forever.
+
+  It runs in `start()`'s `finally`, **not** in `stop()`, and over its own short-lived
+  client. `stop()` is called from a signal handler while `_claimer_loop` is still in
+  flight and it closes the shared client, so a `DELCONSUMER` there would race the claimer
+  and have nothing left to run on. `stop()` is unchanged.
+
+  Skipped when the consumer still holds pending entries. The empty-PEL check is not a
+  TOCTOU: the lib uses `XAUTOCLAIM` exclusively, and `XAUTOCLAIM` assigns to the
+  *calling* consumer, so a sibling replica can only move entries out of ours, never in.
+  A deregistration failure is logged and never blocks shutdown.
+
 ## [0.70.1] - 2026-08-27
 
 ### Fixed

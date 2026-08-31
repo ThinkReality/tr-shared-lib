@@ -310,6 +310,7 @@ class EventConsumer:
                 except asyncio.CancelledError:
                     pass
             await self.disconnect()
+            await self._deregister_consumer()
 
     async def _consume_loop(self) -> None:
         if self._redis is None:
@@ -403,6 +404,59 @@ class EventConsumer:
                     break
                 logger.exception("Error in claimer loop")
                 await asyncio.sleep(self._claimer_poll_interval)
+
+    async def _deregister_consumer(self) -> None:
+        """Drop this consumer's registration once both loops have stopped.
+
+        **Why here and not in `stop()`.** `stop()` is called from a signal handler
+        while `_claimer_loop` is still in flight, and it closes the shared client — so
+        a `DELCONSUMER` issued there would race the claimer *and* have no client left
+        to run on. By the time this is reached, the claimer has been cancelled and
+        awaited and `_consume_loop` has returned.
+
+        It opens its own short-lived client for that same reason: `disconnect()` has
+        already closed the shared one.
+
+        **Skipped when this consumer still holds pending entries.** Deleting the
+        registration does not strand them — `XAUTOCLAIM` walks the group PEL — but it
+        does erase the count and ownership records ops reads to notice the backlog.
+
+        The empty-PEL check is not a TOCTOU: the lib uses `XAUTOCLAIM` exclusively, and
+        `XAUTOCLAIM` assigns to the *calling* consumer, so a sibling replica can only
+        move entries out of ours, never in. With both our loops down the PEL can only
+        shrink.
+        """
+        client = redis.from_url(self._redis_url, decode_responses=True)
+        try:
+            pending = await client.xpending_range(
+                self._stream_name,
+                self._consumer_group,
+                min="-",
+                max="+",
+                count=1,
+                consumername=self._consumer_name,
+            )
+            if pending:
+                logger.info(
+                    "Consumer '%s' still holds pending entries — leaving it registered",
+                    self._consumer_name,
+                )
+                return
+            await client.xgroup_delconsumer(
+                self._stream_name, self._consumer_group, self._consumer_name
+            )
+            logger.info(
+                "Deregistered consumer '%s' from group '%s'",
+                self._consumer_name,
+                self._consumer_group,
+            )
+        except (redis.RedisError, OSError):
+            # Never let tidy-up hold up a shutdown. The 24h startup sweep is the backstop.
+            logger.warning(
+                "Could not deregister consumer '%s' — continuing shutdown", self._consumer_name
+            )
+        finally:
+            await client.aclose()
 
     async def stop(self) -> None:
         self._running = False
