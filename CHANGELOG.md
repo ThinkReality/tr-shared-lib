@@ -5,6 +5,53 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.0] - 2026-08-31
+
+Minor: changes the transport configuration of every worker in the fleet.
+
+### Fixed
+- **`create_celery_app` now enables TCP keepalive on the broker connection.** A
+  worker whose broker socket goes half-open was previously unable to notice: it
+  sat blocked in `BRPOP` forever, consuming nothing, raising nothing.
+
+  This was not obviously missing because kombu already sets redis-py's
+  `health_check_interval` (default 25s), so connection health *looks* handled.
+  It is not, for the one state that matters — redis-py pings before issuing a
+  command on a pooled connection, and a blocked `BRPOP` has no command pending.
+  For the same reason `broker_connection_retry` never fires: it needs a raised
+  error, and a half-open socket raises nothing. TCP keepalive is the only
+  mechanism that acts on an already-blocked socket, and it is off by default.
+
+  `socket_keepalive` alone is nearly inert (Linux defaults `TCP_KEEPIDLE` to
+  7200s), so `socket_keepalive_options` is set too: detection now takes ~90s
+  instead of never. Constants are looked up per platform — macOS has no
+  `TCP_KEEPIDLE` — and an absent one is skipped rather than guessed.
+
+  Found via tr-api-gateway, whose worker lost its broker connection at
+  2026-08-29 02:52 UTC and stayed dead for 2.6 days while `inspect()` reported
+  it healthy the whole time — the control channel is a separate pub/sub socket
+  and reconnected normally. Beat published 2/min into a queue nobody drained;
+  it reached 7,561. Nothing in any service's code was wrong.
+
+- **The result backend gets the same treatment** (`redis_socket_keepalive`,
+  `redis_retry_on_timeout`, `redis_backend_health_check_interval`). It is a
+  separate connection that `broker_transport_options` does not reach, and it
+  had its own frozen socket in the same incident.
+
+- **`extra_config["broker_transport_options"]` is now merged, not swapped.**
+  `conf.update` replaces the whole dict, so a service adding one unrelated
+  option would have silently dropped the keepalive settings above and reopened
+  the failure they exist to prevent. A caller can still override a specific key
+  deliberately.
+
+### Notes
+- `broker_connection_retry=True` was briefly added here and then removed: a
+  mutation test showed removing it changed nothing, because it is already
+  Celery's default. `broker_connection_retry_on_startup` still needs setting
+  (Celery defaults it to `None`).
+- Consumers pick this up only on a tag + relock; the tag is a deliberate human
+  step, and nothing in the fleet changes until it is cut.
+
 ## [0.71.0] - 2026-08-29
 
 Minor, not a patch: two new public modules. `0.70.1` was already taken by the
