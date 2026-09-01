@@ -13,6 +13,8 @@ Usage in any service (~10 lines instead of 45-111)::
         service_name=settings.SERVICE_NAME,
         broker_url=settings.CELERY_BROKER_URL,
         result_backend=settings.CELERY_RESULT_BACKEND,
+        default_queue="media_tasks",   # must appear in the worker's -Q list
+        task_namespace="media",        # the prefix real task names already use
         task_modules=["app.tasks"],
         beat_schedule={
             "daily-cleanup": {
@@ -23,9 +25,35 @@ Usage in any service (~10 lines instead of 45-111)::
     )
 """
 
+import re
 import socket
 
 from celery import Celery
+
+# A queue name is a wire value. Two production defects came from treating it as a
+# label: `SERVICE_NAME="Media Service"` produced the queue `Media Service_tasks`,
+# and tr-realty-data-hub produced `tr-realty-data-hub_tasks` — both named by a
+# route that therefore matched nothing and drained nowhere.
+#
+# The charset is measured, not chosen: of the 26 distinct queue names in live use
+# across the fleet on 2026-09-01, 25 match this pattern. The one that does not is
+# the phantom queue above. Whitespace alone was too narrow — it catches the first
+# defect and passes the second.
+_QUEUE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _validate_name(value: str, *, field: str) -> str:
+    if not isinstance(value, str) or not _QUEUE_NAME.match(value):
+        raise ValueError(
+            f"{field}={value!r} is not a valid Celery name. Expected "
+            f"{_QUEUE_NAME.pattern} (lowercase, digits, underscores). A name with a "
+            f"space or hyphen is silently unroutable: it becomes a queue no worker "
+            f"subscribes to, and tasks sent there are accepted and never run. "
+            f"Pass an explicit literal — never derive this from SERVICE_NAME, which "
+            f"Railway sets to a human-readable display label."
+        )
+    return value
+
 
 # Kernel-level dead-peer detection for a connection blocked in BRPOP.
 #
@@ -63,6 +91,8 @@ def create_celery_app(
     service_name: str,
     broker_url: str,
     result_backend: str,
+    default_queue: str,
+    task_namespace: str | None = None,
     task_modules: list[str] | None = None,
     beat_schedule: dict | None = None,
     task_time_limit: int = 600,
@@ -76,9 +106,22 @@ def create_celery_app(
     Create a pre-configured Celery application.
 
     Args:
-        service_name: Unique service identifier (used for queue routing).
+        service_name: Unique service identifier. Used as the Celery app name only —
+            deliberately NOT used to derive queues or routes. It comes from
+            ``SERVICE_NAME``, which Railway sets to a display label.
         broker_url: Redis URL for the Celery broker (DB 1).
         result_backend: Redis URL for task results (DB 2).
+        default_queue: Queue for tasks matching no route and declaring no
+            ``queue=``. **Required, and it must appear in this service's worker
+            ``-Q`` list.** Left to Celery's built-in default it is the literal
+            string ``celery``, which is shared by every service on the fleet-wide
+            broker DB — another service's worker then consumes the task and
+            discards it as unregistered, silently on both ends.
+        task_namespace: Prefix real task names already use (``media`` for
+            ``media.snapshot_daily_storage``). When given, ``{namespace}.*`` routes
+            to ``default_queue``. When omitted, **no default route is emitted at
+            all** — a service whose tasks span several prefixes routes them itself.
+            An inert route is worse than no route: it looks configured and is not.
         task_modules: List of module paths for auto-discovery.
         beat_schedule: Periodic task schedule dict.
         task_time_limit: Hard time limit per task in seconds.
@@ -88,6 +131,10 @@ def create_celery_app(
         dead_letter_queue: Optional queue name for tasks that exhaust retries.
         extra_config: Additional Celery config to merge in.
     """
+    _validate_name(default_queue, field="default_queue")
+    if task_namespace is not None:
+        _validate_name(task_namespace, field="task_namespace")
+
     app = Celery(service_name, broker=broker_url, backend=result_backend)
 
     app.conf.update(
@@ -112,9 +159,15 @@ def create_celery_app(
         worker_prefetch_multiplier=worker_prefetch_multiplier,
         worker_disable_rate_limits=False,
         result_expires=3600,
-        task_routes={
-            f"{service_name}.*": {"queue": f"{service_name}_tasks"},
-        },
+        task_default_queue=default_queue,
+        # No route at all when no namespace is given. The previous default derived
+        # both pattern and queue from `service_name`, so a display-label
+        # SERVICE_NAME produced a rule matching no task and naming a queue nobody
+        # drained — configured-looking and inert. Guard:
+        # `tr_shared.testing.celery_topology.assert_every_route_matches_a_task`.
+        task_routes=(
+            {f"{task_namespace}.*": {"queue": default_queue}} if task_namespace is not None else {}
+        ),
     )
 
     if task_modules:
