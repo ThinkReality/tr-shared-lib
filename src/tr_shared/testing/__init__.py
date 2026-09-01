@@ -6,9 +6,10 @@ Two things live here, and they are unrelated in mechanism but not in purpose:
   provisions real Postgres and Redis for the integration lane, and makes the unit
   lane structurally incapable of reaching a database. Normative description:
   ``docs/shared/TR_Testing_Standard.md``.
-* **Structural guards** (``guards``, ``tenant_header_guard``) — AST checks a
-  service's own suite runs over its own tree, so a fleet-wide invariant fails in
-  the service that breaks it rather than in a distant reviewer's memory.
+* **Structural guards** (``guards``, ``tenant_header_guard``, ``celery_topology``)
+  — AST and shell checks a service's own suite runs over its own tree, so a
+  fleet-wide invariant fails in the service that breaks it rather than in a distant
+  reviewer's memory.
 * **Isolation** (``isolation``, ``fixtures``) — savepoint-rolled-back sessions and
   a Redis index per xdist worker.
 
@@ -22,6 +23,19 @@ lazily, so a service that has not opted in never needs the ``testing`` extra
 installed.
 """
 
+from tr_shared.testing.celery_topology import (
+    CeleryTopologyError,
+    assert_default_queue_is_consumed,
+    assert_every_beat_entry_sets_expires,
+    assert_every_beat_entry_targets_a_consumed_queue,
+    assert_every_route_matches_a_task,
+    assert_expires_is_not_shorter_than_the_interval,
+    assert_no_service_consumes_the_shared_queue,
+    assert_topology_is_readable,
+    consumed_queues,
+    registered_task_names,
+    unmatched_route_patterns,
+)
 from tr_shared.testing.config import TestingConfig, find_config
 from tr_shared.testing.env_contract import assert_no_orphan_env_keys
 from tr_shared.testing.guards import (
@@ -57,8 +71,19 @@ from tr_shared.testing.tenant_header_guard import (
 __all__ = [
     "POISON_DATABASE_URL",
     "POISON_REDIS_URL",
+    "CeleryTopologyError",
     "Exemption",
     "TestingConfig",
+    "assert_default_queue_is_consumed",
+    "assert_every_beat_entry_sets_expires",
+    "assert_every_beat_entry_targets_a_consumed_queue",
+    "assert_every_route_matches_a_task",
+    "assert_expires_is_not_shorter_than_the_interval",
+    "assert_no_service_consumes_the_shared_queue",
+    "assert_topology_is_readable",
+    "consumed_queues",
+    "registered_task_names",
+    "unmatched_route_patterns",
     "assert_no_orphan_env_keys",
     "assert_exemptions_are_machine_verified",
     "assert_no_auth_chain_bypass",

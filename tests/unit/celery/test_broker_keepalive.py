@@ -34,7 +34,7 @@ BACKEND = "redis://localhost:6379/2"
 
 @pytest.fixture
 def app():
-    return create_celery_app("svc", BROKER, BACKEND)
+    return create_celery_app("svc", BROKER, BACKEND, "svc_tasks")
 
 
 class TestTheBrokerSocketIsKeptAlive:
@@ -123,6 +123,7 @@ class TestCallerOptionsMergeRatherThanReplace:
             "svc",
             BROKER,
             BACKEND,
+            "svc_tasks",
             extra_config={"broker_transport_options": {"visibility_timeout": 3600}},
         )
         options = app.conf.broker_transport_options
@@ -135,6 +136,7 @@ class TestCallerOptionsMergeRatherThanReplace:
             "svc",
             BROKER,
             BACKEND,
+            "svc_tasks",
             extra_config={"broker_transport_options": {"socket_keepalive": False}},
         )
         assert app.conf.broker_transport_options["socket_keepalive"] is False
@@ -144,6 +146,7 @@ class TestCallerOptionsMergeRatherThanReplace:
             "svc",
             BROKER,
             BACKEND,
+            "svc_tasks",
             extra_config={
                 "beat_schedule_filename": "/tmp/x",
                 "task_routes": {"a.*": {"queue": "q"}},
@@ -160,12 +163,13 @@ class TestCallerOptionsMergeRatherThanReplace:
             "svc",
             BROKER,
             BACKEND,
+            "svc_tasks",
             extra_config={"broker_transport_options": {"socket_keepalive": False}},
         )
         assert BROKER_TRANSPORT_OPTIONS["socket_keepalive"] is True
         assert (
-            create_celery_app("other", BROKER, BACKEND).conf.broker_transport_options[
-                "socket_keepalive"
-            ]
+            create_celery_app(
+                "other", BROKER, BACKEND, "other_tasks"
+            ).conf.broker_transport_options["socket_keepalive"]
             is True
         )

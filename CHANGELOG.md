@@ -5,6 +5,58 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.73.0] - 2026-09-01
+
+Minor, but **breaking for every consumer**: `create_celery_app` gains a required
+`default_queue` argument. All 8 services must pass it in the same change that
+relocks, or they fail at import. That is deliberate — the alternative is a
+default that is silently wrong.
+
+### Fixed
+- **`create_celery_app` no longer derives queue routing from `SERVICE_NAME`.**
+  It built `task_routes = {f"{service_name}.*": {"queue": f"{service_name}_tasks"}}`,
+  and every service reads `SERVICE_NAME` from an env var Railway sets to a
+  human-readable display label. tr-media-service ran in production with
+  `{'Media Service.*': {'queue': 'Media Service_tasks'}}` — a rule matching no
+  task name, naming a queue no worker drained. tr-realty-data-hub had the same
+  shape with hyphens. Both were inert, and neither broke anything visibly:
+  media's tasks still ran because each `@task` carries its own `queue=`, which
+  outranks `task_routes`. The route was dead config that looked live.
+
+  Routing is now explicit via `task_namespace`, and **omitted entirely when not
+  given**. A service whose tasks span several prefixes (realty has `dld`,
+  `owner`, `scraping`) routes them itself rather than receiving a guess.
+
+- **`task_default_queue` is now required and validated.** Left unset it is
+  Celery's built-in default, the literal string `celery`. All nine services share
+  one broker DB, and the gateway's worker subscribed to that name — so an
+  unrouted task from any of five services was consumed by the *gateway* and
+  discarded as unregistered. Silent at both ends, and the same shape as the
+  zombie Listing Service incident in August.
+
+  Names are checked against `^[a-z][a-z0-9_]*$`. The charset is measured, not
+  chosen: of the 26 distinct queue names in live fleet use on 2026-09-01, 25
+  match. The one that does not is the phantom queue above. A whitespace-only
+  check was tried first and was too narrow — it catches `Media Service_tasks`
+  and passes `tr-realty-data-hub_tasks`.
+
+### Added
+- **`tr_shared.testing.celery_topology`** — the shared body of the queue/route
+  guards, so services call it instead of copying it. Two services had already
+  copied an earlier version and diverged; one parsed only `-Q` and therefore read
+  an empty queue set on the service using `--queues=`, then asserted successfully
+  over nothing.
+
+  It resolves the start-command file (`deploy.sh`, then `docker-entrypoint.sh`)
+  and reads all three spellings in live use — `-Q a,b`, `--queues=a,b`, and
+  `-Q "${VAR}"` — joining backslash continuations first, because media's worker
+  command splits `celery … worker` and `--queues=` across two physical lines.
+
+  **It raises rather than returning an empty set** when a worker line is present
+  but unparseable, or when no file starts a worker. An empty set satisfies every
+  assertion written over it, which is precisely how the copied guard stopped
+  guarding.
+
 ## [0.72.0] - 2026-08-31
 
 Minor: changes the transport configuration of every worker in the fleet.
