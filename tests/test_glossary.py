@@ -34,12 +34,19 @@ def test_known_migrations_are_recorded():
     assert GLOSSARY["priority"].migrations["urgent"] == "critical"
     assert GLOSSARY["channel"].migrations["mobile_push"] == "push"
     assert GLOSSARY["entity_type"].migrations["comment"] == "activity.comment"
+    assert GLOSSARY["bedroom_count"].migrations["bed1"] == "1"
 
 
 def test_glossary_covers_exactly_the_canonical_enums():
-    """Type-level bijection: the glossary registers exactly the four cross-domain
+    """Type-level bijection: the glossary registers exactly the cross-domain
     canonical enums — adding/removing one without updating the glossary fails here."""
-    assert set(GLOSSARY) == {"feature", "entity_type", "priority", "channel"}
+    assert set(GLOSSARY) == {
+        "feature",
+        "entity_type",
+        "priority",
+        "channel",
+        "bedroom_count",
+    }
 
 
 def test_every_migration_replacement_is_a_live_member():

@@ -5,7 +5,13 @@ from typing import Any
 
 from fastapi import HTTPException
 
-_REQUIRED_ATTRS: tuple[str, ...] = ("status_code", "error", "detail_message", "error_code")
+_REQUIRED_ATTRS: tuple[str, ...] = (
+    "status_code",
+    "error",
+    "detail_message",
+    "error_code",
+    "extra",
+)
 
 
 class BaseAPIException(HTTPException):
@@ -16,11 +22,18 @@ class BaseAPIException(HTTPException):
         detail: str | None = None,
         code: str | None = None,
         headers: dict[str, str] | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(status_code=status_code, detail=error, headers=headers)
         self.error = error
         self.detail_message = detail
         self.error_code = code
+        # Structured detail that belongs INSIDE the canonical `error` object —
+        # a per-field validation list, a retry budget, an offending value. It
+        # exists because the alternative is what callers did instead: flatten
+        # the detail into the message with `"; ".join(...)` and truncate, which
+        # is unparseable by the client that has to render it.
+        self.extra: dict[str, Any] = extra or {}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         # Wraps __init__ to TypeError-fail loudly when super().__init__ is skipped.
@@ -51,6 +64,7 @@ class BaseAPIException(HTTPException):
             message=self.error,
             code=self.error_code,
             detail=self.detail_message,
+            **self.extra,
         )
 
 

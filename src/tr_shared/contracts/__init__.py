@@ -1,3 +1,4 @@
+from tr_shared.contracts.bedrooms import BedroomCount
 from tr_shared.contracts.emirates import Emirate
 from tr_shared.contracts.entity_types import EntityType
 from tr_shared.contracts.enums import Channel, CommentAction, Priority
@@ -14,6 +15,7 @@ from tr_shared.contracts.taxonomy import (
 __all__ = [
     "ENTITLEMENT_MODULES",
     "GLOSSARY",
+    "BedroomCount",
     "Channel",
     "CommentAction",
     "Emirate",
