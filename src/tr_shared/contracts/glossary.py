@@ -19,9 +19,9 @@ class Term:
         return tuple(self.migrations)
 
 
-# The four cross-domain canonical enums. Each retired alias maps to the live
-# member that replaced it, so the bijection test can assert both directions:
-# no retired alias is still live, and every replacement IS a live member.
+# The cross-domain canonical enums. Each retired alias maps to the live member
+# that replaced it, so the bijection test can assert both directions: no retired
+# alias is still live, and every replacement IS a live member.
 GLOSSARY: dict[str, Term] = {
     "feature": Term(
         canonical="Feature",
@@ -41,5 +41,15 @@ GLOSSARY: dict[str, Term] = {
         canonical="Channel",
         type="tr_shared.contracts.enums.Channel",
         migrations={"mobile_push": "push"},
+    ),
+    # One bedroom spelling for listing, cms and both frontends. The retired
+    # aliases are the two encodings cms landing pages used: `room_types` keys
+    # were `bed1`..`bed7plus` and `property_types[].unit_types` were the display
+    # labels `1 Bedroom`..`7+ Bedroom`. One representative of each retired shape
+    # is recorded; re-introducing either spelling as a member fails the guard.
+    "bedroom_count": Term(
+        canonical="BedroomCount",
+        type="tr_shared.contracts.bedrooms.BedroomCount",
+        migrations={"bed1": "1", "1 Bedroom": "1", "bed7plus": "7+"},
     ),
 }

@@ -40,6 +40,7 @@ async def base_api_exception_handler(request: Request, exc: BaseAPIException) ->
             code=exc.error_code,
             correlation_id=_correlation_id(request),
             detail=exc.detail_message,
+            **exc.extra,
         ),
         headers=_safe_headers(exc),
     )

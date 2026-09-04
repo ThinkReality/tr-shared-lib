@@ -5,6 +5,44 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.74.0] - 2026-09-03
+
+Additive. No consumer changes required to relock; two are required to *use* it.
+
+### Added
+- **`BedroomCount` in `tr_shared.contracts.bedrooms`**, exported from
+  `tr_shared.contracts`. `studio | 1 | 2 | 3 | 4 | 5 | 6 | 7+`.
+
+  It was declared in `tr-content-platform`'s `listing` module, but the `cms`
+  module needs the same vocabulary and the two modules deliberately do not
+  import each other — a landing page keys its `room_types` JSONB and spells its
+  `property_types[].unit_types` with bedroom counts, and had invented two more
+  encodings (`bed1`..`bed7plus`, and the display labels `1 Bedroom`..`7+
+  Bedroom`) to do it. Same reasoning that put `Emirate` here: owned by one
+  service is not a reason to declare it there when a second consumer has to
+  agree on the values.
+
+  `listing` re-exports it from `core.enums`, so no listing call site changes.
+  `STUDIO_BEDROOMS` stays in `listing` — it is that module's storage encoding
+  for an integer column, not part of the wire vocabulary.
+
+- **`GLOSSARY["bedroom_count"]`**, recording the two retired encodings so
+  re-introducing `bed1` or `1 Bedroom` as a member fails the drift guard.
+
+- **`BaseAPIException(..., extra={...})`**, splatted into the canonical `error`
+  object by `to_dict()` and by `base_api_exception_handler`.
+
+  Structured detail had nowhere to go, so callers flattened it into the message
+  instead: cms's landing-page publish validation did
+  `"; ".join(e["message"] for e in errors[:5])`, which truncated at five and
+  left the frontend a string it could not attribute to a field. `extra` is the
+  same mechanism `build_error_envelope` already had — the handler just never
+  passed anything to it.
+
+  `extra` is now in `_REQUIRED_ATTRS`, so a subclass that skips
+  `super().__init__` still fails loudly rather than reaching the handler
+  without the attribute.
+
 ## [0.73.0] - 2026-09-01
 
 Minor, but **breaking for every consumer**: `create_celery_app` gains a required
