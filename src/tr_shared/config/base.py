@@ -74,6 +74,21 @@ class BaseServiceSettings(BaseSettings):
         origins = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
         return origins
 
+    def _cors_origin_list(self) -> list[str]:
+        """Normalises both shapes `CORS_ORIGINS` arrives in.
+
+        It is a comma-separated string in seven services, but tr-content-platform
+        redeclares it as `str | list[str]` and parses CSV-or-JSON in a
+        `mode="before"` validator, so by the time this model validator runs it
+        already holds a real list there. `get_cors_origins()` above assumes the
+        string and would raise `AttributeError` on that service — which is why
+        this exists rather than reusing it.
+        """
+        raw = self.CORS_ORIGINS
+        if isinstance(raw, str):
+            return [o.strip() for o in raw.split(",") if o.strip()]
+        return [str(o).strip() for o in raw if str(o).strip()]
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == Environment.PRODUCTION
@@ -103,6 +118,19 @@ class BaseServiceSettings(BaseSettings):
                     raise ValueError("JWKS_URL required when SUPABASE_URL is set")
             if "*" in self.CORS_ORIGINS:
                 raise ValueError("CORS wildcard not allowed in production")
+            # A CORS origin is a trust grant, and `allow_credentials=True` is set
+            # fleet-wide, so a surviving `http://localhost:3000` lets anything on a
+            # signed-in user's machine read production responses. Scheme rather than
+            # a loopback list: `localhost`, `127.0.0.1`, `[::1]` and a plain-http LAN
+            # host are the same mistake, and an allowlist of spellings goes stale.
+            insecure_origins = [
+                origin for origin in self._cors_origin_list() if not origin.startswith("https://")
+            ]
+            if insecure_origins:
+                raise ValueError(
+                    "CORS_ORIGINS must be https:// in production; remove or replace: "
+                    + ", ".join(insecure_origins)
+                )
             if not self.SERVICE_TOKEN:
                 raise ValueError("SERVICE_TOKEN required in production")
             if not self.AUTH_LIB_GATEWAY_SIGNING_SECRET:

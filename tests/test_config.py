@@ -1,9 +1,35 @@
 """Tests for tr_shared.config.base."""
 
+import json
+
 import pytest
-from pydantic import ValidationError
+from pydantic import ValidationError, field_validator
 
 from tr_shared.config.base import BaseServiceSettings
+
+
+class _ListValuedCorsSettings(BaseServiceSettings):
+    """Mirrors tr-content-platform, the one service whose `CORS_ORIGINS` is a real list.
+
+    It redeclares the field as `str | list[str]` and parses CSV-or-JSON in a
+    `mode="before"` validator, which runs before the `mode="after"` model validator —
+    so the production check there sees a list, never a string. Testing this against a
+    plain `BaseServiceSettings` is not possible: its field is typed `str`, so a list
+    argument dies earlier with pydantic's own `string_type` error, whose message
+    happens to embed the offending origin and will satisfy a naive `match=`.
+    """
+
+    CORS_ORIGINS: str | list[str] = ""  # type: ignore[assignment]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, list):
+            return [str(o) for o in v]
+        if v.strip().startswith("["):
+            return [str(o) for o in json.loads(v)]
+        return [o.strip() for o in v.split(",") if o.strip()]
+
 
 # Minimal valid production config — reused across tests.
 # Does NOT include SUPABASE_URL — downstream services don't need it.
@@ -64,6 +90,88 @@ class TestBaseServiceSettings:
     def test_production_rejects_cors_wildcard(self):
         with pytest.raises(ValidationError, match="CORS wildcard"):
             BaseServiceSettings(**{**_PROD_BASE, "CORS_ORIGINS": "*"})
+
+    def test_production_rejects_a_localhost_cors_origin(self):
+        """The gap this closes. Every one of the six services carrying a
+        `CORS_ORIGINS` today lists `http://localhost:3000`, and with
+        `allow_credentials=True` that is a standing trust grant to anything on a
+        signed-in user's machine. Nothing rejected it before: the wildcard check
+        looks only for `*`, and the localhost check covers only REDIS_URL,
+        CELERY_BROKER_URL and DATABASE_URL.
+        """
+        with pytest.raises(ValidationError, match="http://localhost:3000"):
+            BaseServiceSettings(
+                **{
+                    **_PROD_BASE,
+                    "CORS_ORIGINS": "https://app.thinkrealty.com,http://localhost:3000",
+                }
+            )
+
+    @pytest.mark.parametrize(
+        "origin",
+        [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://[::1]:3000",
+            "http://10.0.0.7",
+            "http://app.thinkrealty.com",
+        ],
+    )
+    def test_production_rejects_every_non_https_origin(self, origin):
+        """Scheme, not a loopback allowlist — plain http to a real host is the same
+        mistake and would slip past a `localhost`/`127.0.0.1` substring check."""
+        with pytest.raises(ValidationError, match="must be https"):
+            BaseServiceSettings(**{**_PROD_BASE, "CORS_ORIGINS": origin})
+
+    def test_production_accepts_several_https_origins(self):
+        """Guards against the check being satisfied by rejecting everything."""
+        s = BaseServiceSettings(
+            **{
+                **_PROD_BASE,
+                "CORS_ORIGINS": "https://app.thinkrealty.com, https://stage.proplytics.ae",
+            }
+        )
+        assert s.ENVIRONMENT == "production"
+
+    def test_a_list_valued_cors_origins_is_checked_too(self):
+        """The check must not be built on `get_cors_origins()`, which assumes the string
+        shape and raises `AttributeError` on a list — that would silently skip the one
+        service whose deployed value is a JSON array.
+
+        This must run against `_ListValuedCorsSettings`, not `BaseServiceSettings`: the
+        base field is typed `str`, so a list argument dies earlier with pydantic's own
+        `string_type` error, whose message embeds the offending origin and will satisfy
+        a naive `match="http://localhost:3000"`. That is exactly how the first version
+        of this test passed while the check it named was bypassed.
+        """
+        with pytest.raises(ValidationError, match="must be https"):
+            _ListValuedCorsSettings(
+                **{
+                    **_PROD_BASE,
+                    "CORS_ORIGINS": '["https://app.thinkrealty.com", "http://localhost:3000"]',
+                }
+            )
+
+    def test_a_list_valued_cors_origins_accepts_all_https(self):
+        """Negative control for the test above: it must fail on the origin, not on the
+        list shape itself."""
+        s = _ListValuedCorsSettings(
+            **{
+                **_PROD_BASE,
+                "CORS_ORIGINS": '["https://app.thinkrealty.com", "https://stage.proplytics.ae"]',
+            }
+        )
+
+        assert s.CORS_ORIGINS == ["https://app.thinkrealty.com", "https://stage.proplytics.ae"]
+
+    @pytest.mark.parametrize("environment", ["development", "test", "staging"])
+    def test_a_localhost_origin_is_fine_outside_production(self, environment):
+        """Local frontend development against a deployed API is the reason these
+        entries exist; only production may not carry them."""
+        s = BaseServiceSettings(
+            **{**_PROD_BASE, "ENVIRONMENT": environment, "CORS_ORIGINS": "http://localhost:3000"}
+        )
+        assert s.get_cors_origins() == ["http://localhost:3000"]
 
     def test_production_rejects_localhost_redis(self):
         with pytest.raises(ValidationError, match="REDIS_URL.*localhost"):
