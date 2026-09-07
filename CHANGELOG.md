@@ -5,6 +5,56 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.0] - 2026-09-07
+
+Tightens a production-only validator. Additive to relock; **no consumer code change
+needed**, but see Migration — it can refuse a boot that 0.74.0 allowed.
+
+### Changed
+- **`BaseServiceSettings.validate_production_config` now rejects any `CORS_ORIGINS`
+  entry that is not `https://`, in production only.**
+
+  Two separate guards existed and neither covered this: the CORS check looked only for
+  `*`, and the localhost check covered only `REDIS_URL`, `CELERY_BROKER_URL` and
+  `DATABASE_URL`. Nothing rejected a localhost *origin*. Every service sets
+  `allow_credentials=True`, so a surviving `http://localhost:3000` in a production
+  allowlist is a standing trust grant to anything running on a signed-in user's machine.
+
+  The rule is by scheme, not a loopback allowlist: `localhost`, `127.0.0.1`, `[::1]` and
+  a plain-http LAN host are the same mistake, and a list of spellings goes stale.
+
+- **`_cors_origin_list()`** added alongside `get_cors_origins()`. It normalises both
+  shapes the field arrives in: seven services keep the comma-separated string, while
+  tr-content-platform redeclares `CORS_ORIGINS` as `str | list[str]` and parses
+  CSV-or-JSON in a `mode="before"` validator, so this model validator sees a real list
+  there. `get_cors_origins()` assumes the string and raises `AttributeError` on that
+  shape — a check built on it would have silently skipped the one service whose
+  deployed value is a JSON array. `get_cors_origins()` itself is unchanged.
+
+### Migration
+
+**Nothing to do today.** Verified 2026-09-07: all eight app projects on Railway have
+exactly one environment, `staging`. No service anywhere runs `ENVIRONMENT=production`,
+so this validator cannot fire yet, and no existing test in the fleet pairs a production
+config with a non-https origin.
+
+**Before the first production cutover**, six services must have their localhost origins
+removed from `CORS_ORIGINS` or they will refuse to boot — which is the point, and is the
+`loud beats silent fail-open` rule the root CLAUDE.md states for Railway variables:
+
+| Service | Non-https origins carried today |
+|---|---|
+| tr-api-gateway | `http://localhost:3000`–`3004` |
+| tr-crm-core | `http://localhost:3000`, `:3001` |
+| tr-content-platform | `http://localhost:3000`–`3004` |
+| tr-lead-management | `http://localhost:3000`–`3004` |
+| tr-media-service | `http://localhost:3000`–`3004` |
+| tr-people-finance | `http://localhost:3000`, `:3001` |
+
+tr-realty-data-hub and tr-whatsApp-marketing-agent set no `CORS_ORIGINS` at all and are
+unaffected. Staging keeps its localhost entries — local frontend development against a
+deployed API is exactly why they exist, and only production is gated.
+
 ## [0.74.0] - 2026-09-03
 
 Additive. No consumer changes required to relock; two are required to *use* it.
