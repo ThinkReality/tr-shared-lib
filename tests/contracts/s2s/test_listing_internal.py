@@ -1,3 +1,4 @@
+import inspect
 from uuid import uuid4
 
 import pytest
@@ -167,3 +168,113 @@ def test_activity_query_serializes_to_wire_params():
         "limit": 20,
         "hours_back": 24,
     }
+
+
+def test_apply_for_owner_path():
+    assert c.apply_for_owner() == "/api/v1/listing/internal/listings/owner-sheet/apply-for-owner"
+
+
+def test_apply_for_owner_sits_under_the_listings_root():
+    """The provider drift test resolves a builder to a router by matching its path
+    against the contract's own base-path constants. A path outside them fails there
+    with 'sits under no known contract root', not here — so pin it here too."""
+    assert c.apply_for_owner().startswith(c.LISTINGS_BASE_PATH)
+
+
+def test_every_path_builder_declares_a_str_return_annotation():
+    """The guard that matters for these builders lives in tr-content-platform, and it
+    selects them by three conditions — one of which is an explicit ``-> str``. A builder
+    missing that annotation is invisible to it: the parametrised case does not fail, it
+    never runs. Nothing in that repository can report a builder its own predicate cannot
+    see, so the annotation has to be guarded here, at the declaration."""
+    builders = [
+        (name, obj)
+        for name, obj in vars(c).items()
+        if not name.startswith("_") and inspect.isfunction(obj) and obj.__module__ == c.__name__
+    ]
+    assert builders
+    for name, obj in builders:
+        assert inspect.signature(obj).return_annotation is str, name
+
+
+def test_apply_for_owner_request_needs_at_least_one_name():
+    """An empty list would claim nothing and report success — the silent no-op the
+    caller cannot distinguish from a tenant whose sheet does not name this person."""
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=[])
+
+
+def test_apply_for_owner_request_caps_names():
+    c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=[f"n{i}" for i in range(50)])
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=[f"n{i}" for i in range(51)])
+
+
+def test_apply_for_owner_request_rejects_a_name_longer_than_a_mention_key():
+    """``auth_directory_mention.source_key`` stores the trimmed owner name and caps at
+    255. A longer string cannot be a mention, so it cannot resolve to this user — a
+    422 says that, a 200 with zero writes does not."""
+    c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=["x" * 255])
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=["x" * 256])
+
+
+def test_apply_for_owner_request_forbids_unknown_keys():
+    """Same reason as PortalSyncActivityQuery: a response may grow fields, a request
+    may not. A drifted key means the caller believes it sent something it did not.
+
+    Every required field is present, so the only thing left to raise is the extra key.
+    An earlier version of this test omitted ``names`` and passed on the missing-field
+    error instead — green with ``extra="ignore"``, proving nothing."""
+    valid = {"crm_user_id": str(uuid4()), "names": ["Hassan Saeed"]}
+    c.ApplyForOwnerRequest.model_validate(valid)
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerRequest.model_validate({**valid, "full_name": "Hassan Saeed"})
+
+
+def test_apply_for_owner_request_serializes_to_the_wire_body():
+    body = c.ApplyForOwnerRequest(
+        crm_user_id="11111111-1111-1111-1111-111111111111",
+        names=["M. Haider Ali", "Muhammad Haider Ali"],
+    ).model_dump(mode="json")
+    assert body == {
+        "crm_user_id": "11111111-1111-1111-1111-111111111111",
+        "names": ["M. Haider Ali", "Muhammad Haider Ali"],
+    }
+
+
+def test_apply_for_owner_response_shape():
+    report = c.ApplyForOwnerResponse.model_validate(
+        {"sheet_enabled": True, "matched_rows": 9, "listings_written": 7}
+    )
+    assert (report.matched_rows, report.listings_written) == (9, 7)
+    assert report.sheet_enabled is True
+
+
+def test_apply_for_owner_response_requires_the_sheet_enabled_flag():
+    """Zero written is two different facts — the sheet does not name this person, or
+    the tenant has no sheet to read. Defaulting the flag would let the second one
+    arrive disguised as the first."""
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerResponse.model_validate({"matched_rows": 0, "listings_written": 0})
+
+
+def test_apply_for_owner_response_ignores_extra_provider_fields():
+    report = c.ApplyForOwnerResponse.model_validate(
+        {
+            "sheet_enabled": False,
+            "matched_rows": 0,
+            "listings_written": 0,
+            "unit_numbers_filled": 3,
+        }
+    )
+    assert report.sheet_enabled is False
+
+
+def test_apply_for_owner_request_trims_each_name():
+    """crm-core stores the mention trimmed, so an untrimmed name would match nothing.
+    Trimming at the contract means neither side has to remember to."""
+    body = c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=["  Hassan Saeed "])
+    assert body.names == ["Hassan Saeed"]
+    with pytest.raises(ValidationError):
+        c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=["   "])
