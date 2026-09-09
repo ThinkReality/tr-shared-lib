@@ -5,6 +5,53 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.76.0] - 2026-09-09
+
+Adds one S2S path builder and its two models. Additive to relock for seven services;
+**tr-content-platform must relock in the same PR as the route it declares** — see
+Migration.
+
+### Added
+- **`listing_internal.apply_for_owner()`**, plus `ApplyForOwnerRequest` and
+  `ApplyForOwnerResponse`, for
+  `POST /api/v1/listing/internal/listings/owner-sheet/apply-for-owner`.
+
+  tr-crm-core links a directory person to a CRM user on invite and on merge; the
+  listings that person owns are written by tr-content-platform. That crossing is S2S,
+  so both sides need one declaration of the path and the body. The alternative —
+  hardcoding the path in the caller — was accepted once before for
+  `resolve-sheet-owners` and its cost is on record: the path is invisible to the drift
+  test covering its siblings, so a rename 404s silently.
+
+  The path sits under `LISTINGS_BASE_PATH`, so tr-content-platform's existing
+  `test_internal_s2s_contract_drift.py` resolves it to the same router as its six
+  siblings with no new contract root.
+
+- **`SheetOwnerName`** — a trimmed, 1–255 character string. That is
+  `auth_directory_mention.source_key`'s own `String(255)`, trimmed the way crm-core
+  stores it, so a name that validates is a name that could be a mention.
+
+### Notes
+- `ApplyForOwnerRequest.names` is a **list**, not one name. A directory merge repoints
+  mentions by `person_id` and leaves `source_key` alone, so one person legitimately
+  answers to several sheet aliases and every one of them may own listings.
+- `ApplyForOwnerResponse.sheet_enabled` carries no default. Zero listings written has
+  three causes — no sheet, a sheet that does not name this person, and listings that
+  already had an owner (D19) — and the caller has to tell them apart.
+
+### Migration
+No consumer code changes. Seven services relock in the ordinary
+`chore/upgrade-shared-libs` branch.
+
+**tr-content-platform is the exception.** Its drift test asserts that every exported
+path builder is mounted by the provider, so relocking it *before* the route exists
+turns its suite red on a true statement — the contract declares a path nobody serves.
+Its relock and its new route must land in one PR.
+
+shared-auth-lib's internal `tr-shared-lib` pin moves to `v0.76.0` and needs its own tag
+in the same release: uv honours a git dependency's own `[tool.uv.sources]`, so a
+mismatch aborts the relock with `conflicting URLs for package tr-shared-lib`.
+
 ## [0.75.0] - 2026-09-07
 
 Tightens a production-only validator. Additive to relock; **no consumer code change

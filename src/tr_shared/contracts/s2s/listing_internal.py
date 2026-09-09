@@ -3,7 +3,8 @@ Callers: tr-lead-management, tr-crm-core.
 
 Two resources share the provider root:
 
-- ``/listings`` — listing reads and the lead-count write.
+- ``/listings`` — listing reads, the lead-count write, and the owner-sheet write
+  scoped to one CRM user (``apply_for_owner``).
 - ``/portal-publications`` — per-portal sync state
   (``listing_schema.listing_portal_publications``).
 
@@ -13,9 +14,10 @@ so callers never hand-build any part of it.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 INTERNAL_ROOT = "/api/v1/listing/internal"
 LISTINGS_BASE_PATH = f"{INTERNAL_ROOT}/listings"
@@ -44,6 +46,10 @@ def access_check(listing_id: UUID | str) -> str:
 
 def agent_listing_counts_batch() -> str:
     return f"{LISTINGS_BASE_PATH}/agents:batch-count"
+
+
+def apply_for_owner() -> str:
+    return f"{LISTINGS_BASE_PATH}/owner-sheet/apply-for-owner"
 
 
 def recent_sync_activity() -> str:
@@ -113,6 +119,69 @@ class AgentListingCountRow(BaseModel):
 
 class AgentListingCountsResponse(BaseModel):
     rows: list[AgentListingCountRow]
+
+
+SheetOwnerName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+]
+"""One owner string exactly as ``auth_directory_mention.source_key`` stores it.
+
+Trimmed here so the caller and the provider cannot disagree about whether a leading
+space is part of the name: crm-core stores the mention trimmed (D6 — trimmed, nothing
+else), and a name that survives this type is a name that could be a mention. 255 is that
+column's own ``String(255)``."""
+
+
+class ApplyForOwnerRequest(BaseModel):
+    """Claim one CRM user's listings from the owner sheet, now rather than on the tick.
+
+    ``names`` are the sheet's own owner strings this user answers to — the
+    ``source_key`` of their live ``auth_directory_mention`` rows, not the user's CRM
+    name. That distinction is the whole point of the directory: the sheet says
+    ``M. Haider Ali``, no user is named that, and the listing is stored as
+    ``{"id": <user>, "name": "M. Haider Ali"}``. The provider matches sheet rows by
+    these strings and writes each row under the string that matched it, so sending a
+    CRM display name here silently claims nothing.
+
+    A list, not one name, because a merge folds several aliases onto one person and
+    every one of them may own listings. ``repoint_mentions`` moves ``person_id`` and
+    leaves ``source_key`` alone, so the survivor genuinely carries N of these.
+
+    ``extra="forbid"`` is deliberate and mirrors ``PortalSyncActivityQuery``: a
+    response may grow fields an older caller does not know, a request may not. An
+    unrecognised key means the caller believes it sent something the provider never
+    read.
+
+    The 255 cap is ``auth_directory_mention.source_key``'s own length. A longer string
+    cannot be stored as a mention, so it can never resolve to anyone — better a 422
+    than a 200 that wrote nothing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    crm_user_id: UUID
+    names: list[SheetOwnerName] = Field(..., min_length=1, max_length=50)
+
+
+class ApplyForOwnerResponse(BaseModel):
+    """What the scoped write actually did.
+
+    Three numbers because zero written has three causes and the caller must tell them
+    apart: ``sheet_enabled=False`` means there was nothing to read; ``matched_rows=0``
+    means the sheet does not name this person on any listing this tenant has; and
+    ``matched_rows > listings_written`` means D19 held — those listings already carried
+    an owner and are never overwritten.
+
+    ``sheet_enabled`` carries no default on purpose. Defaulting it to ``True`` would let
+    "this tenant has no sheet" arrive disguised as "the sheet does not know them", which
+    is the silent-success shape this fleet keeps paying for.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    sheet_enabled: bool
+    matched_rows: int
+    listings_written: int
 
 
 class PortalSyncActivityQuery(BaseModel):
