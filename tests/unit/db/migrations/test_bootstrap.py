@@ -1,9 +1,6 @@
 """Tests for tr_shared.db.migrations.bootstrap."""
 
-from tr_shared.db.migrations import (
-    UNDELIVERED_EVENTS_COLUMNS,
-    bootstrap_schema_and_version_table,
-)
+from tr_shared.db.migrations import bootstrap_schema_and_version_table
 
 
 class _FakeResult:
@@ -92,18 +89,3 @@ class TestBootstrapSchemaAndVersionTable:
             version_table="v",
         )
         assert conn.commit_count == 1
-
-
-class TestUndeliveredEventsColumns:
-    def test_contains_required_columns(self):
-        required = [
-            "id UUID PRIMARY KEY",
-            "event_type TEXT NOT NULL",
-            "tenant_id UUID NOT NULL",
-            "data JSONB NOT NULL",
-            "retry_count INT NOT NULL",
-            "dead_letter BOOLEAN NOT NULL",
-            "next_retry_at TIMESTAMPTZ NOT NULL",
-        ]
-        for col in required:
-            assert col in UNDELIVERED_EVENTS_COLUMNS, f"missing: {col}"

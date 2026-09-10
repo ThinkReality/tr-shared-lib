@@ -9,31 +9,6 @@ from typing import Any, Literal
 
 from sqlalchemy import text
 
-UNDELIVERED_EVENTS_COLUMNS: str = """
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type TEXT NOT NULL,
-    tenant_id UUID NOT NULL,
-    actor_id UUID,
-    data JSONB NOT NULL,
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at TIMESTAMPTZ,
-    retry_count INT NOT NULL DEFAULT 0,
-    next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    dead_letter BOOLEAN NOT NULL DEFAULT FALSE,
-    last_error TEXT
-"""
-"""Required columns for the per-service undelivered_events outbox table.
-
-Each service creates ``{service_schema}.undelivered_events`` in its own
-Alembic migration using this column list to stay wire-compatible with
-``tr_shared.events.DurableEventPublisher``. Also create a partial index::
-
-    CREATE INDEX idx_{service}_undelivered_due
-    ON {schema}.undelivered_events (next_retry_at)
-    WHERE published_at IS NULL AND dead_letter = FALSE;
-"""
-
 
 def bootstrap_schema_and_version_table(
     connection: Any,

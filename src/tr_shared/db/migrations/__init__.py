@@ -1,25 +1,14 @@
 """Migration safety helpers for Alembic.
 
 Consolidates production-safe DDL patterns every service needs:
-- concurrent_index_context: wrap CREATE INDEX CONCURRENTLY safely
-- add_check_constraint_deferred / add_fk_deferred: NOT VALID + VALIDATE pattern
-- dedup_with_table_lock: lock-protected row dedup
 - bootstrap_schema_and_version_table: one-shot schema + version-table setup
 - make_service_include_object: autogenerate filter by service schema
 - make_service_include_name: autogenerate schema-reflection filter (quiets shared-DB noise)
+- assert_migrations_are_merged: fail the build on an unmerged multi-head chain
+- run_async_migrations: async engine entry point for env.py
 """
 
-from tr_shared.db.migrations.bootstrap import (
-    UNDELIVERED_EVENTS_COLUMNS,
-    bootstrap_schema_and_version_table,
-)
-from tr_shared.db.migrations.concurrent_index import concurrent_index_context
-from tr_shared.db.migrations.constraints import (
-    CrossSchemaFKError,
-    add_check_constraint_deferred,
-    add_fk_deferred,
-)
-from tr_shared.db.migrations.dedup import dedup_with_table_lock
+from tr_shared.db.migrations.bootstrap import bootstrap_schema_and_version_table
 from tr_shared.db.migrations.include_object import (
     make_service_include_name,
     make_service_include_object,
@@ -28,14 +17,8 @@ from tr_shared.db.migrations.merge_gate import assert_migrations_are_merged
 from tr_shared.db.migrations.runner import run_async_migrations
 
 __all__ = [
-    "CrossSchemaFKError",
-    "UNDELIVERED_EVENTS_COLUMNS",
-    "add_check_constraint_deferred",
     "assert_migrations_are_merged",
-    "add_fk_deferred",
     "bootstrap_schema_and_version_table",
-    "concurrent_index_context",
-    "dedup_with_table_lock",
     "make_service_include_name",
     "make_service_include_object",
     "run_async_migrations",
