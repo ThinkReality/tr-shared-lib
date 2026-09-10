@@ -13,11 +13,13 @@ listing-target flag can never drift apart across services. Derived collections
 the registry — change a fact in one place.
 
 Extending: add a :class:`PortalSlug` member + a :data:`PORTAL_REGISTRY` entry.
-No CHECK constraint exists on ``admin.admin_panel_listing_platform_configs``
-today — ``platform_name`` is an unconstrained ``VARCHAR(100)``, validity
-enforced only by ``RegistrarFactory`` in application code (confirmed against
-the live baseline migration, 2026-08-15). If that constraint is ever added, it
-must be generated from :data:`KNOWN_PLATFORM_SLUGS`, not hand-maintained.
+That is the whole step — no migration accompanies it. ``platform_name`` on
+``admin.admin_panel_listing_platform_configs`` is an unconstrained
+``VARCHAR(100)`` (``admin_0001_baseline.py:82``); the ``ck_platform_name_known``
+CHECK constraint that once mirrored this set survives only under the admin
+module's ``alembic/versions/_archive/``, which the squash left unapplied.
+Validity is enforced by ``RegistrarFactory`` in application code, against this
+registry. Re-verified against the applied chain 2026-09-10.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ class PortalSlug(StrEnum):
     GEMINI = "gemini"
     META = "meta"
     HIKCENTRAL = "hikcentral"
+    CALCOM = "calcom"
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +141,13 @@ PORTAL_REGISTRY: Final[dict[PortalSlug, PortalIdentity]] = {
         is_listing_portal=False,
         is_externally_publishable=False,
     ),
+    PortalSlug.CALCOM: PortalIdentity(
+        slug=PortalSlug.CALCOM,
+        display_name="Cal.com",
+        is_connectable_platform=True,
+        is_listing_portal=False,
+        is_externally_publishable=False,
+    ),
 }
 
 
@@ -153,9 +163,9 @@ def get_portal_identity(slug: str | PortalSlug) -> PortalIdentity:
 KNOWN_PLATFORM_SLUGS: Final[frozenset[str]] = frozenset(
     p.slug.value for p in PORTAL_REGISTRY.values() if p.is_connectable_platform
 )
-"""Every ``platform_name`` the admin panel manages. The admin CHECK constraint
-``admin_panel_listing_platform_configs.ck_platform_name_known`` MUST be
-generated from this set — keeps DB and shared lib impossible to drift."""
+"""Every ``platform_name`` the admin panel manages, and the only place that set is
+defined. No DB constraint mirrors it — see this module's docstring — so this frozenset
+is the enforcement point, not a copy of one."""
 
 LISTING_PORTAL_SLUGS: Final[frozenset[str]] = frozenset(
     p.slug.value for p in PORTAL_REGISTRY.values() if p.is_listing_portal

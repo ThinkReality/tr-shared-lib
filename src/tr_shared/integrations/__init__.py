@@ -13,6 +13,7 @@ from tr_shared.integrations.config_client import IntegrationConfigClient
 from tr_shared.integrations.constants import (
     ALL_PF_WEBHOOK_EVENTS,
     BAYUT_PLATFORM_NAME,
+    CAL_COM_PLATFORM_NAME,
     DUBIZZLE_PLATFORM_NAME,
     GEMINI_PLATFORM_NAME,
     HIKCENTRAL_PLATFORM_NAME,
@@ -92,6 +93,7 @@ __all__ = [
     "DUBIZZLE_PLATFORM_NAME",
     "GEMINI_PLATFORM_NAME",
     "HIKCENTRAL_PLATFORM_NAME",
+    "CAL_COM_PLATFORM_NAME",
     "KNOWN_PLATFORM_NAMES",
     "PF_AUTH_URL",
     "PF_API_BASE_URL",

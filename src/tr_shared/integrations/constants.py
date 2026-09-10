@@ -7,9 +7,11 @@ re-exports of that registry's slug values, kept so existing imports keep working
 prefer :class:`~tr_shared.integrations.portal_identity.PortalSlug` in new code.
 
 PropertyFinder transport constants (auth/base URL, webhook event ids) stay here —
-they are PF-specific protocol detail, not identity. Changing a connectable
-platform requires a data migration + CHECK-constraint regen on
-admin.admin_panel_listing_platform_configs (generated from KNOWN_PLATFORM_NAMES).
+they are PF-specific protocol detail, not identity. Adding a connectable platform
+needs no migration: ``platform_name`` is an unconstrained ``VARCHAR(100)`` and the
+CHECK constraint that once mirrored this set is unapplied (see
+:mod:`tr_shared.integrations.portal_identity`). Renaming or removing one still
+needs a data migration for the rows already written under the old value.
 """
 
 from typing import Any, Final
@@ -72,11 +74,14 @@ HIKCENTRAL_PLATFORM_NAME: Final[str] = PortalSlug.HIKCENTRAL.value
 portal (per-tenant admin connect, poll-only — no webhooks). Legacy alias of
 ``PortalSlug.HIKCENTRAL``."""
 
+CAL_COM_PLATFORM_NAME: Final[str] = PortalSlug.CALCOM.value
+"""platform_name (slug) for the Cal.com scheduling API (per-tenant admin connect,
+API-key auth — no webhooks). Legacy alias of ``PortalSlug.CALCOM``."""
+
 KNOWN_PLATFORM_NAMES: Final[frozenset[str]] = KNOWN_PLATFORM_SLUGS
 """All platform_name (slug) values the admin panel manages. Derived from
-:data:`tr_shared.integrations.portal_identity.PORTAL_REGISTRY`. The admin CHECK
-constraint (admin.admin_panel_listing_platform_configs.ck_platform_name_known)
-MUST be generated from this set — keeps DB and shared lib impossible to drift."""
+:data:`tr_shared.integrations.portal_identity.PORTAL_REGISTRY`, which is the sole
+definition of the set — nothing in the database mirrors it."""
 
 PUBLIC_CONFIG_KEYS: Final[frozenset[str]] = frozenset(
     {

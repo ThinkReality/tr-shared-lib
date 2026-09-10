@@ -21,7 +21,7 @@ def test_all_slugs_are_lowercase_no_spaces() -> None:
 
 def test_known_platform_slugs_are_the_connectable_platforms() -> None:
     assert P.KNOWN_PLATFORM_SLUGS == frozenset(
-        {"propertyfinder", "bayut", "dubizzle", "gemini", "hikcentral"},
+        {"propertyfinder", "bayut", "dubizzle", "gemini", "hikcentral", "calcom"},
     )
     assert "website" not in P.KNOWN_PLATFORM_SLUGS
 
@@ -63,6 +63,39 @@ def test_hikcentral_is_connectable_non_listing_platform() -> None:
     assert "hikcentral" in P.KNOWN_PLATFORM_SLUGS
     assert "hikcentral" not in P.LISTING_PORTAL_SLUGS
     assert "hikcentral" not in P.EXTERNALLY_PUBLISHABLE_SLUGS
+
+
+def test_calcom_is_connectable_non_listing_platform() -> None:
+    """Same shape as HikCentral: a tenant connects credentials, but nothing is ever
+    published to it, so it must stay out of the listing and publish collections."""
+    calcom = P.PORTAL_REGISTRY[PortalSlug.CALCOM]
+    assert calcom.slug is PortalSlug.CALCOM
+    assert calcom.display_name == "Cal.com"
+    assert calcom.is_connectable_platform is True
+    assert calcom.is_listing_portal is False
+    assert calcom.is_externally_publishable is False
+    assert calcom.user_id_key is None
+    assert "calcom" in P.KNOWN_PLATFORM_SLUGS
+    assert "calcom" not in P.LISTING_PORTAL_SLUGS
+    assert "calcom" not in P.EXTERNALLY_PUBLISHABLE_SLUGS
+
+
+def test_every_slug_round_trips_through_the_registry() -> None:
+    """The serialization contract every consumer relies on, asserted for the whole
+    registry rather than one slug: a slug survives the trip to its stored string form
+    and back, and `get_portal_identity` accepts either end of that trip.
+
+    `platform_name` is a plain VARCHAR — the value written to the database is
+    `slug.value` and what comes back is a bare `str`, so a member that does not
+    reconstruct from its own value would break silently at the read, not the write.
+    """
+    for slug in PortalSlug:
+        stored = slug.value
+        assert isinstance(stored, str)
+        assert PortalSlug(stored) is slug
+        assert f"{slug}" == stored
+        assert P.get_portal_identity(stored) is P.get_portal_identity(slug)
+        assert P.get_portal_identity(stored).slug is slug
 
 
 def test_user_id_keys_match_portal_info_contract() -> None:
