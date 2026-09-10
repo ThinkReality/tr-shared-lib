@@ -5,6 +5,43 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed — the six unused `tr_shared.db.migrations` DDL helpers (BREAKING)
+
+Every symbol below shipped in 0.12.0 for the tr-be-admin-panel PR #87 migration
+series. That service was merged into tr-crm-core's admin module and retired; the
+squash collapsed its chain into a single baseline that creates tables directly, so
+the "alter a populated table safely" patterns these encode lost their only caller.
+
+A full local grep across **all 35 org repos** (not `gh search code`, which is
+proven to produce false negatives) found zero references outside tr-shared-lib
+itself and the defunct tr-be-admin-panel. Removed outright rather than deprecated —
+no shims, no `@deprecated` wrappers.
+
+- `add_fk_deferred(op, ...)` and `CrossSchemaFKError`
+- `add_check_constraint_deferred(op, *, table, schema, constraint_name, predicate)`
+- `concurrent_index_context(op)`
+- `dedup_with_table_lock(op, *, table, schema, partition_by, order_by, ...)`
+- `UNDELIVERED_EVENTS_COLUMNS`
+
+Three modules are gone with them — `db/migrations/constraints.py`,
+`db/migrations/concurrent_index.py` and `db/migrations/dedup.py` held nothing else.
+`UNDELIVERED_EVENTS_COLUMNS` was a constant in `db/migrations/bootstrap.py`, which
+survives for `bootstrap_schema_and_version_table`. `__all__` entries were removed
+from **both** `tr_shared.db` and `tr_shared.db.migrations`.
+
+**Migration:** nothing to do — no live service imports any of these. A migration
+that still needs the NOT VALID + VALIDATE or LOCK TABLE + CTE pattern should inline
+the SQL in the revision that needs it, where it is reviewable next to its table.
+
+### Added
+- **`PortalSlug.CALCOM`** + its `PORTAL_REGISTRY` entry (`"calcom"`, display name
+  `Cal.com`, connectable, not a listing portal, not externally publishable), and the
+  `CAL_COM_PLATFORM_NAME` legacy alias re-exported from `tr_shared.integrations`.
+  The derived collections pick it up automatically; no migration accompanies it,
+  because `platform_name` is an unconstrained `VARCHAR(100)`.
+
 ## [0.76.0] - 2026-09-09
 
 Adds one S2S path builder and its two models. Additive to relock for seven services;
@@ -1125,6 +1162,8 @@ migrations land in later phases.
 - `concurrent_index_context(op)` — context manager wrapping Alembic's `autocommit_block()` for safe `CREATE INDEX CONCURRENTLY` on populated tables.
 - `add_check_constraint_deferred(op, *, table, schema, constraint_name, predicate)` — adds CHECK via `NOT VALID` + `VALIDATE CONSTRAINT` pattern.
 - `add_fk_deferred(op, ...)` — same deferred pattern for FKs; **refuses cross-schema references** with `CrossSchemaFKError` per TR service-isolation rules.
+
+  > **All six `tr_shared.db.migrations` DDL helpers listed in this 0.12.0 block were removed in Unreleased** — `concurrent_index_context`, `add_check_constraint_deferred`, `add_fk_deferred`, `CrossSchemaFKError`, `dedup_with_table_lock` and `UNDELIVERED_EVENTS_COLUMNS`. See the Removed entry at the top of this file.
 - `dedup_with_table_lock(op, *, table, schema, partition_by, order_by, ...)` — LOCK TABLE SHARE ROW EXCLUSIVE + CTE dedup. Prevents concurrent-write race windows during migration dedup.
 - `bootstrap_schema_and_version_table(connection, *, schema, version_table)` — one-shot `CREATE SCHEMA` + optional version-table relocation from legacy schema. Replaces fragile double-commit patterns in service `env.py` files.
 - `make_service_include_object(target_schema, target_metadata)` — Alembic `include_object` filter covering tables, indexes, constraints, FKs, sequences. Previous per-service implementations only filtered tables.
