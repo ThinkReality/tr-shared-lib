@@ -5,7 +5,7 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.77.0] - 2026-09-11
 
 ### Removed — the six unused `tr_shared.db.migrations` DDL helpers (BREAKING)
 
