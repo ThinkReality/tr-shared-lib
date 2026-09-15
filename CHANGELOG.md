@@ -5,7 +5,7 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.78.0] - 2026-09-15
 
 ### Changed — `create_async_engine_factory` keeps a client-side connection pool (BREAKING default)
 
