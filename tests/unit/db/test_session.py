@@ -7,9 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 
 from tr_shared.config import BaseServiceSettings
+from tr_shared.contracts.db_pool import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
 from tr_shared.db.session import (
-    DEFAULT_MAX_OVERFLOW,
-    DEFAULT_POOL_SIZE,
     PGBOUNCER_CONNECT_ARGS,
     _build_connect_args,
     _to_asyncpg,

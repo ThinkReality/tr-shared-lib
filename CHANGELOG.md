@@ -5,6 +5,24 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.78.1] - 2026-09-15
+
+### Fixed — `tr_shared.config` importable again without the `[db]` extra
+
+0.78.0 had `config/base.py` import the pool defaults from `tr_shared.db.session`; importing
+anything under `tr_shared.db` loads SQLAlchemy, so a consumer without the `[db]` extra
+(shared-auth-lib pins `[http,logging]`) failed at pytest collection — `tr_shared.testing` is
+a `pytest11` entry point and reaches `tr_shared.config` — with
+`ModuleNotFoundError: No module named 'sqlalchemy'`.
+
+`DEFAULT_POOL_SIZE`, `DEFAULT_MAX_OVERFLOW` and `DEFAULT_POOL_KWARGS` now live in
+`tr_shared.contracts.db_pool` (pure Python); `db.session` and `config.base` both import
+from there. `tr_shared.db.DEFAULT_POOL_KWARGS` is still exported. Import the two sizing
+constants from `tr_shared.contracts.db_pool`, not from `tr_shared.db.session`.
+
+Guard: `tests/config/test_import_surface.py` imports `tr_shared.config` and
+`tr_shared.testing` in a subprocess that forbids `sqlalchemy`/`asyncpg`.
+
 ## [0.78.0] - 2026-09-15
 
 ### Changed — `create_async_engine_factory` keeps a client-side connection pool (BREAKING default)

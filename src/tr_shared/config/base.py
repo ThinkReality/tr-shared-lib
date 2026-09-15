@@ -3,8 +3,8 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tr_shared.contracts.db_pool import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
 from tr_shared.contracts.environment import Environment
-from tr_shared.db.session import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
 
 
 class BaseServiceSettings(BaseSettings):
