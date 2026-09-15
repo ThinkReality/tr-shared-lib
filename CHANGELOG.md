@@ -5,6 +5,53 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — `create_async_engine_factory` keeps a client-side connection pool (BREAKING default)
+
+The factory's default pool class is now `AsyncAdaptedQueuePool` (was `NullPool`), with
+`DEFAULT_POOL_KWARGS = {pool_size: 2, max_overflow: 8, pool_timeout: 10, pool_recycle: 300}`
+applied to any queue pool and overridable key by key. `pool_pre_ping` is no longer set.
+
+Why: with the database one region away from the services (~75 ms RTT), `NullPool` paid a
+TCP + TLS + SCRAM handshake and asyncpg's type introspection — six or so round trips —
+before the first statement of every request. Pre-ping under asyncpg in pgbouncer mode is
+`BEGIN` + `fetchrow(";")` + `ROLLBACK` on every checkout (four round trips, invisible to
+cursor-level instrumentation), which is most of what pooling saves; `pool_recycle=300`
+bounds a connection's idle time under cloud NAT idle timeouts and stands in for it.
+
+Sizing: Supavisor caps pooler clients per project (200 on the smallest compute), and
+every process that owns a pool counts — each uvicorn worker and each Celery prefork
+child, ~52 engines fleet-wide. `pool_size=2` is the resting cost (~104). `max_overflow=8`
+is burst room released on return: one API process can hold 10 checkouts, so two uvicorn
+workers absorb the CRM board's 20 parallel page fetches without queueing; a prefork child
+runs one task at a time and never approaches it. `BaseServiceSettings.DATABASE_POOL_SIZE`
+/ `DATABASE_MAX_OVERFLOW` defaults now mirror the factory (`5`/`10` → `2`/`8`) — a
+service that forwards them and a service that passes nothing get the same pool. Grow the
+compute tier (Small = 400 clients) before growing `pool_size`.
+
+`pool_recycle=300` was checked against the pooler, not assumed: a client connection idle
+for 310 s on port 6543 was still alive.
+
+Prefork safety: the factory records every engine it builds, and `create_celery_app` now
+connects `worker_process_init` → `dispose_engines_after_fork()` (`dispose(close=False)`
+on each), so a forked child never reuses a socket its parent checked in. With `NullPool`
+that hazard could not exist; with a pool it must be handled, and it is handled once here
+rather than in eight `celery_app.py` files.
+
+Consumer impact on relock:
+- **Integration suites that reuse the service's engine across tests need one event loop
+  for the whole session** — set `asyncio_default_test_loop_scope = "session"` and
+  `asyncio_default_fixture_loop_scope = "session"` in `[tool.pytest.ini_options]`. A
+  pooled asyncpg connection is bound to the loop that opened it; under per-test loops
+  the lane fails with "Event loop is closed" (measured on tr-lead-management: 159 errors
+  → 320 passed with the session scope). Do not add a `NullPool`-under-test branch to
+  production code.
+- Services that already passed `pool_class=AsyncAdaptedQueuePool` with their own sizing
+  (tr-crm-core, tr-people-finance) can drop the override and the `Environment.TEST`
+  branch.
+- `pool_class=NullPool` still works and takes no sizing (migration runner, fixtures).
+
 ## [0.77.0] - 2026-09-11
 
 ### Removed — the six unused `tr_shared.db.migrations` DDL helpers (BREAKING)

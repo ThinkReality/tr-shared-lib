@@ -59,7 +59,7 @@ class TestBaseServiceSettings:
         s = BaseServiceSettings(SERVICE_NAME="test-svc")
         assert s.SERVICE_NAME == "test-svc"
         assert s.ENVIRONMENT == "development"
-        assert s.DATABASE_POOL_SIZE == 5
+        assert s.DATABASE_POOL_SIZE == 2
         assert s.SUPABASE_JWT_AUDIENCE == "authenticated"
 
     def test_production_requires_database_url(self):

@@ -16,9 +16,11 @@ from tr_shared.db.migrations import (
 )
 from tr_shared.db.repository import BaseRepository
 from tr_shared.db.session import (
+    DEFAULT_POOL_KWARGS,
     PGBOUNCER_CONNECT_ARGS,
     create_async_engine_factory,
     create_session_factory,
+    dispose_engines_after_fork,
     get_db,
 )
 from tr_shared.db.utils import (
@@ -40,6 +42,7 @@ __all__ = [
     "LIKE_ESCAPE_CHAR",
     "LOCAL_DB_HOSTS",
     "LOCAL_DB_HOST_PREFIX",
+    "DEFAULT_POOL_KWARGS",
     "PGBOUNCER_CONNECT_ARGS",
     "SoftDeleteMixin",
     "TenantMixin",
@@ -47,6 +50,7 @@ __all__ = [
     "assert_migrations_are_merged",
     "bootstrap_schema_and_version_table",
     "create_async_engine_factory",
+    "dispose_engines_after_fork",
     "create_session_factory",
     "escape_like",
     "get_db",

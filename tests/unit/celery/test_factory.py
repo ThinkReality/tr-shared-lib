@@ -166,3 +166,24 @@ class TestRoutingIsExplicitOrAbsent:
     def test_a_caller_may_still_route_explicitly(self):
         app = make(extra_config={"task_routes": {"monitoring.*": {"queue": "monitoring"}}})
         assert app.conf.task_routes == {"monitoring.*": {"queue": "monitoring"}}
+
+
+class TestPreforkSafety:
+    def test_worker_process_init_disposes_inherited_engine_connections(self, monkeypatch):
+        """Prefork children inherit the parent's engines; a pooled connection checked in
+        by the parent must not be reused from the child. Wired here so every Celery
+        service gets it from the factory rather than from eight copies of a signal
+        handler."""
+        from celery.signals import worker_process_init
+        from sqlalchemy.ext.asyncio import AsyncEngine
+
+        from tr_shared.db import create_async_engine_factory
+
+        engine: AsyncEngine = create_async_engine_factory("postgresql+asyncpg://localhost/t")
+        calls: list[dict] = []
+        monkeypatch.setattr(engine.sync_engine, "dispose", lambda **kw: calls.append(kw))
+        make()
+
+        worker_process_init.send(sender=None)
+
+        assert calls == [{"close": False}]

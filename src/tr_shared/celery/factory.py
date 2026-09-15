@@ -29,6 +29,9 @@ import re
 import socket
 
 from celery import Celery
+from celery.signals import worker_process_init
+
+from tr_shared.db.session import dispose_engines_after_fork
 
 # A queue name is a wire value. Two production defects came from treating it as a
 # label: `SERVICE_NAME="Media Service"` produced the queue `Media Service_tasks`,
@@ -87,6 +90,10 @@ BROKER_TRANSPORT_OPTIONS = {
 }
 
 
+def _dispose_inherited_engines(**_kwargs: object) -> None:
+    dispose_engines_after_fork()
+
+
 def create_celery_app(
     service_name: str,
     broker_url: str,
@@ -136,6 +143,13 @@ def create_celery_app(
         _validate_name(task_namespace, field="task_namespace")
 
     app = Celery(service_name, broker=broker_url, backend=result_backend)
+
+    # Every prefork child starts with an empty connection pool — the engines it inherited
+    # from the worker parent may hold sockets the parent is still using. The uid makes a
+    # second factory call in one process a no-op rather than a second receiver.
+    worker_process_init.connect(
+        _dispose_inherited_engines, weak=False, dispatch_uid="tr_shared.dispose_engines"
+    )
 
     app.conf.update(
         task_serializer="json",

@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.contracts.environment import Environment
+from tr_shared.db.session import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
 
 
 class BaseServiceSettings(BaseSettings):
@@ -21,8 +22,11 @@ class BaseServiceSettings(BaseSettings):
     LOG_FORMAT: str = "text"  # "json" in production
 
     DATABASE_URL: str = ""
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 10
+    # Env-tunable per service; the numbers themselves live with the pool policy in
+    # ``tr_shared.db.session`` so a service that forwards these and one that passes
+    # nothing to the engine factory get the same pool.
+    DATABASE_POOL_SIZE: int = DEFAULT_POOL_SIZE
+    DATABASE_MAX_OVERFLOW: int = DEFAULT_MAX_OVERFLOW
 
     # ── Supabase Auth (optional — only required by services that talk to
     # Supabase directly, e.g. crm-backend and tr-api-gateway) ──
