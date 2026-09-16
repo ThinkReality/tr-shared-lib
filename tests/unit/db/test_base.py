@@ -166,6 +166,23 @@ class TestRepr:
         assert r.startswith("<SampleModel(id=")
 
 
+class TestIdColumn:
+    """The PK is client-generated with no server_default — that is what lets a
+    flush of many rows batch into one INSERT (see tests/integration/test_insert_batching.py)."""
+
+    def test_id_default_is_a_client_side_uuid(self):
+        col = SampleModel.__table__.columns["id"]
+        assert col.default is not None and col.default.is_callable
+        assert isinstance(col.default.arg(None), uuid.UUID)
+
+    def test_id_has_no_server_default(self):
+        col = SampleModel.__table__.columns["id"]
+        assert col.server_default is None
+
+    def test_id_is_unset_until_flush(self):
+        assert SampleModel().id is None
+
+
 class TestBaseModelAbstract:
     def test_base_model_is_abstract(self):
         assert BaseModel.__abstract__ is True

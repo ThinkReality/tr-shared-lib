@@ -5,6 +5,38 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.0] - 2026-09-16
+
+### Changed — `BaseModel.id` is client-generated; `server_default` removed (BREAKING for raw SQL)
+
+`BaseModel.id` is now `mapped_column(UUID, primary_key=True, default=uuid.uuid4)` with no
+`server_default`. Previously it was `server_default=text("gen_random_uuid()")` and nothing else.
+
+Why: SQLAlchemy's insertmanyvalues must correlate `INSERT ... RETURNING` rows back to the
+objects a flush is populating. A server-generated UUID gives it nothing to correlate on, so
+every unit-of-work flush of N new rows of one model degraded to N single-row INSERTs — on a
+pooler one region away, two round trips per row, in every service. A primary key with a
+client-side default is its own sentinel and batches into one multi-row INSERT. Keeping
+`server_default` alongside `default=` does **not** work: SQLAlchemy never treats a PK that
+carries any `server_default` as a sentinel (`sql/schema.py`, `_sentinel_column_characteristics`),
+which is why the ticket's original one-liner was rejected by the test.
+
+What changes for consumers:
+
+- `obj.id` is still `None` until flush — the default is a flush-time Core default, not an
+  `__init__` default — so "not yet persisted" checks keep working.
+- Only rows with the same set of populated attributes batch together; a flush still splits
+  on heterogeneous parameter sets (e.g. one row with `country_code=None`). Explicit ORM bulk
+  inserts (`session.execute(insert(Model), rows)`) are unaffected either way.
+- Every service runs Alembic with `compare_server_default=True`, so the next autogenerate
+  proposes dropping `DEFAULT gen_random_uuid()` on every `id` column. **Apply it** — the
+  database default is being removed on purpose so model and schema agree. Raw SQL that
+  inserts into a `BaseModel` table must supply `id` (`gen_random_uuid()` inline is fine);
+  historical migrations that omit it run before the drop and stay valid.
+
+Guards: `tests/unit/db/test_base.py::TestIdColumn` (unit lane, now in CI scope) and
+`tests/integration/test_insert_batching.py` (real Postgres, statement-counted).
+
 ## [0.78.1] - 2026-09-15
 
 ### Fixed — `tr_shared.config` importable again without the `[db]` extra
