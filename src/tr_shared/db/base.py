@@ -67,10 +67,14 @@ class BaseModel(Base, TimestampMixin, TenantMixin, AuditMixin, SoftDeleteMixin):
 
     __abstract__ = True
 
+    # Client-generated on purpose, and no server_default: SQLAlchemy only batches a
+    # flush of N rows into one INSERT when the PK is its own insertmanyvalues sentinel,
+    # and a PK carrying any server_default is never one — the flush degrades to N
+    # single-row INSERTs. Raw SQL that inserts into a BaseModel table supplies the id.
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
 
     def __repr__(self) -> str:
