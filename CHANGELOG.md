@@ -5,6 +5,50 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.80.0] - 2026-09-20
+
+### Fixed — a pooled Redis connection reset by the proxy while idle no longer turns the next read into an error
+
+Railway's public TCP proxy resets idle client legs (observed after ~84 min). asyncio reports a
+reset through `reader.set_exception()`, not EOF, so redis-py 7.4's checkout check
+(`stream.at_eof()`) stays blind and the next write hits a closed transport: `RuntimeError:
+unable to perform operation on <TCPTransport closed=True …>; the handler is closed` under
+uvloop (what every `uvicorn[standard]` service runs), `TypeError`/`AttributeError` on CPython
+≤ 3.13.9 (redis-py #4287). None of those match `retry_on_error`, so the command failed
+outright — `CacheService` reported a miss and crm-core rebuilt the auth context from Postgres
+(1.0–1.5 s) once per dead pooled socket.
+
+- `tr_shared.redis.connection.ProxySafeConnection` is now the `connection_class` of every pool.
+  Two guards, both raising redis's `ConnectionError`, which the existing machinery already
+  reconnects on:
+  - **checkout** — `can_read_destructive()` raises when the transport is closing or the reader
+    carries an exception; `ConnectionPool.ensure_connection` replaces the socket before the
+    command is sent (no failed write, no retry sleep, no error log).
+  - **write** — `_send_packed_command()` mirrors redis-py PR #4288 (merged 2026-08-28, in no
+    release up to 8.1.0) for a socket that dies between checkout and write; this path goes
+    through `Retry` (0.2 s first backoff). `tests/unit/redis/test_upstream_shim_still_needed.py`
+    fails with deletion instructions once the pin carries the upstream fix.
+- Real TCP keepalive: `socket_keepalive_options` idle 60 s / interval 10 s / count 3, limited to
+  the constants the platform defines (macOS lacks `TCP_KEEPIDLE`; an unknown option makes
+  redis-py close the connection at connect). `socket_keepalive=True` alone was inert — the OS
+  default idle is 7200 s. Whether probes also stop the proxy's idle timer is confirmed by soak
+  on staging, not by this release; the guards make dead sockets harmless either way.
+- URLs must be `redis://`. `rediss://` and `unix://` make `ConnectionPool.from_url` inject
+  their own `connection_class`, silently dropping the guards, so the builder raises `ValueError`.
+
+### Changed — one pool builder
+
+`tr_shared.redis.pool.build_connection_pool(url, *, max_connections, socket_timeout,
+socket_connect_timeout, decode_responses)` replaces the two identical inline
+`ConnectionPool.from_url(...)` blocks in `StandardRedisAdapter.initialize()` and
+`get_redis_client()`. Each call site's kwargs are unchanged and pinned by
+`tests/unit/redis/test_pool_builder.py` (`get_redis_client` still passes
+`socket_connect_timeout` as both timeouts).
+
+Guards: `tests/unit/redis/` (now in CI scope) and `tests/integration/test_redis_proxy_reset.py`,
+which resets a real Redis connection through a test-owned TCP relay (RST, not FIN) under both
+asyncio and uvloop.
+
 ## [0.79.0] - 2026-09-16
 
 ### Changed — `BaseModel.id` is client-generated; `server_default` removed (BREAKING for raw SQL)
