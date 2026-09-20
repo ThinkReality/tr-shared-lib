@@ -5,8 +5,8 @@ Balances thread-safety, connection pooling, and graceful error handling.
 """
 
 import redis.asyncio as aioredis
-from redis.backoff import ExponentialBackoff
-from redis.retry import Retry
+
+from tr_shared.redis.pool import build_connection_pool
 
 _client: aioredis.Redis | None = None
 
@@ -25,17 +25,12 @@ async def get_redis_client(
     """
     global _client
     if _client is None:
-        retry = Retry(ExponentialBackoff(cap=2, base=0.1), retries=3)
-        pool = aioredis.ConnectionPool.from_url(
+        pool = build_connection_pool(
             url,
             max_connections=max_connections,
-            decode_responses=decode_responses,
-            socket_connect_timeout=socket_connect_timeout,
             socket_timeout=socket_connect_timeout,
-            health_check_interval=10,
-            socket_keepalive=True,
-            retry=retry,
-            retry_on_error=[ConnectionError, TimeoutError, OSError],
+            socket_connect_timeout=socket_connect_timeout,
+            decode_responses=decode_responses,
         )
         _client = aioredis.Redis(connection_pool=pool)
     return _client

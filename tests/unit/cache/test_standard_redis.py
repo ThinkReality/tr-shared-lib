@@ -203,3 +203,10 @@ class TestContextManager:
                 async with a:
                     pass
                 mock_close.assert_awaited_once()
+
+
+class TestInitializeRejectsMisconfiguredUrl:
+    @pytest.mark.parametrize("url", ["rediss://host:6379/0", "unix:///tmp/redis.sock"])
+    async def test_scheme_that_drops_the_proxy_guards_raises_instead_of_disabling_cache(self, url):
+        with pytest.raises(ValueError, match="only supports redis://"):
+            await StandardRedisAdapter(url=url).initialize()
