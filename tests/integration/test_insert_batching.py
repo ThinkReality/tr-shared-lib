@@ -18,11 +18,12 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import event, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from tr_shared.db.base import BaseModel
+from tr_shared.testing import describe_statements, record_statements
 
 pytestmark = pytest.mark.integration
 
@@ -96,14 +97,7 @@ async def test_add_all_flushes_in_one_insert(engine) -> None:
     rows = [_Row(tenant_id=tenant_id) for _ in range(3)]
     assert all(row.id is None for row in rows), "id must stay unset until flush"
 
-    inserts: list[str] = []
-
-    def _record(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().upper().startswith("INSERT"):
-            inserts.append(statement)
-
-    event.listen(engine.sync_engine, "before_cursor_execute", _record)
-    try:
+    with record_statements() as seen:
         async with AsyncSession(engine) as session:
             session.add_all(rows)
             await session.flush()
@@ -113,7 +107,21 @@ async def test_add_all_flushes_in_one_insert(engine) -> None:
                 select(func.count()).select_from(_Row).where(_Row.tenant_id == tenant_id)
             )
             assert persisted == 3
-    finally:
-        event.remove(engine.sync_engine, "before_cursor_execute", _record)
 
-    assert len(inserts) == 1, f"expected one INSERT, issued {len(inserts)}: {inserts}"
+    inserts = [s for s in seen if s.lstrip().upper().startswith("INSERT")]
+    assert len(inserts) == 1, describe_statements(seen)
+
+
+@requires_docker
+@pytest.mark.asyncio
+async def test_recording_stops_when_the_block_exits(engine) -> None:
+    with record_statements() as seen:
+        async with engine.connect() as conn:
+            await conn.execute(select(1))
+    recorded = len(seen)
+
+    async with engine.connect() as conn:
+        await conn.execute(select(2))
+
+    assert recorded >= 1
+    assert len(seen) == recorded

@@ -58,6 +58,9 @@ from tr_shared.testing.lanes import (
     lane_for_path,
     run_needs_infrastructure,
 )
+from tr_shared.testing.primary_keys import assert_no_server_default_primary_keys
+from tr_shared.testing.session_scope import assert_session_dependencies_are_function_scoped
+from tr_shared.testing.statements import describe_statements, record_statements
 from tr_shared.testing.tenant_header_guard import (
     Exemption,
     assert_exemptions_are_machine_verified,
@@ -104,4 +107,8 @@ __all__ = [
     "savepoint_session",
     "worker_id",
     "scan_source_for_raw_tenant_header_reads",
+    "assert_session_dependencies_are_function_scoped",
+    "describe_statements",
+    "record_statements",
+    "assert_no_server_default_primary_keys",
 ]

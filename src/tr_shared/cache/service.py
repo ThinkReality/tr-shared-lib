@@ -148,25 +148,25 @@ class CacheService:
     ) -> Any:
         """Cache-aside: return cached value or fetch, cache, and return.
 
-        On any cache error the fetch function is called directly as fallback.
+        A cache read error is a miss, ``fetch_func`` runs at most once and its errors
+        propagate, and a failed cache write still returns the fetched data.
         """
-        try:
-            cached = await self.cache.get(key)
-            if cached is not None:
-                logger.debug("Cache hit: %s", key)
-                return json.loads(cached)
+        cached = await self.get(key)
+        if cached is not None:
+            return cached
 
-            logger.debug("Cache miss: %s", key)
-            data = await fetch_func(**fetch_kwargs)
-
-            if data is not None:
-                await self.cache.setex(key, ttl, json.dumps(data, default=str))
-            return data
-        except Exception as e:
-            logger.error(
-                "Cache error for %s: %s", key, e, extra={"cache_status": "error", "key": key}
-            )
-            return await fetch_func(**fetch_kwargs)
+        data = await fetch_func(**fetch_kwargs)
+        if data is not None:
+            try:
+                await self.set(key, data, ttl=ttl)
+            except ValueError as e:
+                logger.error(
+                    "Cache encode error for key %s: %s",
+                    key,
+                    e,
+                    extra={"cache_status": "error", "key": key},
+                )
+        return data
 
     async def set(self, key: str, value: Any, ttl: int = 3600, *, nx: bool = False) -> bool:
         """Serialize value to JSON and store with TTL.
