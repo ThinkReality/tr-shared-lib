@@ -32,6 +32,7 @@ from tr_shared.testing.isolation import (
     worker_id,
 )
 from tr_shared.testing.lanes import POISON_DATABASE_URL
+from tr_shared.testing.statements import record_statements
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -111,3 +112,9 @@ def tr_redis(tr_redis_index: int) -> Iterator[Any]:
     finally:
         client.flushdb()
         client.close()
+
+
+@pytest.fixture
+def tr_statements() -> Iterator[list[str]]:
+    with record_statements() as seen:
+        yield seen

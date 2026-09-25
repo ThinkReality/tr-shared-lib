@@ -81,44 +81,6 @@ class TestGetMany:
         assert result == {"k1": None, "k2": None}
 
 
-class TestGetOrSet:
-    async def test_returns_cached_value_without_calling_fetch_func(self):
-        cache = _mock_cache()
-        cache.get.return_value = json.dumps({"id": 1})
-        svc = CacheService(cache=cache, key_prefix="dev:svc")
-        fetch_func = AsyncMock(return_value={"id": 999})
-        result = await svc.get_or_set("key:1", fetch_func=fetch_func, ttl=60)
-        assert result == {"id": 1}
-        fetch_func.assert_not_called()
-
-    async def test_calls_fetch_func_on_miss_and_caches_result(self):
-        cache = _mock_cache()
-        cache.get.return_value = None
-        svc = CacheService(cache=cache, key_prefix="dev:svc")
-        fetch_func = AsyncMock(return_value={"id": 42})
-        result = await svc.get_or_set("key:1", fetch_func=fetch_func, ttl=300)
-        assert result == {"id": 42}
-        fetch_func.assert_awaited_once()
-        cache.setex.assert_awaited_once()
-
-    async def test_calls_fetch_func_on_cache_error(self):
-        cache = _mock_cache()
-        cache.get.side_effect = Exception("Redis error")
-        svc = CacheService(cache=cache, key_prefix="dev:svc")
-        fetch_func = AsyncMock(return_value={"fallback": True})
-        result = await svc.get_or_set("key:1", fetch_func=fetch_func)
-        assert result == {"fallback": True}
-        fetch_func.assert_awaited_once()
-
-    async def test_does_not_cache_none_result(self):
-        cache = _mock_cache()
-        cache.get.return_value = None
-        svc = CacheService(cache=cache, key_prefix="dev:svc")
-        fetch_func = AsyncMock(return_value=None)
-        await svc.get_or_set("key:1", fetch_func=fetch_func)
-        cache.setex.assert_not_called()
-
-
 class TestSet:
     async def test_serializes_to_json_and_stores_with_ttl(self):
         cache = _mock_cache()

@@ -7,6 +7,7 @@ from tr_shared.db.base import (
     SoftDeleteMixin,
     TenantMixin,
     TimestampMixin,
+    UUIDPrimaryKeyMixin,
 )
 from tr_shared.db.migrations import (
     assert_migrations_are_merged,
@@ -60,4 +61,5 @@ __all__ = [
     "to_migration_url",
     "to_session_mode_url",
     "to_sync_url",
+    "UUIDPrimaryKeyMixin",
 ]

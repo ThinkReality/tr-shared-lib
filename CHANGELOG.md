@@ -5,6 +5,38 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.0] - 2026-09-25
+
+### Fixed — `CacheService.get_or_set` runs the fetch at most once
+
+One `try` wrapped the cache read, the fetch and the cache write, so a failing fetch ran twice,
+and a failed write or encode after a successful fetch ran it again. For people-finance's
+tenant-site lookup (an S2S call to crm-core) that doubled latency exactly when crm-core was
+failing. Now a read error is a miss, the fetch runs once and its errors propagate, and a failed
+write or encode is logged while the fetched data is still returned. The mock-based tests are
+replaced by real-Redis ones (`tests/integration/test_cache_get_or_set.py`): a dead port for the
+read failure and a read-only ACL user for the write failure.
+
+The write now goes through `set()`, so `max_value_bytes` (default 1 MB) applies to `get_or_set`
+too: an oversized value is logged and returned, not cached. Before, it was written unchecked.
+
+### Added — shared test helpers (`tr_shared.testing`)
+
+- `record_statements()` / `describe_statements()`: counts every SQL statement sent while the
+  block runs, on the `Engine` class, so per-request engines and sync paths are counted too.
+  Nothing is filtered: the crm-core list budgets measured no SAVEPOINT/RELEASE.
+  `tr_statements` wraps it as a fixture for services that load `tr_shared.testing.fixtures`.
+- `assert_session_dependencies_are_function_scoped(app, dependencies)`: the route scan that eight
+  services each copied, duck-typed so the package still imports without FastAPI.
+- `assert_no_server_default_primary_keys(*metadata)`: names every primary-key column that
+  carries a `server_default`, the one thing that stops a flush from batching.
+
+### Added — `tr_shared.db.UUIDPrimaryKeyMixin`
+
+`BaseModel.id` now comes from this mixin (client `uuid.uuid4`, no `server_default`), so module
+bases that need their own `DeclarativeBase` (crm-core) reuse one definition instead of
+re-declaring `id`. No schema change for `BaseModel` tables.
+
 ## [0.80.0] - 2026-09-20
 
 ### Fixed — a pooled Redis connection reset by the proxy while idle no longer turns the next read into an error
