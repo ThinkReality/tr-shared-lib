@@ -8,11 +8,15 @@ Pattern mirrors shared-auth-lib/tests/test_auth_context_client.py:
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import httpx
 import pytest
+import structlog
+from fastapi import FastAPI
 
 from tr_shared.integrations import (
     IntegrationConfig,
@@ -20,6 +24,8 @@ from tr_shared.integrations import (
     IntegrationConfigError,
     IntegrationConfigNotFound,
 )
+from tr_shared.logging import configure_logging, get_correlation_id
+from tr_shared.middleware.correlation_id import CorrelationIDMiddleware
 
 ADMIN_URL = "http://admin-panel:8003"
 TENANT_A = "11111111-1111-1111-1111-111111111111"
@@ -403,3 +409,159 @@ class TestClose:
         await client.close()
         # Internal invariant — cache drained on close
         assert len(client._local_cache) == 0
+
+
+@contextlib.contextmanager
+def _json_logging() -> Iterator[None]:
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    saved_structlog = structlog.get_config()
+    root.handlers.clear()
+    configure_logging(log_level="INFO", log_format="json")
+    try:
+        yield
+    finally:
+        root.handlers.clear()
+        root.handlers.extend(saved_handlers)
+        root.setLevel(saved_level)
+        structlog.configure(**saved_structlog)
+
+
+def _audit_line(capsys: pytest.CaptureFixture[str]) -> dict:
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    (line,) = [entry for entry in lines if entry["event"] == "integration_secrets_fetched"]
+    return line
+
+
+class TestCorrelationPropagation:
+    @pytest.fixture(autouse=True)
+    def _clean_context(self):
+        structlog.contextvars.clear_contextvars()
+        yield
+        structlog.contextvars.clear_contextvars()
+
+    @staticmethod
+    def _recording_client(seen: list[httpx.Request], **overrides) -> IntegrationConfigClient:
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path.endswith("/tenants"):
+                return httpx.Response(200, json=_tenants_response([TENANT_A]))
+            return httpx.Response(200, json=_config_response(include_secrets=True))
+
+        return _make_client(handler, **overrides)
+
+    @pytest.mark.asyncio
+    async def test_a_config_fetch_sends_the_bound_correlation_id(self) -> None:
+        seen: list[httpx.Request] = []
+        client = self._recording_client(seen)
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+        try:
+            await client.get_config(TENANT_A, PF)
+        finally:
+            await client.close()
+
+        assert seen[0].headers["X-Correlation-ID"] == "corr-1"
+
+    @pytest.mark.asyncio
+    async def test_listing_enabled_tenants_sends_the_bound_correlation_id(self) -> None:
+        seen: list[httpx.Request] = []
+        client = self._recording_client(seen)
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+        try:
+            await client.get_enabled_tenants(PF)
+        finally:
+            await client.close()
+
+        assert seen[0].headers["X-Correlation-ID"] == "corr-1"
+
+    @pytest.mark.asyncio
+    async def test_each_fetch_sends_the_id_of_the_request_that_caused_it(self) -> None:
+        seen: list[httpx.Request] = []
+        client = self._recording_client(seen)
+        try:
+            structlog.contextvars.bind_contextvars(correlation_id="first")
+            await client.get_config(TENANT_A, PF)
+            structlog.contextvars.bind_contextvars(correlation_id="second")
+            await client.get_config(TENANT_B, PF)
+        finally:
+            await client.close()
+
+        assert [r.headers["X-Correlation-ID"] for r in seen] == ["first", "second"]
+
+    @pytest.mark.asyncio
+    async def test_nothing_bound_sends_no_correlation_header(self) -> None:
+        seen: list[httpx.Request] = []
+        client = self._recording_client(seen)
+        try:
+            await client.get_config(TENANT_A, PF)
+            await client.get_enabled_tenants(PF)
+        finally:
+            await client.close()
+
+        assert all("X-Correlation-ID" not in r.headers for r in seen)
+
+    @pytest.mark.asyncio
+    async def test_the_service_token_still_goes_out_with_the_correlation_id(self) -> None:
+        seen: list[httpx.Request] = []
+        client = self._recording_client(seen)
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+        try:
+            await client.get_config(TENANT_A, PF)
+        finally:
+            await client.close()
+
+        assert seen[0].headers["X-Service-Token"] == "svc-token"
+
+    @pytest.mark.asyncio
+    async def test_the_secrets_audit_line_carries_the_bound_correlation_id(self, capsys) -> None:
+        client = self._recording_client([])
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+        with _json_logging():
+            try:
+                await client.get_config(TENANT_A, PF, include_secrets=True)
+            finally:
+                await client.close()
+            line = _audit_line(capsys)
+
+        assert line["correlation_id"] == "corr-1"
+
+    @pytest.mark.asyncio
+    async def test_the_secrets_audit_line_never_carries_a_made_up_id(self, capsys) -> None:
+        client = self._recording_client([])
+        with _json_logging():
+            try:
+                await client.get_config(TENANT_A, PF, include_secrets=True)
+            finally:
+                await client.close()
+            line = _audit_line(capsys)
+
+        assert line.get("correlation_id") is None
+
+    def test_the_client_no_longer_takes_a_correlation_id_argument(self) -> None:
+        client = _make_client(lambda request: httpx.Response(200, json=_config_response()))
+
+        with pytest.raises(TypeError):
+            asyncio.run(client.get_config(TENANT_A, PF, correlation_id="corr-1"))
+
+    @pytest.mark.asyncio
+    async def test_the_real_correlation_middleware_binds_the_id_the_client_sends(self) -> None:
+        seen_by_the_server: list[str | None] = []
+        server = FastAPI()
+        server.add_middleware(CorrelationIDMiddleware)
+
+        @server.get("/api/v1/internal/integrations/platforms/{platform}/tenants/{tenant}")
+        async def config(platform: str, tenant: str) -> dict:
+            seen_by_the_server.append(get_correlation_id())
+            return _config_response(tenant)
+
+        client = _make_client(lambda request: httpx.Response(500))
+        client._client = httpx.AsyncClient(
+            base_url=ADMIN_URL, transport=httpx.ASGITransport(app=server)
+        )
+        structlog.contextvars.bind_contextvars(correlation_id="gateway-20260930-abc")
+        try:
+            await client.get_config(TENANT_A, PF)
+        finally:
+            await client.close()
+
+        assert seen_by_the_server == ["gateway-20260930-abc"]

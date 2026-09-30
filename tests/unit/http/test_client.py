@@ -2,7 +2,9 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import structlog
 
 from tr_shared.http.circuit_breaker import CircuitBreaker
 from tr_shared.http.client import ServiceHTTPClient
@@ -170,3 +172,47 @@ class TestContextManager:
         with patch.object(c, "close", new=AsyncMock()) as mock_close:
             await c.__aexit__(None, None, None)
             mock_close.assert_awaited_once()
+
+
+class TestCorrelationPropagation:
+    @pytest.fixture(autouse=True)
+    def _clean_context(self):
+        structlog.contextvars.clear_contextvars()
+        yield
+        structlog.contextvars.clear_contextvars()
+
+    async def _sent_headers(self, **request_kwargs) -> httpx.Headers:
+        seen: list[httpx.Headers] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.headers)
+            return httpx.Response(200, json={"ok": True})
+
+        c = _client()
+        c._client = httpx.AsyncClient(
+            base_url="http://tr-crm-core:8000", transport=httpx.MockTransport(handler)
+        )
+        try:
+            await c.get("/api/v1/internal/ping", **request_kwargs)
+        finally:
+            await c.close()
+        return seen[0]
+
+    async def test_the_bound_correlation_id_is_sent(self):
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+
+        headers = await self._sent_headers()
+
+        assert headers["X-Correlation-ID"] == "corr-1"
+
+    async def test_an_explicit_header_wins_over_the_bound_id(self):
+        structlog.contextvars.bind_contextvars(correlation_id="corr-1")
+
+        headers = await self._sent_headers(headers={"X-Correlation-ID": "explicit"})
+
+        assert headers["X-Correlation-ID"] == "explicit"
+
+    async def test_nothing_bound_sends_no_correlation_header(self):
+        headers = await self._sent_headers()
+
+        assert "X-Correlation-ID" not in headers
