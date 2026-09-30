@@ -20,6 +20,7 @@ from tr_shared.celery.factory import create_celery_app
 
 BROKER = "redis://localhost:6379/1"
 BACKEND = "redis://localhost:6379/2"
+LOG = {"log_level": "INFO", "log_format": "text"}
 
 
 def make(**overrides):
@@ -28,6 +29,7 @@ def make(**overrides):
         "broker_url": BROKER,
         "result_backend": BACKEND,
         "default_queue": "svc_tasks",
+        **LOG,
     }
     kwargs.update(overrides)
     return create_celery_app(**kwargs)
@@ -79,7 +81,7 @@ class TestTheDefaultQueueIsOwnedNotInherited:
 
     def test_default_queue_is_required(self):
         with pytest.raises(TypeError):
-            create_celery_app(service_name="svc", broker_url=BROKER, result_backend=BACKEND)
+            create_celery_app(service_name="svc", broker_url=BROKER, result_backend=BACKEND, **LOG)
 
     def test_default_queue_is_what_the_caller_passed(self):
         assert make(default_queue="media_tasks").conf.task_default_queue == "media_tasks"

@@ -15,6 +15,7 @@ lowercases inbound names), so existing mixed-case reads stay compatible — the
 value here is the canonical spelling, not a behavioural change.
 """
 
+import re
 from enum import StrEnum
 
 
@@ -62,3 +63,12 @@ class HttpHeader(StrEnum):
     RATE_LIMIT_LIMIT = "X-RateLimit-Limit"
     RATE_LIMIT_REMAINING = "X-RateLimit-Remaining"
     RATE_LIMIT_RESET = "X-RateLimit-Reset"
+
+
+CELERY_CORRELATION_HEADER = "x_tr_correlation_id"
+
+CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+def is_valid_correlation_id(value: str) -> bool:
+    return bool(CORRELATION_ID_PATTERN.fullmatch(value))

@@ -16,6 +16,8 @@ Usage in any service (~10 lines instead of 45-111)::
         default_queue="media_tasks",   # must appear in the worker's -Q list
         task_namespace="media",        # the prefix real task names already use
         task_modules=["app.tasks"],
+        log_level=settings.LOG_LEVEL,
+        log_format=settings.LOG_FORMAT,
         beat_schedule={
             "daily-cleanup": {
                 "task": "app.tasks.cleanup.run",
@@ -31,6 +33,7 @@ import socket
 from celery import Celery
 from celery.signals import worker_process_init
 
+from tr_shared.celery.log_context import connect_log_context
 from tr_shared.db.session import dispose_engines_after_fork
 
 # A queue name is a wire value. Two production defects came from treating it as a
@@ -108,6 +111,9 @@ def create_celery_app(
     task_annotations: dict | None = None,
     dead_letter_queue: str | None = None,
     extra_config: dict | None = None,
+    *,
+    log_level: str,
+    log_format: str,
 ) -> Celery:
     """
     Create a pre-configured Celery application.
@@ -137,12 +143,16 @@ def create_celery_app(
         task_annotations: Per-task overrides (e.g., disable time limits).
         dead_letter_queue: Optional queue name for tasks that exhaust retries.
         extra_config: Additional Celery config to merge in.
+        log_level: Level for the worker and beat logs. Required: without it a worker
+            would start with Celery's own unstructured logging.
+        log_format: ``json`` or ``text``. Required, for the same reason.
     """
     _validate_name(default_queue, field="default_queue")
     if task_namespace is not None:
         _validate_name(task_namespace, field="task_namespace")
 
     app = Celery(service_name, broker=broker_url, backend=result_backend)
+    connect_log_context(service_name=service_name, log_level=log_level, log_format=log_format)
 
     # Every prefork child starts with an empty connection pool — the engines it inherited
     # from the worker parent may hold sockets the parent is still using. The uid makes a

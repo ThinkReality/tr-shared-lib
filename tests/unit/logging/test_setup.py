@@ -8,7 +8,9 @@ import structlog
 
 from tr_shared.logging.setup import (
     _mask_sensitive_fields,
+    bind_correlation_id,
     configure_logging,
+    get_correlation_id,
     get_logger,
 )
 
@@ -169,3 +171,65 @@ class TestExcInfoRendering:
             root.handlers.clear()
             root.handlers.extend(original_handlers)
             structlog.reset_defaults()
+
+
+class TestGetCorrelationId:
+    def setup_method(self):
+        structlog.contextvars.clear_contextvars()
+
+    def teardown_method(self):
+        structlog.contextvars.clear_contextvars()
+
+    def test_none_when_nothing_is_bound(self):
+        assert get_correlation_id() is None
+
+    def test_returns_what_bind_correlation_id_bound(self):
+        bind_correlation_id("corr-123")
+        assert get_correlation_id() == "corr-123"
+
+    def test_is_exported_from_the_package(self):
+        from tr_shared.logging import get_correlation_id as exported
+
+        assert exported is get_correlation_id
+
+
+class TestStdlibExtraFields:
+    def _emit(self, capsys, **extra) -> dict:
+        root = logging.getLogger()
+        original_handlers = root.handlers[:]
+        original_level = root.level
+        try:
+            root.handlers.clear()
+            structlog.reset_defaults()
+            configure_logging(log_level="INFO", log_format="json")
+            logging.getLogger("test.stdlib_extra").info("something happened", extra=extra)
+            return json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        finally:
+            root.handlers.clear()
+            root.handlers.extend(original_handlers)
+            root.setLevel(original_level)
+
+    def test_fields_passed_as_extra_reach_the_output(self, capsys):
+        payload = self._emit(capsys, duration_ms=12.5, status_code=201)
+
+        assert payload["event"] == "something happened"
+        assert payload["duration_ms"] == 12.5
+        assert payload["status_code"] == 201
+
+    def test_an_extra_named_event_never_replaces_the_message(self, capsys):
+        payload = self._emit(capsys, event="template.created", template_id="t-1")
+
+        assert payload["event"] == "something happened"
+        assert payload["extra_event"] == "template.created"
+        assert payload["template_id"] == "t-1"
+
+    def test_an_extra_event_equal_to_the_message_adds_nothing(self, capsys):
+        payload = self._emit(capsys, event="something happened")
+
+        assert payload["event"] == "something happened"
+        assert "extra_event" not in payload
+
+    def test_sensitive_extra_fields_are_still_redacted(self, capsys):
+        payload = self._emit(capsys, api_key="supersecretvalue")
+
+        assert payload["api_key"] == "[REDACTED]"

@@ -63,6 +63,8 @@ def app(**overrides):
         "broker_url": BROKER,
         "result_backend": BACKEND,
         "default_queue": "gateway_tasks",
+        "log_level": "INFO",
+        "log_format": "text",
     }
     kwargs.update(overrides)
     return create_celery_app(**kwargs)
