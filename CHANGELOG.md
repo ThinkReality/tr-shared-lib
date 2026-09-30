@@ -5,6 +5,29 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.83.0] - 2026-09-30
+
+### Fixed — service-to-service calls carry the correlation id, and the secrets audit line keeps it
+
+The staging join proof for WAM found the worker's call to crm-core served under crm-core's own
+id, and the `integration_secrets_fetched` line logging `correlation_id: ""` while `task_id` was
+bound, so a trace could not be followed across that hop.
+
+- **Root cause 1:** sending the id was opt-in per client. Only `ServiceHTTPClient` read the
+  bound id. `IntegrationConfigClient` sent `X-Correlation-ID` only when the caller passed
+  `correlation_id=`; no caller in the fleet does, and `get_enabled_tenants` never sent it.
+- **Root cause 2:** the audit line passed `correlation_id: ""` as a stdlib `extra`. Extras are
+  merged after the bound context, so the empty value replaced the real id.
+- New `tr_shared.http.correlation.correlation_headers()` is the one definition of how the
+  bound id becomes an outbound header: the bound id gives `{"X-Correlation-ID": id}`, nothing
+  bound gives `{}`. It is read on every request. `ServiceHTTPClient` (an explicit header
+  still wins) and `IntegrationConfigClient` (every request goes through one `_get`) use it.
+- The secrets audit line carries the bound id, or `null` when none is bound.
+
+**Breaking:** `IntegrationConfigClient.get_config` no longer accepts `correlation_id`. No
+service in the fleet passes it. Calls to third parties (PropertyFinder OAuth, HikCentral, Slack)
+do not send the header.
+
 ## [0.82.0] - 2026-09-30
 
 ### Changed — request and task logs carry their fields, and one correlation id joins them

@@ -4,10 +4,10 @@ import logging
 from typing import Any
 
 import httpx
-from structlog.contextvars import get_contextvars
 
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.http.circuit_breaker import CircuitBreaker
+from tr_shared.http.correlation import correlation_headers
 
 logger = logging.getLogger(__name__)
 
@@ -107,15 +107,7 @@ class ServiceHTTPClient:
         client = await self._get_client()
         last_exc: Exception | None = None
 
-        merged_headers = dict(headers) if headers else {}
-        if HttpHeader.CORRELATION_ID.value not in merged_headers:
-            try:
-                ctx = get_contextvars()
-                cid = ctx.get("correlation_id")
-                if cid:
-                    merged_headers[HttpHeader.CORRELATION_ID.value] = str(cid)
-            except Exception:
-                pass
+        merged_headers = {**correlation_headers(), **(headers or {})}
 
         for attempt in range(self.max_retries):
             try:

@@ -33,11 +33,13 @@ import httpx
 
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.http.circuit_breaker import CircuitBreaker
+from tr_shared.http.correlation import correlation_headers
 from tr_shared.integrations.exceptions import (
     IntegrationConfigError,
     IntegrationConfigNotFound,
 )
 from tr_shared.integrations.models import IntegrationConfig
+from tr_shared.logging import get_correlation_id
 
 logger = logging.getLogger("tr_shared.integrations")
 
@@ -87,7 +89,6 @@ class IntegrationConfigClient:
         platform_name: str,
         *,
         include_secrets: bool = False,
-        correlation_id: str | None = None,
     ) -> IntegrationConfig:
         """When ``include_secrets=False`` (the default), the returned config
         contains only non-sensitive JSONB fields. When True, Vault-decrypted
@@ -107,12 +108,10 @@ class IntegrationConfigClient:
             if cached is not None:
                 return cached
 
-            config = await self._fetch_config(
-                tenant_id, platform_name, include_secrets, correlation_id
-            )
+            config = await self._fetch_config(tenant_id, platform_name, include_secrets)
 
             if include_secrets:
-                self._emit_secrets_audit_log(tenant_id, platform_name, correlation_id)
+                self._emit_secrets_audit_log(tenant_id, platform_name)
 
             self._put_in_cache(cache_key, config)
 
@@ -132,9 +131,8 @@ class IntegrationConfigClient:
         # unreliable across versions and edge proxies — encode explicitly.
         encoded_name = quote(platform_name, safe="")
         try:
-            response = await self._client.get(
-                f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants",
-                headers={HttpHeader.SERVICE_TOKEN.value: self._service_token},
+            response = await self._get(
+                f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants"
             )
         except httpx.HTTPError as exc:
             await self._circuit.record_failure()
@@ -215,7 +213,6 @@ class IntegrationConfigClient:
         tenant_id: str,
         platform_name: str,
         include_secrets: bool,
-        correlation_id: str | None,
     ) -> IntegrationConfig:
         if await self._circuit.is_open():
             raise IntegrationConfigError("Circuit open: admin panel unavailable")
@@ -227,13 +224,10 @@ class IntegrationConfigClient:
         encoded_name = quote(platform_name, safe="")
         encoded_tenant = quote(str(tenant_id), safe="")
         url = f"/api/v1/internal/integrations/platforms/{encoded_name}/tenants/{encoded_tenant}"
-        headers = {HttpHeader.SERVICE_TOKEN.value: self._service_token}
-        if correlation_id:
-            headers[HttpHeader.CORRELATION_ID.value] = correlation_id
         params = {"include_secrets": "true" if include_secrets else "false"}
 
         try:
-            response = await self._client.get(url, headers=headers, params=params)
+            response = await self._get(url, params=params)
         except httpx.TimeoutException as exc:
             await self._circuit.record_failure()
             raise IntegrationConfigError(
@@ -269,6 +263,13 @@ class IntegrationConfigClient:
             raise IntegrationConfigError(
                 f"admin panel response failed IntegrationConfig validation: {exc}"
             ) from exc
+
+    async def _get(self, url: str, *, params: dict[str, str] | None = None) -> httpx.Response:
+        return await self._client.get(
+            url,
+            headers={HttpHeader.SERVICE_TOKEN.value: self._service_token, **correlation_headers()},
+            params=params,
+        )
 
     def _cache_key(self, tenant_id: str, platform_name: str, include_secrets: bool) -> str:
         return f"{tenant_id}:{platform_name}:{int(include_secrets)}"
@@ -308,12 +309,7 @@ class IntegrationConfigClient:
             config,
         )
 
-    def _emit_secrets_audit_log(
-        self,
-        tenant_id: str,
-        platform_name: str,
-        correlation_id: str | None,
-    ) -> None:
+    def _emit_secrets_audit_log(self, tenant_id: str, platform_name: str) -> None:
         # See docs/specs/00-shared-contracts.md §C for the audit-log contract.
         # The event key is read by Loki alert rules — do not rename it.
         logger.info(
@@ -323,6 +319,6 @@ class IntegrationConfigClient:
                 "tenant_id": tenant_id,
                 "platform_name": platform_name,
                 "caller_service": self._service_name,
-                "correlation_id": correlation_id or "",
+                "correlation_id": get_correlation_id(),
             },
         )
