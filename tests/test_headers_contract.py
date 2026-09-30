@@ -27,3 +27,12 @@ def test_identity_header_names_are_pinned():
     assert HttpHeader.CORRELATION_ID.value == "X-Correlation-ID"
     assert HttpHeader.USER_EMAIL.value == "X-User-Email"
     assert HttpHeader.USER_PERMISSIONS.value == "X-User-Permissions"
+
+
+def test_celery_correlation_header_is_a_python_identifier():
+    """Celery exposes custom message headers as attributes of `task.request`, so
+    the name must be a valid identifier and must not collide with Celery's own."""
+    from tr_shared.contracts.headers import CELERY_CORRELATION_HEADER
+
+    assert CELERY_CORRELATION_HEADER == "x_tr_correlation_id"
+    assert CELERY_CORRELATION_HEADER.isidentifier()

@@ -1486,7 +1486,7 @@ wheels = [
 
 [[package]]
 name = "tr-shared-lib"
-version = "0.81.0"
+version = "0.82.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
@@ -1524,6 +1524,7 @@ cache = [
 celery = [
     { name = "cachetools" },
     { name = "celery" },
+    { name = "structlog" },
 ]
 db = [
     { name = "asyncpg" },
@@ -1542,6 +1543,7 @@ logging = [
 middleware = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "structlog" },
 ]
 monitoring = [
     { name = "fastapi" },
@@ -1645,7 +1647,9 @@ requires-dist = [
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.0" },
     { name = "redis", marker = "extra == 'webhooks'", specifier = ">=5.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'db'", specifier = ">=2.0.0" },
+    { name = "structlog", marker = "extra == 'celery'", specifier = ">=24.0.0" },
     { name = "structlog", marker = "extra == 'logging'", specifier = ">=24.0.0" },
+    { name = "structlog", marker = "extra == 'middleware'", specifier = ">=24.0.0" },
     { name = "tr-shared-lib", extras = ["redis", "celery", "db", "http", "middleware", "logging", "auth", "monitoring", "cache", "phone", "rate-limiter", "webhooks", "integrations"], marker = "extra == 'all'" },
     { name = "upstash-redis", marker = "extra == 'upstash'", specifier = ">=1.0.0" },
 ]

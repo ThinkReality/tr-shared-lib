@@ -5,6 +5,53 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.82.0] - 2026-09-30
+
+### Changed — request and task logs carry their fields, and one correlation id joins them
+
+Request logs reached stdout without `duration_ms`, `status_code` or the other fields, and a
+worker log never carried the id of the request that queued the task, so a LangSmith trace
+could not be matched to the logs of the API and the worker that produced it.
+
+- **Root cause of the missing fields:** the formatter `configure_logging` builds never merged
+  stdlib `extra=` into the event, so every `logger.info(..., extra={...})` that goes through
+  that formatter lost its fields. They are now merged, before the redaction processor, so
+  extras are redacted too. **Output change for every consumer of `configure_logging`:** any
+  stdlib log record with extras now carries them in the output, including third-party ones
+  (for example uvicorn's `color_message`). An extra named `event` never replaces the message;
+  its value is written as `extra_event` when it differs from the message.
+- `CorrelationIDMiddleware` and `LoggingMiddleware` are pure ASGI (same class names and
+  constructor arguments, so `install_standard_middleware` is unchanged). The id is bound with
+  `bound_contextvars`: it is restored when the request ends and `service_name` is never
+  wiped. `request.state.correlation_id` and the response header work as before.
+- **An incoming `X-Correlation-ID` that does not match `^[A-Za-z0-9-]{1,64}$` is now replaced
+  by a UUID4** instead of being trusted. Every id the fleet produces today matches
+  (the gateway's `gateway-YYYYMMDD-<uuid>` included).
+- **`LoggingMiddleware` logs through structlog, not a stdlib logger:** the events are
+  `request_started`, `request_completed` and `request_failed` (previously the messages
+  "Request started", "Request completed" and "Request failed"), carrying `method`, `path`,
+  `status_code`, `duration_ms`, `correlation_id`, `tenant_id`, `client_ip` and `service` as
+  event keys. Anything that patched `logging_middleware.logger` as a stdlib logger, or that
+  matched the old message text, must change.
+- New `get_correlation_id()` in `tr_shared.logging`.
+- `create_celery_app` installs the Celery hooks in `tr_shared.celery.log_context`:
+  `before_task_publish` stamps the message with the current correlation id (a new UUID4
+  when there is none, as for beat, and never over an id the caller set explicitly);
+  `task_prerun` clears the log context and rebinds the worker's startup context plus
+  `correlation_id`, `task_id` and `task_name`; `task_postrun` restores the startup context;
+  a `setup_logging` receiver runs `configure_logging`. Tasks published before this version
+  carry no id and get a fresh one. Tasks run eagerly (`apply()`, `task_always_eager`) are
+  part of the caller's flow: the hooks leave the caller's log context untouched.
+- New in `tr_shared.contracts.headers`: `CELERY_CORRELATION_HEADER`, `CORRELATION_ID_PATTERN`
+  and `is_valid_correlation_id`.
+- The `middleware` and `celery` extras now depend on `structlog`.
+
+**Breaking:** `create_celery_app` requires the keyword arguments `log_level` and `log_format`.
+Each service must pass them in the same change that bumps the pin, and delete its own
+`setup_logging` receiver, its per-task log-context rebinds and its correlation kwargs in
+favour of `get_correlation_id()`. A test that relies on a task's log context being reset by
+an eager `apply()` no longer sees that.
+
 ## [0.81.0] - 2026-09-25
 
 ### Fixed — `CacheService.get_or_set` runs the fetch at most once

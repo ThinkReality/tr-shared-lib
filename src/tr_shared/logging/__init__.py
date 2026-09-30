@@ -6,11 +6,17 @@ from tr_shared.logging.sanitize import (
     sanitize_for_logging,
     sanitize_traceback,
 )
-from tr_shared.logging.setup import bind_correlation_id, configure_logging, get_logger
+from tr_shared.logging.setup import (
+    bind_correlation_id,
+    configure_logging,
+    get_correlation_id,
+    get_logger,
+)
 
 __all__ = [
     "bind_correlation_id",
     "configure_logging",
+    "get_correlation_id",
     "get_logger",
     "safe_log_context",
     "sanitize_context",

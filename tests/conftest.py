@@ -3,6 +3,8 @@
 import fakeredis
 import fakeredis.aioredis as fakeredis_aioredis
 import pytest
+import structlog
+import structlog.testing
 
 
 @pytest.fixture
@@ -23,3 +25,17 @@ async def async_fake_redis(fake_redis_server):
     client = fakeredis_aioredis.FakeRedis(server=fake_redis_server, decode_responses=True)
     yield client
     await client.aclose()
+
+
+@pytest.fixture
+def log_capture(monkeypatch):
+    def _install(module):
+        capture = structlog.testing.LogCapture()
+        monkeypatch.setattr(
+            module,
+            "logger",
+            structlog.wrap_logger(structlog.ReturnLogger(), processors=[capture]),
+        )
+        return capture.entries
+
+    return _install

@@ -1,14 +1,12 @@
-import logging
 import time
-from collections.abc import Callable
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+import structlog
+from starlette.requests import HTTPConnection
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from tr_shared.contracts.headers import HttpHeader
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 DEFAULT_EXCLUDED_PATHS: set[str] = {
     "/",
@@ -25,85 +23,89 @@ DEFAULT_EXCLUDED_PATHS: set[str] = {
 }
 
 
-class LoggingMiddleware(BaseHTTPMiddleware):
+class LoggingMiddleware:
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         service_name: str = "unknown",
         excluded_paths: set[str] | None = None,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self.service_name = service_name
         self.excluded_paths = excluded_paths or DEFAULT_EXCLUDED_PATHS
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if request.url.path in self.excluded_paths:
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        connection = HTTPConnection(scope)
+        if connection.url.path in self.excluded_paths:
+            await self.app(scope, receive, send)
+            return
 
         start = time.perf_counter()
-        meta = self._extract_metadata(request)
+        fields = self._request_fields(connection)
+        status_code = 500
 
-        logger.info(
-            "Request started",
-            extra={"service": self.service_name, "event": "request_started", **meta},
-        )
+        async def send_recording_status(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
 
+        logger.info("request_started", service=self.service_name, **fields)
         try:
-            response = await call_next(request)
+            await self.app(scope, receive, send_recording_status)
         except Exception as exc:
-            duration_ms = (time.perf_counter() - start) * 1000
             logger.exception(
-                "Request failed",
-                extra={
-                    "service": self.service_name,
-                    "event": "request_failed",
-                    "duration_ms": round(duration_ms, 2),
-                    "error_type": type(exc).__name__,
-                    "error_summary": str(exc)[:200],
-                    **meta,
-                },
+                "request_failed",
+                service=self.service_name,
+                duration_ms=self._elapsed_ms(start),
+                error_type=type(exc).__name__,
+                error_summary=str(exc)[:200],
+                **fields,
             )
             raise
 
-        duration_ms = (time.perf_counter() - start) * 1000
-        level = "info" if response.status_code < 400 else "warning"
-        getattr(logger, level)(
-            "Request completed",
-            extra={
-                "service": self.service_name,
-                "event": "request_completed",
-                "status_code": response.status_code,
-                "duration_ms": round(duration_ms, 2),
-                **meta,
-            },
+        log = logger.info if status_code < 400 else logger.warning
+        log(
+            "request_completed",
+            service=self.service_name,
+            status_code=status_code,
+            duration_ms=self._elapsed_ms(start),
+            **fields,
         )
-        return response
 
     @staticmethod
-    def _extract_metadata(request: Request) -> dict:
-        meta: dict = {
-            "method": request.method,
-            "path": request.url.path,
+    def _elapsed_ms(start: float) -> float:
+        return round((time.perf_counter() - start) * 1000, 2)
+
+    @staticmethod
+    def _request_fields(connection: HTTPConnection) -> dict:
+        fields: dict = {
+            "method": connection.scope["method"],
+            "path": connection.url.path,
         }
-        if request.query_params:
-            meta["query_string"] = str(request.query_params)
+        if connection.query_params:
+            fields["query_string"] = str(connection.query_params)
 
-        forwarded = request.headers.get(HttpHeader.FORWARDED_FOR.value)
+        forwarded = connection.headers.get(HttpHeader.FORWARDED_FOR.value)
         if forwarded:
-            meta["client_ip"] = forwarded.split(",")[0].strip()
-        elif request.client:
-            meta["client_ip"] = request.client.host
+            fields["client_ip"] = forwarded.split(",")[0].strip()
+        elif connection.client:
+            fields["client_ip"] = connection.client.host
 
-        ua = request.headers.get("User-Agent")
-        if ua:
-            meta["user_agent"] = ua
+        user_agent = connection.headers.get("User-Agent")
+        if user_agent:
+            fields["user_agent"] = user_agent
 
-        correlation_id = getattr(request.state, "correlation_id", None)
+        correlation_id = connection.scope.get("state", {}).get("correlation_id")
         if correlation_id:
-            meta["correlation_id"] = correlation_id
+            fields["correlation_id"] = correlation_id
 
-        tenant_id = request.headers.get(HttpHeader.TENANT_ID.value)
+        tenant_id = connection.headers.get(HttpHeader.TENANT_ID.value)
         if tenant_id:
-            meta["tenant_id"] = tenant_id
+            fields["tenant_id"] = tenant_id
 
-        return meta
+        return fields

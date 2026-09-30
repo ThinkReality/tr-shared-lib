@@ -16,6 +16,7 @@ Usage::
 import logging
 import re
 import sys
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -30,11 +31,27 @@ _SENSITIVE_PATTERNS = re.compile(
 _REDACTED = "[REDACTED]"
 
 
-def _mask_sensitive_fields(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def _mask_sensitive_fields(
+    logger: Any, method: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Structlog processor that fully redacts values of sensitive fields."""
     for field_name, value in event_dict.items():
         if isinstance(value, str) and value and _SENSITIVE_PATTERNS.search(field_name):
             event_dict[field_name] = _REDACTED
+    return event_dict
+
+
+_extra_adder = structlog.stdlib.ExtraAdder()
+
+
+def _add_stdlib_extras(
+    logger: Any, method: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    message = event_dict["event"]
+    _extra_adder(logger, method, event_dict)
+    if event_dict["event"] != message:
+        event_dict["extra_event"] = event_dict["event"]
+        event_dict["event"] = message
     return event_dict
 
 
@@ -57,6 +74,7 @@ def configure_logging(
         structlog.contextvars.bind_contextvars(service_name=service_name)
     shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
+        _add_stdlib_extras,
         _mask_sensitive_fields,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -106,18 +124,14 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
 def bind_correlation_id(correlation_id: str) -> None:
     """Bind a correlation ID into structlog contextvars.
 
-    Call this at the start of any non-HTTP context (Celery tasks, CLI scripts)
-    that makes service-to-service calls via ``ServiceHTTPClient``. The client
-    reads ``correlation_id`` from contextvars to auto-inject ``X-Correlation-ID``.
-
-    Usage in a Celery task::
-
-        from tr_shared.logging import bind_correlation_id
-
-        @celery_app.task
-        def my_task(correlation_id: str | None = None):
-            if correlation_id:
-                bind_correlation_id(correlation_id)
-            # ... ServiceHTTPClient calls now propagate the ID automatically
+    HTTP requests and Celery tasks are bound automatically by
+    ``CorrelationIDMiddleware`` and the hooks ``create_celery_app`` installs. Call
+    this only from other contexts, such as CLI scripts, that make service-to-service
+    calls via ``ServiceHTTPClient``, which reads ``correlation_id`` from contextvars
+    to inject ``X-Correlation-ID``.
     """
     structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+
+
+def get_correlation_id() -> str | None:
+    return structlog.contextvars.get_contextvars().get("correlation_id")
