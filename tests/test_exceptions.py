@@ -85,6 +85,12 @@ class TestServerErrors:
         exc = ServiceUnavailableError()
         assert exc.status_code == 503
 
+    def test_service_unavailable_carries_retry_after(self):
+        assert ServiceUnavailableError(retry_after=3).headers == {"Retry-After": "3"}
+
+    def test_service_unavailable_without_retry_after_sets_no_header(self):
+        assert ServiceUnavailableError().headers is None
+
     def test_service_timeout_error(self):
         exc = ServiceTimeoutError()
         assert exc.status_code == 504

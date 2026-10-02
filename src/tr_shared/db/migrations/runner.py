@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+from tr_shared.contracts.db_pool import DB_CONNECT_TIMEOUT_SECONDS
 from tr_shared.db.session import _to_asyncpg
 from tr_shared.db.utils import to_session_mode_url
 
@@ -38,7 +39,8 @@ def run_async_migrations(
         do_run_migrations: Callback receiving the sync-proxy ``Connection``
             inside the greenlet. Typically calls
             ``bootstrap_schema_and_version_table`` then ``context.configure``.
-        connect_args: asyncpg connect args. Defaults to
+        connect_args: asyncpg connect args, merged over
+            ``{"timeout": DB_CONNECT_TIMEOUT_SECONDS}``. Defaults to
             ``{"statement_cache_size": 0}`` (PgBouncer/Supavisor-safe).
 
     Usage in env.py::
@@ -56,7 +58,10 @@ def run_async_migrations(
         engine = create_async_engine(
             _to_asyncpg(to_session_mode_url(url)),
             poolclass=NullPool,
-            connect_args=connect_args or {"statement_cache_size": 0},
+            connect_args={
+                "timeout": DB_CONNECT_TIMEOUT_SECONDS,
+                **(connect_args or {"statement_cache_size": 0}),
+            },
         )
         try:
             async with engine.connect() as connection:

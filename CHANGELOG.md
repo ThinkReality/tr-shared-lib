@@ -5,6 +5,86 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.84.0] - 2026-10-02
+
+### Changed — BREAKING: `create_async_engine_factory` requires `statement_timeout_seconds`
+
+Every engine now carries a per-statement cap chosen by the process's profile, replacing the
+fixed `command_timeout=60`. Omitting the keyword is a `TypeError` when the engine module is
+imported. Services pass `settings.database_statement_timeout_seconds`, which reads
+`DATABASE_STATEMENT_TIMEOUT_PROFILE` (`request`, the default: 20s; `background`: 60s).
+Setting the cap through `connect_args` (`command_timeout`, a `server_settings`
+`statement_timeout` key in any case, or `statement_timeout` inside `server_settings.options`)
+now raises `ValueError`: the keyword is the only way in. The cap is asyncpg's client-side
+`command_timeout`; Postgres stops the statement when asyncpg's cancel arrives, and that cancel
+crosses Supavisor. A startup `statement_timeout` never reached the backend through Supavisor in
+either pooler mode, so those service-local caps were dead.
+
+**Consumer action:** pass the keyword to every factory call, delete any service-local cap,
+and `export DATABASE_STATEMENT_TIMEOUT_PROFILE=background` in every non-`api` arm of the
+role dispatcher (`docker-entrypoint.sh` / `deploy.sh`) — never as a Dockerfile `ENV`.
+`tr_shared.testing.role_dispatch.assert_background_roles_set_statement_profile(script)`
+guards that in each service's architecture tests.
+
+### Changed — BREAKING: `pool_class` must be the default or `NullPool`
+
+The factory's default pool is now `OutageTypedAsyncQueuePool`. Any other `QueuePool` class
+passed as `pool_class`, `AsyncAdaptedQueuePool` included, raises `ValueError`, because it
+would let pool exhaustion escape untyped.
+
+**Consumer action:** delete explicit `pool_class=AsyncAdaptedQueuePool` arguments. `NullPool`
+is still accepted.
+
+### Changed — tighter pool and connect budgets
+
+- Pool checkout wait 10s → 2s (`DEFAULT_POOL_TIMEOUT_SECONDS`).
+- asyncpg connect timeout 60s → 3s, DNS included (`DB_CONNECT_TIMEOUT_SECONDS`), for the
+  engine factory and for `run_async_migrations`, whose startup stalled ~60s on an
+  unreachable host.
+- A pooled connection unused for 30s (`DB_IDLE_PING_AFTER_SECONDS`) is pinged on checkout
+  and replaced if dead; each replacement logs `db_stale_connection_replaced`.
+
+### Added — `install_transaction_statement_timeout` for sync engines
+
+`tr_shared.db.install_transaction_statement_timeout(engine, statement_timeout_seconds)` caps
+statements on a sync SQLAlchemy `Engine`. Its `begin` listener runs
+`SET LOCAL statement_timeout = <ms>` at the start of every transaction. The setting is
+transaction-scoped, so it survives transaction pooling and ends with the transaction. Postgres cancels a statement over
+the cap with SQLSTATE 57014. Async engines keep the factory's cap. The helper imports no
+driver; it works with psycopg 3 and psycopg2.
+
+**Consumer action:** a sync engine deletes `-c statement_timeout=…` from its libpq `options`
+and calls the helper with `settings.database_statement_timeout_seconds`.
+
+### Added — database outages answer 503/504, not 500
+
+The engine's `do_connect` and `handle_error` listeners translate failures at the source:
+connect failures (`OSError`, SQLSTATE classes 08/53/57) and mid-request disconnects —
+including an `08xxx`/`57Pxx` error a pooler relays on a socket that stays open — raise
+`tr_shared.db.DatabaseUnavailableError`; a statement over its cap raises
+`DatabaseTimeoutError` and logs `db_statement_timeout` with the statement. A checkout that
+waits out `pool_timeout` raises `DatabaseUnavailableError` from the factory's pool. None of
+these is a `SQLAlchemyError`, so service code that catches those can no longer turn an outage
+into an empty result. `asyncio.CancelledError` and pre-ping recovery are left alone.
+
+`register_exception_handlers(app)` maps them — no new call in services; it loads the DB
+handlers only when SQLAlchemy is installed, so `[db]`-less consumers are unaffected:
+`DATABASE_UNAVAILABLE_001` (connect), `_002` (connection lost), `_003` (pool exhausted) as
+503 with `Retry-After`, and `DATABASE_TIMEOUT_001` as 504. `GlobalErrorHandlerMiddleware`
+still logs these but no longer pages Slack for them.
+
+### Added — contracts
+
+- `tr_shared.contracts`: `UNAVAILABLE_RETRY_AFTER_SECONDS` (the one `Retry-After` value,
+  shared with shared-auth-lib) and `DatabaseOutageCode`.
+- `tr_shared.contracts.db_pool`: `StatementTimeoutProfile`, `DB_STATEMENT_TIMEOUT_SECONDS`,
+  `DEFAULT_POOL_TIMEOUT_SECONDS`, `DB_CONNECT_TIMEOUT_SECONDS`, `DB_IDLE_PING_AFTER_SECONDS`.
+- `BaseServiceSettings.DATABASE_STATEMENT_TIMEOUT_PROFILE` and
+  `.database_statement_timeout_seconds`.
+- `HttpHeader.REQUEST_TIMEOUT_MS` (`X-Request-Timeout-Ms`), and `contracts/http-headers.json`
+  (every `HttpHeader`, generated by `scripts/export_http_header_contract.py`) for frontends.
+- `ServiceUnavailableError(retry_after=)`.
+
 ## [0.83.0] - 2026-09-30
 
 ### Fixed — service-to-service calls carry the correlation id, and the secrets audit line keeps it

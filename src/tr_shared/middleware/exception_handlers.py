@@ -1,5 +1,8 @@
 # No bare Exception handler here — GlobalErrorHandlerMiddleware owns 500s (Slack + correlation).
 
+from importlib import import_module
+from importlib.util import find_spec
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -79,3 +82,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(BaseAPIException, base_api_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    if find_spec("sqlalchemy") is not None:
+        import_module("tr_shared.db.exception_handlers").register_db_exception_handlers(app)

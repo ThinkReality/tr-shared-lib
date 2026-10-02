@@ -3,7 +3,12 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from tr_shared.contracts.db_pool import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
+from tr_shared.contracts.db_pool import (
+    DB_STATEMENT_TIMEOUT_SECONDS,
+    DEFAULT_MAX_OVERFLOW,
+    DEFAULT_POOL_SIZE,
+    StatementTimeoutProfile,
+)
 from tr_shared.contracts.environment import Environment
 
 
@@ -27,6 +32,7 @@ class BaseServiceSettings(BaseSettings):
     # nothing to the engine factory get the same pool.
     DATABASE_POOL_SIZE: int = DEFAULT_POOL_SIZE
     DATABASE_MAX_OVERFLOW: int = DEFAULT_MAX_OVERFLOW
+    DATABASE_STATEMENT_TIMEOUT_PROFILE: StatementTimeoutProfile = StatementTimeoutProfile.REQUEST
 
     # ── Supabase Auth (optional — only required by services that talk to
     # Supabase directly, e.g. crm-backend and tr-api-gateway) ──
@@ -105,6 +111,10 @@ class BaseServiceSettings(BaseSettings):
     def is_local(self) -> bool:
         """Developer machine or test run — the only place guards may relax."""
         return self.ENVIRONMENT in (Environment.DEVELOPMENT, Environment.TEST)
+
+    @property
+    def database_statement_timeout_seconds(self) -> float:
+        return float(DB_STATEMENT_TIMEOUT_SECONDS[self.DATABASE_STATEMENT_TIMEOUT_PROFILE])
 
     @model_validator(mode="after")
     def validate_production_config(self) -> "BaseServiceSettings":

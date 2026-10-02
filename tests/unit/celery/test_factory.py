@@ -17,6 +17,7 @@ import pytest
 from celery import Celery
 
 from tr_shared.celery.factory import create_celery_app
+from tr_shared.contracts.db_pool import DB_STATEMENT_TIMEOUT_SECONDS, StatementTimeoutProfile
 
 BROKER = "redis://localhost:6379/1"
 BACKEND = "redis://localhost:6379/2"
@@ -181,7 +182,10 @@ class TestPreforkSafety:
 
         from tr_shared.db import create_async_engine_factory
 
-        engine: AsyncEngine = create_async_engine_factory("postgresql+asyncpg://localhost/t")
+        engine: AsyncEngine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/t",
+            statement_timeout_seconds=DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST],
+        )
         calls: list[dict] = []
         monkeypatch.setattr(engine.sync_engine, "dispose", lambda **kw: calls.append(kw))
         make()

@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError, field_validator
 
 from tr_shared.config.base import BaseServiceSettings
+from tr_shared.contracts.db_pool import DB_STATEMENT_TIMEOUT_SECONDS, StatementTimeoutProfile
 
 
 class _ListValuedCorsSettings(BaseServiceSettings):
@@ -201,3 +202,27 @@ class TestBaseServiceSettings:
         s = BaseServiceSettings(**_PROD_SUPABASE)
         assert s.ENVIRONMENT == "production"
         assert s.JWKS_URL != ""
+
+    def test_statement_profile_defaults_to_request(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_STATEMENT_TIMEOUT_PROFILE", raising=False)
+        s = BaseServiceSettings(SERVICE_NAME="svc")
+        assert s.DATABASE_STATEMENT_TIMEOUT_PROFILE is StatementTimeoutProfile.REQUEST
+        assert (
+            s.database_statement_timeout_seconds
+            == DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST]
+        )
+
+    def test_background_profile_comes_from_the_environment(self, monkeypatch):
+        monkeypatch.setenv(
+            "DATABASE_STATEMENT_TIMEOUT_PROFILE", StatementTimeoutProfile.BACKGROUND.value
+        )
+        s = BaseServiceSettings(SERVICE_NAME="svc")
+        assert (
+            s.database_statement_timeout_seconds
+            == DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.BACKGROUND]
+        )
+
+    def test_an_unknown_profile_is_rejected(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_STATEMENT_TIMEOUT_PROFILE", "api")
+        with pytest.raises(ValidationError, match="DATABASE_STATEMENT_TIMEOUT_PROFILE"):
+            BaseServiceSettings(SERVICE_NAME="svc")

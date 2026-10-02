@@ -48,6 +48,7 @@ class HttpHeader(StrEnum):
 
     IDEMPOTENCY_KEY = "X-Idempotency-Key"
     IDEMPOTENCY_REPLAYED = "X-Idempotency-Replayed"
+    REQUEST_TIMEOUT_MS = "X-Request-Timeout-Ms"
 
     FORWARDED_FOR = "X-Forwarded-For"
     REAL_IP = "X-Real-IP"

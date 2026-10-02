@@ -3,20 +3,39 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
+from sqlalchemy.pool import (
+    AsyncAdaptedQueuePool,
+    FallbackAsyncAdaptedQueuePool,
+    NullPool,
+    QueuePool,
+    StaticPool,
+)
 
 from tr_shared.config import BaseServiceSettings
-from tr_shared.contracts.db_pool import DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_SIZE
+from tr_shared.contracts.db_pool import (
+    DB_CONNECT_TIMEOUT_SECONDS,
+    DB_STATEMENT_TIMEOUT_SECONDS,
+    DEFAULT_MAX_OVERFLOW,
+    DEFAULT_POOL_SIZE,
+    DEFAULT_POOL_TIMEOUT_SECONDS,
+    StatementTimeoutProfile,
+)
 from tr_shared.db.session import (
     PGBOUNCER_CONNECT_ARGS,
+    OutageTypedAsyncQueuePool,
     _build_connect_args,
+    _set_local_statement_timeout,
     _to_asyncpg,
     create_async_engine_factory,
     create_session_factory,
     dispose_engines_after_fork,
     get_db,
+    install_transaction_statement_timeout,
 )
+
+_REQUEST_CAP = DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST]
 
 
 class TestToAsyncpg:
@@ -61,58 +80,69 @@ class TestPgbouncerConnectArgs:
 
 class TestBuildConnectArgs:
     def test_no_overrides_matches_defaults(self):
-        result = _build_connect_args("", "", None)
+        result = _build_connect_args("", "", None, statement_timeout_seconds=_REQUEST_CAP)
         assert result["statement_cache_size"] == PGBOUNCER_CONNECT_ARGS["statement_cache_size"]
         assert (
             result["prepared_statement_cache_size"]
             == PGBOUNCER_CONNECT_ARGS["prepared_statement_cache_size"]
         )
-        assert result["command_timeout"] == PGBOUNCER_CONNECT_ARGS["command_timeout"]
         assert result["server_settings"]["jit"] == "off"
 
     def test_returns_deep_copy(self):
-        result = _build_connect_args("", "", None)
+        result = _build_connect_args("", "", None, statement_timeout_seconds=_REQUEST_CAP)
         result["statement_cache_size"] = 999
         result["server_settings"]["jit"] = "on"
         assert PGBOUNCER_CONNECT_ARGS["statement_cache_size"] == 0
         assert PGBOUNCER_CONNECT_ARGS["server_settings"]["jit"] == "off"
 
     def test_service_name_sets_application_name(self):
-        result = _build_connect_args("crm-backend", "", None)
+        result = _build_connect_args(
+            "crm-backend", "", None, statement_timeout_seconds=_REQUEST_CAP
+        )
         assert result["server_settings"]["application_name"] == "crm-backend"
         assert result["server_settings"]["jit"] == "off"
 
     def test_schema_sets_search_path(self):
-        result = _build_connect_args("", "lead", None)
+        result = _build_connect_args("", "lead", None, statement_timeout_seconds=_REQUEST_CAP)
         assert result["server_settings"]["search_path"] == "lead,public"
         assert result["server_settings"]["jit"] == "off"
 
     def test_both_service_name_and_schema(self):
-        result = _build_connect_args("crm-backend", "auth_schema", None)
+        result = _build_connect_args(
+            "crm-backend", "auth_schema", None, statement_timeout_seconds=_REQUEST_CAP
+        )
         assert result["server_settings"]["application_name"] == "crm-backend"
         assert result["server_settings"]["search_path"] == "auth_schema,public"
         assert result["server_settings"]["jit"] == "off"
 
     def test_empty_strings_do_not_inject(self):
-        result = _build_connect_args("", "", None)
+        result = _build_connect_args("", "", None, statement_timeout_seconds=_REQUEST_CAP)
         assert "application_name" not in result["server_settings"]
         assert "search_path" not in result["server_settings"]
 
     def test_custom_connect_args_merges_with_defaults(self):
-        result = _build_connect_args("", "", {"command_timeout": 120})
-        assert result["command_timeout"] == 120
+        result = _build_connect_args(
+            "", "", {"ssl": "require"}, statement_timeout_seconds=_REQUEST_CAP
+        )
+        assert result["ssl"] == "require"
         assert result["statement_cache_size"] == 0
         assert result["prepared_statement_cache_size"] == 0
 
     def test_custom_connect_args_can_override_defaults(self):
-        result = _build_connect_args("", "", {"command_timeout": 120})
-        assert result["command_timeout"] == 120
+        result = _build_connect_args(
+            "",
+            "",
+            {"timeout": DB_CONNECT_TIMEOUT_SECONDS + 1},
+            statement_timeout_seconds=_REQUEST_CAP,
+        )
+        assert result["timeout"] == DB_CONNECT_TIMEOUT_SECONDS + 1
 
     def test_custom_server_settings_merges_not_replaces(self):
         result = _build_connect_args(
             "admin-panel",
             "admin",
             {"server_settings": {"plan_cache_mode": "force_custom_plan"}},
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert result["server_settings"]["plan_cache_mode"] == "force_custom_plan"
         assert result["server_settings"]["jit"] == "off"
@@ -123,7 +153,8 @@ class TestBuildConnectArgs:
         result = _build_connect_args(
             "test",
             "test_schema",
-            {"command_timeout": 120, "server_settings": {"extra": "value"}},
+            {"ssl": "require", "server_settings": {"extra": "value"}},
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert result["statement_cache_size"] == 0
         assert result["prepared_statement_cache_size"] == 0
@@ -133,25 +164,34 @@ class TestBuildConnectArgs:
 
 class TestCreateAsyncEngineFactory:
     def test_returns_async_engine(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert isinstance(engine, AsyncEngine)
 
     def test_echo_default_is_false(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert engine.echo is False
 
     def test_echo_true_propagated(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test", echo=True)
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", echo=True, statement_timeout_seconds=_REQUEST_CAP
+        )
         assert engine.echo is True
 
     def test_normalises_postgres_url(self):
-        engine = create_async_engine_factory("postgres://user:pw@localhost/db")
+        engine = create_async_engine_factory(
+            "postgres://user:pw@localhost/db", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert isinstance(engine, AsyncEngine)
 
     def test_service_name_sets_application_name(self):
         engine = create_async_engine_factory(
             "postgresql+asyncpg://localhost/test",
             service_name="crm-backend",
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert isinstance(engine, AsyncEngine)
 
@@ -159,6 +199,7 @@ class TestCreateAsyncEngineFactory:
         engine = create_async_engine_factory(
             "postgresql+asyncpg://localhost/test",
             schema="lead",
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert isinstance(engine, AsyncEngine)
 
@@ -167,6 +208,7 @@ class TestCreateAsyncEngineFactory:
             "postgresql+asyncpg://localhost/test",
             service_name="lead",
             schema="lead",
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert isinstance(engine, AsyncEngine)
 
@@ -176,11 +218,14 @@ class TestCreateAsyncEngineFactory:
             service_name="admin-panel",
             schema="admin",
             connect_args={"server_settings": {"plan_cache_mode": "force_custom_plan"}},
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert isinstance(engine, AsyncEngine)
 
     def test_defaults_preserved_when_no_new_params(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert isinstance(engine, AsyncEngine)
         assert engine.echo is False
 
@@ -198,31 +243,42 @@ class TestConnectionPoolDefaults:
     """
 
     def test_default_pool_keeps_connections(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
-        assert isinstance(engine.pool, AsyncAdaptedQueuePool)
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
+        assert type(engine.pool) is OutageTypedAsyncQueuePool
 
     def test_default_pool_is_sized_for_the_pooler_client_cap(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert engine.pool.size() == DEFAULT_POOL_SIZE == 2
         assert engine.pool._max_overflow == DEFAULT_MAX_OVERFLOW == 8
-        assert engine.pool._timeout == 10
+        assert engine.pool._timeout == DEFAULT_POOL_TIMEOUT_SECONDS
 
     def test_connections_are_recycled_before_an_idle_socket_can_go_stale(self):
         # Recycle bounds idle time from above (idle ≤ age), and 300 s sits under the
         # ~350 s cloud NAT idle timeouts — the reason to drop pre-ping (below).
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert engine.pool._recycle == 300
 
     def test_pre_ping_is_off(self):
         # Under asyncpg in pgbouncer mode a pre-ping is BEGIN + fetchrow(";") + ROLLBACK
         # on every checkout — four round trips, invisible to cursor-level instrumentation.
         # That is most of what pooling saves; recycle carries the staleness guard instead.
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         assert engine.pool._pre_ping is False
 
     def test_sizing_can_be_overridden_per_engine(self):
         engine = create_async_engine_factory(
-            "postgresql+asyncpg://localhost/test", pool_size=4, max_overflow=0
+            "postgresql+asyncpg://localhost/test",
+            pool_size=4,
+            max_overflow=0,
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert engine.pool.size() == 4
         assert engine.pool._max_overflow == 0
@@ -231,7 +287,9 @@ class TestConnectionPoolDefaults:
         # Migration runner and test fixtures ask for NullPool; SQLAlchemy rejects
         # pool_size/max_overflow on it, so the defaults must not be applied there.
         engine = create_async_engine_factory(
-            "postgresql+asyncpg://localhost/test", pool_class=NullPool
+            "postgresql+asyncpg://localhost/test",
+            pool_class=NullPool,
+            statement_timeout_seconds=_REQUEST_CAP,
         )
         assert isinstance(engine.pool, NullPool)
 
@@ -239,7 +297,9 @@ class TestConnectionPoolDefaults:
         # Celery prefork children inherit the parent's pool; a checked-in socket used
         # from two processes is silent corruption. SQLAlchemy's prescription is
         # ``dispose(close=False)`` in the child — for every engine the factory made.
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         calls: list[dict] = []
         monkeypatch.setattr(
             engine.sync_engine, "dispose", lambda **kw: calls.append(kw), raising=True
@@ -259,17 +319,23 @@ class TestConnectionPoolDefaults:
 
 class TestCreateSessionFactory:
     def test_returns_async_sessionmaker(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         factory = create_session_factory(engine)
         assert isinstance(factory, async_sessionmaker)
 
     def test_expire_on_commit_is_false(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         factory = create_session_factory(engine)
         assert factory.kw.get("expire_on_commit") is False
 
     def test_autoflush_is_false(self):
-        engine = create_async_engine_factory("postgresql+asyncpg://localhost/test")
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
         factory = create_session_factory(engine)
         assert factory.kw.get("autoflush") is False
 
@@ -297,3 +363,90 @@ class TestGetDb:
             yielded.append(session)
         assert len(yielded) == 1
         assert yielded[0] is mock_session
+
+
+class TestTimeoutBudget:
+    def test_connect_timeout_comes_from_the_contract(self):
+        args = _build_connect_args("svc", "", None, statement_timeout_seconds=_REQUEST_CAP)
+        assert args["timeout"] == DB_CONNECT_TIMEOUT_SECONDS
+
+    @pytest.mark.parametrize("profile", list(StatementTimeoutProfile))
+    def test_statement_cap_tracks_the_argument(self, profile):
+        seconds = DB_STATEMENT_TIMEOUT_SECONDS[profile]
+        args = _build_connect_args("svc", "", None, statement_timeout_seconds=seconds)
+        assert args["command_timeout"] == seconds
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"command_timeout": _REQUEST_CAP},
+            {"server_settings": {"statement_timeout": "1000"}},
+            {"server_settings": {"Statement_Timeout": "1000"}},
+            {"server_settings": {"options": "-c statement_timeout=1000"}},
+            {"server_settings": {"OPTIONS": "--statement-timeout=1000"}},
+        ],
+    )
+    def test_the_cap_cannot_be_set_through_connect_args(self, overrides):
+        with pytest.raises(ValueError, match="statement_timeout_seconds"):
+            _build_connect_args("svc", "", overrides, statement_timeout_seconds=_REQUEST_CAP)
+
+    def test_other_startup_options_still_pass_through(self):
+        overrides = {"server_settings": {"options": "-c lock_timeout=1000"}}
+        args = _build_connect_args("svc", "", overrides, statement_timeout_seconds=_REQUEST_CAP)
+        assert args["server_settings"]["options"] == "-c lock_timeout=1000"
+
+    def test_the_factory_requires_a_statement_cap(self):
+        with pytest.raises(TypeError, match="statement_timeout_seconds"):
+            create_async_engine_factory("postgresql+asyncpg://localhost/test")
+
+
+class TestQueuePoolsAreTyped:
+    @pytest.mark.parametrize(
+        "pool_class", [QueuePool, AsyncAdaptedQueuePool, FallbackAsyncAdaptedQueuePool, StaticPool]
+    )
+    def test_an_untyped_queue_pool_is_rejected(self, pool_class):
+        with pytest.raises(ValueError, match=pool_class.__name__):
+            create_async_engine_factory(
+                "postgresql+asyncpg://localhost/test",
+                statement_timeout_seconds=_REQUEST_CAP,
+                pool_class=pool_class,
+            )
+
+    def test_poolclass_cannot_bypass_the_check(self):
+        with pytest.raises(TypeError, match="poolclass"):
+            create_async_engine_factory(
+                "postgresql+asyncpg://localhost/test",
+                statement_timeout_seconds=_REQUEST_CAP,
+                poolclass=AsyncAdaptedQueuePool,
+            )
+
+
+class TestTransactionStatementTimeout:
+    def test_the_cap_is_installed_on_begin(self):
+        engine = create_engine("postgresql+psycopg://localhost/test")
+        assert not engine.dispatch.begin
+        install_transaction_statement_timeout(engine, _REQUEST_CAP)
+        assert engine.dispatch.begin
+
+    @pytest.mark.parametrize("profile", list(StatementTimeoutProfile))
+    def test_the_cap_is_sent_in_whole_milliseconds(self, profile):
+        seconds = DB_STATEMENT_TIMEOUT_SECONDS[profile]
+        assert _set_local_statement_timeout(seconds) == (
+            f"SET LOCAL statement_timeout = {int(seconds * 1000)}"
+        )
+
+
+class TestIdleValidationWiring:
+    def test_queue_pool_engines_validate_on_checkout(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test", statement_timeout_seconds=_REQUEST_CAP
+        )
+        assert engine.sync_engine.pool.dispatch.checkout
+
+    def test_null_pool_engines_get_no_checkout_validation(self):
+        engine = create_async_engine_factory(
+            "postgresql+asyncpg://localhost/test",
+            statement_timeout_seconds=_REQUEST_CAP,
+            pool_class=NullPool,
+        )
+        assert not engine.sync_engine.pool.dispatch.checkout
