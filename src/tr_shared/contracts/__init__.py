@@ -1,3 +1,4 @@
+from tr_shared.contracts.availability import UNAVAILABLE_RETRY_AFTER_SECONDS, DatabaseOutageCode
 from tr_shared.contracts.bedrooms import BedroomCount
 from tr_shared.contracts.emirates import Emirate
 from tr_shared.contracts.entity_types import EntityType
@@ -15,9 +16,11 @@ from tr_shared.contracts.taxonomy import (
 __all__ = [
     "ENTITLEMENT_MODULES",
     "GLOSSARY",
+    "UNAVAILABLE_RETRY_AFTER_SECONDS",
     "BedroomCount",
     "Channel",
     "CommentAction",
+    "DatabaseOutageCode",
     "Emirate",
     "EntitlementModuleField",
     "EntityType",

@@ -36,3 +36,27 @@ def test_importable_without_the_db_extra(module: str):
         timeout=60,
     )
     assert result.returncode == 0, result.stderr
+
+
+_REGISTER_WITHOUT_THE_DB_EXTRA = """
+import sys
+
+sys.modules["sqlalchemy"] = None
+sys.modules["asyncpg"] = None
+
+from fastapi import FastAPI
+
+from tr_shared.middleware import register_exception_handlers
+
+register_exception_handlers(FastAPI())
+"""
+
+
+def test_exception_registration_works_without_the_db_extra():
+    result = subprocess.run(
+        [sys.executable, "-c", _REGISTER_WITHOUT_THE_DB_EXTRA],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr

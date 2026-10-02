@@ -13,7 +13,6 @@ group. That is a separate property and not what this module asserts.
 
 from __future__ import annotations
 
-import subprocess
 import uuid
 
 import pytest
@@ -27,54 +26,9 @@ from tr_shared.testing import describe_statements, record_statements
 
 pytestmark = pytest.mark.integration
 
-_CONTAINER = "tr-test-insert-batching-pg"
-_IMAGE = "postgres:16-alpine"
-
 
 class _Row(BaseModel):
     __tablename__ = "insert_batching_probe"
-
-
-def _docker_available() -> bool:
-    try:
-        import docker
-
-        docker.from_env().ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(not _docker_available(), reason="Docker is not reachable")
-
-
-@pytest.fixture(scope="module")
-def postgres_dsn() -> str:
-    """A throwaway Postgres for this module, reusing the library's own provisioner."""
-    from tr_shared.testing.stack import _adopt_or_create, _docker, _wait_ready
-
-    client = _docker()
-    container = _adopt_or_create(
-        client,
-        name=_CONTAINER,
-        image=_IMAGE,
-        container_port=5432,
-        environment={
-            "POSTGRES_USER": "postgres",
-            "POSTGRES_PASSWORD": "test",
-            "POSTGRES_DB": "postgres",
-        },
-        command=None,
-    )
-    container.reload()
-    port = int(container.ports["5432/tcp"][0]["HostPort"])
-    _wait_ready(
-        container,
-        ["psql", "-U", "postgres", "-d", "postgres", "-tAc", "SELECT 1"],
-        _CONTAINER,
-    )
-    yield f"postgresql+asyncpg://postgres:test@127.0.0.1:{port}/postgres"
-    subprocess.run(["docker", "rm", "-f", _CONTAINER], capture_output=True)
 
 
 @pytest_asyncio.fixture
@@ -90,7 +44,6 @@ async def engine(postgres_dsn: str):
         await engine.dispose()
 
 
-@requires_docker
 @pytest.mark.asyncio
 async def test_add_all_flushes_in_one_insert(engine) -> None:
     tenant_id = uuid.uuid4()
@@ -112,7 +65,6 @@ async def test_add_all_flushes_in_one_insert(engine) -> None:
     assert len(inserts) == 1, describe_statements(seen)
 
 
-@requires_docker
 @pytest.mark.asyncio
 async def test_recording_stops_when_the_block_exits(engine) -> None:
     with record_statements() as seen:

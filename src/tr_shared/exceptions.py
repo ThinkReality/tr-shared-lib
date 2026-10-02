@@ -162,9 +162,18 @@ class ServiceUnavailableError(BaseAPIException):
     """Downstream service unavailable (503)."""
 
     def __init__(
-        self, detail: str = "Service unavailable", code: str = "SERVICE_UNAVAILABLE_001"
+        self,
+        detail: str = "Service unavailable",
+        code: str = "SERVICE_UNAVAILABLE_001",
+        retry_after: int | None = None,
     ) -> None:
-        super().__init__(status_code=503, error="Service unavailable", detail=detail, code=code)
+        super().__init__(
+            status_code=503,
+            error="Service unavailable",
+            detail=detail,
+            code=code,
+            headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
+        )
 
 
 class ServiceTimeoutError(BaseAPIException):

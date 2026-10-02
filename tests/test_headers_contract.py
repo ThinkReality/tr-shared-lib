@@ -36,3 +36,7 @@ def test_celery_correlation_header_is_a_python_identifier():
 
     assert CELERY_CORRELATION_HEADER == "x_tr_correlation_id"
     assert CELERY_CORRELATION_HEADER.isidentifier()
+
+
+def test_request_timeout_header_name():
+    assert HttpHeader.REQUEST_TIMEOUT_MS.value == "X-Request-Timeout-Ms"

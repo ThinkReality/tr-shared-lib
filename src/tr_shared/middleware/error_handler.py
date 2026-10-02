@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import socket
@@ -14,6 +15,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+from tr_shared.contracts.availability import DatabaseOutageCode
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,17 @@ def _hash_identifier(value: str) -> str:
     if not value:
         return "N/A"
     return hashlib.sha256(str(value).encode()).hexdigest()[:16]
+
+
+_UNPAGED_ERROR_CODES = frozenset(DatabaseOutageCode)
+
+
+def _error_code(body: bytes) -> str | None:
+    try:
+        code = json.loads(body)["error"]["code"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return code if isinstance(code, str) else None
 
 
 _pending_alerts: set[asyncio.Task] = set()
@@ -85,7 +99,8 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
                     response_body=body_text,
                 )
                 logger.error("Handled 5xx response", extra=ctx)
-                self._fire_alert(ctx)
+                if _error_code(body_bytes) not in _UNPAGED_ERROR_CODES:
+                    self._fire_alert(ctx)
 
                 # Rebuild from raw_headers to avoid MutableHeaders.__getitem__ KeyError
                 # on duplicate or encoded header keys.

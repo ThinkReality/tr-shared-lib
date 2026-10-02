@@ -9,6 +9,7 @@ from tr_shared.db.base import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
+from tr_shared.db.errors import DatabaseTimeoutError, DatabaseUnavailableError
 from tr_shared.db.migrations import (
     assert_migrations_are_merged,
     bootstrap_schema_and_version_table,
@@ -23,6 +24,7 @@ from tr_shared.db.session import (
     create_session_factory,
     dispose_engines_after_fork,
     get_db,
+    install_transaction_statement_timeout,
 )
 from tr_shared.db.utils import (
     LIKE_ESCAPE_CHAR,
@@ -40,6 +42,8 @@ __all__ = [
     "Base",
     "BaseModel",
     "BaseRepository",
+    "DatabaseTimeoutError",
+    "DatabaseUnavailableError",
     "LIKE_ESCAPE_CHAR",
     "LOCAL_DB_HOSTS",
     "LOCAL_DB_HOST_PREFIX",
@@ -55,6 +59,7 @@ __all__ = [
     "create_session_factory",
     "escape_like",
     "get_db",
+    "install_transaction_statement_timeout",
     "is_local_dsn",
     "make_service_include_object",
     "run_async_migrations",
