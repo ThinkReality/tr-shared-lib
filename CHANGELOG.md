@@ -5,6 +5,94 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.85.0] - 2026-10-03
+
+### Changed — BREAKING: `install_transaction_statement_timeout` is replaced by `prepare_sync_engine`
+
+`tr_shared.db.install_transaction_statement_timeout` is removed, with no alias.
+`tr_shared.db.prepare_sync_engine(engine, *, service_name, statement_timeout_seconds)` installs
+the same `SET LOCAL statement_timeout` cap together with the outage typing below, so a sync
+engine can no longer end up with the cap and without the typing. It raises `ValueError` unless
+the engine's pool is `OutageTypedQueuePool` or `NullPool`; `create_engine`'s default
+`QueuePool` is rejected, because pool exhaustion would escape untyped.
+
+**Consumer action:** build the engine with `poolclass=OutageTypedQueuePool` (or `NullPool`)
+and replace `install_transaction_statement_timeout(engine, seconds)` with
+`prepare_sync_engine(engine, service_name=..., statement_timeout_seconds=settings.database_statement_timeout_seconds)`.
+realty and WAM are the callers.
+
+**Release hazard:** compose bind-mounts the host lib checkouts into every dev container. Do not
+move the host `tr-shared-lib` / `shared-auth-lib` checkouts or run
+`scripts/upgrade-shared-libs.sh` until realty and WAM have adopted this release, or their dev
+containers crash on import.
+
+### Added — sync engines get the async outage contract
+
+On an engine prepared by `prepare_sync_engine`, with psycopg2 or psycopg 3:
+
+- A failed connect raises `DatabaseUnavailableError` (`DATABASE_UNAVAILABLE_001`). Every
+  driver `OperationalError` from the connect counts: refused, DNS, connect timeout, a role over
+  its connection limit, **and a wrong password**. Neither driver exposes a SQLSTATE at connect
+  time, so the async rule (`OSError` or SQLSTATE class 08/53/57, which keeps a wrong password a
+  paged 500) cannot be applied. On a sync engine a wrong or rotated password is therefore an
+  unpaged 503 with `Retry-After`; health checks and the error logs still show it. Async engines
+  are unchanged.
+- A lost connection (a terminated backend, or an `08xxx`/`57Pxx` error relayed on an open
+  socket) raises `DatabaseUnavailableError` (`_002`), and the next checkout gets a fresh
+  connection.
+- A statement over the cap (SQLSTATE 57014) raises `DatabaseTimeoutError` and logs
+  `db_statement_timeout` with the statement.
+- `OutageTypedQueuePool`: a checkout that waits out `pool_timeout` raises
+  `DatabaseUnavailableError` (`_003`). A failed connect does not keep its pool slot.
+- Everything else is unchanged: SQLSTATE 53100 stays `OperationalError`, a missing table stays
+  `ProgrammingError`, and pre-ping recovery stays transparent.
+
+One translator serves async and sync engines; it reads the SQLSTATE from `.sqlstate`, or from
+psycopg2's `.pgcode`. `OutageTypedAsyncQueuePool` now derives from `OutageTypedQueuePool`.
+`psycopg2-binary` joins the dev group so the integration lane runs every case on both drivers.
+
+### Added — `set_local_statement_timeout_sql` and `DATABASE_OUTAGE_ERRORS`
+
+- `tr_shared.db.set_local_statement_timeout_sql(seconds)` returns the
+  `SET LOCAL statement_timeout = <ms>` text, for a raw driver connection that SQLAlchemy's
+  listeners never see.
+- `tr_shared.db.DATABASE_OUTAGE_ERRORS` is `(DatabaseUnavailableError, DatabaseTimeoutError)`,
+  for an `except DATABASE_OUTAGE_ERRORS: raise` ahead of a best-effort broad catch.
+
+### Added — guards: database errors reach the boundary
+
+Two AST guards in `tr_shared.testing.guards`, built on the existing `Exemption` and
+stale-allowlist machinery. Both scan a service's `app/` and skip `alembic` trees.
+
+- `assert_no_swallowed_db_errors(app_root, allowlist=None)` flags an `except` handler with no
+  `raise` in its own body (nested defs excluded) when it:
+  - catches a generic SQLAlchemy class (`SQLAlchemyError`, `DBAPIError`, `OperationalError`,
+    `InterfaceError`, `DatabaseError`, `TimeoutError`) whose name resolves by import to
+    `sqlalchemy`. The same names from psycopg2, redis, kombu, the builtins or
+    `tr_shared.exceptions` do not match. Narrow catches (`IntegrityError`, `DataError`,
+    `NoResultFound`, `MultipleResultsFound`) stay allowed;
+  - is broad (`Exception`, `BaseException`, bare) inside a `*Repository` / `*Repo` class;
+  - is broad, and its `try` body makes a DB-looking call. This is a name heuristic: a
+    `db`/`session`/`repo`/`uow` receiver, `*Repository`, `SessionLocal`, `get_db`,
+    `execute_sql`, or `execute`/`commit`/`flush`/`scalar*`/`refresh`/`get_by_id` on any
+    receiver. A call chain naming cache, redis, pipe, websocket or driver is ignored, so Redis
+    and Selenium lookalikes need no exemption.
+
+  The two broad cases do not fire when an earlier sibling handler catches
+  `DATABASE_OUTAGE_ERRORS` or `DatabaseUnavailableError` and its body is a bare `raise`.
+- `assert_no_flattened_errors(app_root, allowlist=None)` flags a broad handler that raises
+  `InternalServerError`, `DatabaseError`, any `*InternalServerError`, or `HTTPException` with
+  status 500. The shared handlers own 500, 503 and 504.
+
+Both guards expand a module-level tuple alias (`_DB_ERRORS = (SQLAlchemyError, ...)`, annotated
+or not) before applying any rule, so an alias neither hides a catch nor blocks a credit.
+
+**Consumer action:** each service adds `tests/architecture/test_db_errors_reach_the_boundary.py`,
+which calls both guards over `app/`. Exempt only health probes and proven false positives, each
+with an `Exemption`. Allowlists are keyed per file, so an exempt file is exempt as a whole. On
+`stage` (2026-10-03) the fleet has 153 swallowed and 80 flattened hits. Those counts match the
+H2 evidence scan exactly.
+
 ## [0.84.0] - 2026-10-02
 
 ### Changed — BREAKING: `create_async_engine_factory` requires `statement_timeout_seconds`

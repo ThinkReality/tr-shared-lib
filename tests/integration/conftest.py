@@ -1,8 +1,9 @@
 import asyncio
+import time
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
+from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -12,6 +13,7 @@ _CONTAINER = "tr-test-shared-lib-pg"
 _IMAGE = "postgres:16-alpine"
 _TERMINATE_POLLS = 50
 _TERMINATE_POLL_SECONDS = 0.1
+_SYNC_DRIVERS = ["postgresql+psycopg2", "postgresql+psycopg"]
 
 
 @pytest.fixture(scope="session")
@@ -58,3 +60,37 @@ async def terminate_backend(postgres_dsn: str):
 
     yield _terminate
     await killer.dispose()
+
+
+@pytest.fixture(params=_SYNC_DRIVERS)
+def sync_driver(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture
+def sync_dsn(sync_driver: str, postgres_dsn: str) -> URL:
+    return make_url(postgres_dsn).set(drivername=sync_driver)
+
+
+@pytest.fixture
+def sync_admin(sync_dsn: URL):
+    admin = create_engine(sync_dsn, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    yield admin
+    admin.dispose()
+
+
+@pytest.fixture
+def terminate_backend_sync(sync_admin: Engine):
+    def _terminate(pid: int) -> None:
+        with sync_admin.connect() as conn:
+            conn.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
+            for _ in range(_TERMINATE_POLLS):
+                alive = conn.scalar(
+                    text("SELECT count(*) FROM pg_stat_activity WHERE pid = :pid"), {"pid": pid}
+                )
+                if not alive:
+                    return
+                time.sleep(_TERMINATE_POLL_SECONDS)
+        raise AssertionError(f"backend {pid} outlived pg_terminate_backend")
+
+    return _terminate
