@@ -9,3 +9,9 @@ class DatabaseUnavailableError(Exception):
 
 class DatabaseTimeoutError(Exception):
     pass
+
+
+DATABASE_OUTAGE_ERRORS: tuple[type[Exception], ...] = (
+    DatabaseUnavailableError,
+    DatabaseTimeoutError,
+)

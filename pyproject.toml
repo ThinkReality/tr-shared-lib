@@ -1,6 +1,6 @@
 [project]
 name = "tr-shared-lib"
-version = "0.84.0"
+version = "0.85.0"
 description = "Shared library for ThinkRealty microservices"
 requires-python = ">=3.13"
 dependencies = [
@@ -152,4 +152,5 @@ dev = [
     "ruff>=0.8.6",
     "uvloop>=0.21.0",
     "psycopg[binary]>=3.2.0",
+    "psycopg2-binary>=2.9.0",
 ]

@@ -9,7 +9,11 @@ from tr_shared.db.base import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
-from tr_shared.db.errors import DatabaseTimeoutError, DatabaseUnavailableError
+from tr_shared.db.errors import (
+    DATABASE_OUTAGE_ERRORS,
+    DatabaseTimeoutError,
+    DatabaseUnavailableError,
+)
 from tr_shared.db.migrations import (
     assert_migrations_are_merged,
     bootstrap_schema_and_version_table,
@@ -20,11 +24,13 @@ from tr_shared.db.repository import BaseRepository
 from tr_shared.db.session import (
     DEFAULT_POOL_KWARGS,
     PGBOUNCER_CONNECT_ARGS,
+    OutageTypedQueuePool,
     create_async_engine_factory,
     create_session_factory,
     dispose_engines_after_fork,
     get_db,
-    install_transaction_statement_timeout,
+    prepare_sync_engine,
+    set_local_statement_timeout_sql,
 )
 from tr_shared.db.utils import (
     LIKE_ESCAPE_CHAR,
@@ -42,12 +48,14 @@ __all__ = [
     "Base",
     "BaseModel",
     "BaseRepository",
+    "DATABASE_OUTAGE_ERRORS",
     "DatabaseTimeoutError",
     "DatabaseUnavailableError",
     "LIKE_ESCAPE_CHAR",
     "LOCAL_DB_HOSTS",
     "LOCAL_DB_HOST_PREFIX",
     "DEFAULT_POOL_KWARGS",
+    "OutageTypedQueuePool",
     "PGBOUNCER_CONNECT_ARGS",
     "SoftDeleteMixin",
     "TenantMixin",
@@ -59,10 +67,11 @@ __all__ = [
     "create_session_factory",
     "escape_like",
     "get_db",
-    "install_transaction_statement_timeout",
     "is_local_dsn",
     "make_service_include_object",
+    "prepare_sync_engine",
     "run_async_migrations",
+    "set_local_statement_timeout_sql",
     "to_migration_url",
     "to_session_mode_url",
     "to_sync_url",

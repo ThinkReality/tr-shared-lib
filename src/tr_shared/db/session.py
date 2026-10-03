@@ -1,5 +1,5 @@
 """
-Shared async database session factory.
+Shared database engine and session factories (async engines; sync engines via prepare_sync_engine).
 
 Provides factory functions so each service controls its own engine/session
 lifecycle while getting PgBouncer/Supavisor-safe connect args and a client-side
@@ -143,16 +143,24 @@ _CONNECT_FAILED_SQLSTATE_PREFIXES = ("08", "53", "57")
 _CONNECTION_LOST_SQLSTATE_PREFIXES = ("08", "57P")
 
 
+def _sqlstate(exc: BaseException) -> str | None:
+    sqlstate: str | None = getattr(exc, "sqlstate", None) or getattr(exc, "pgcode", None)
+    return sqlstate
+
+
 def _is_unavailable(exc: Exception, sqlstate_prefixes: tuple[str, ...]) -> bool:
-    sqlstate = getattr(exc, "sqlstate", None) or ""
-    return isinstance(exc, OSError) or sqlstate.startswith(sqlstate_prefixes)
+    return isinstance(exc, OSError) or (_sqlstate(exc) or "").startswith(sqlstate_prefixes)
+
+
+def _is_connect_failure(dialect: Dialect, exc: Exception) -> bool:
+    if dialect.is_async:
+        return _is_unavailable(exc, _CONNECT_FAILED_SQLSTATE_PREFIXES)
+    return isinstance(exc, dialect.loaded_dbapi.OperationalError)
 
 
 def _install_error_translation(
-    engine: AsyncEngine, *, service_name: str, statement_timeout_seconds: float
+    engine: Engine, *, service_name: str, statement_timeout_seconds: float
 ) -> None:
-    sync_engine = engine.sync_engine
-
     def _connect(
         dialect: Dialect,
         connection_record: ConnectionPoolEntry,
@@ -162,7 +170,7 @@ def _install_error_translation(
         try:
             return dialect.connect(*cargs, **cparams)
         except Exception as exc:
-            if _is_unavailable(exc, _CONNECT_FAILED_SQLSTATE_PREFIXES):
+            if _is_connect_failure(dialect, exc):
                 raise DatabaseUnavailableError(
                     f"could not connect: {type(exc).__name__}",
                     code=DatabaseOutageCode.CONNECT_FAILED,
@@ -177,7 +185,7 @@ def _install_error_translation(
         if client_timed_out:
             context.is_disconnect = True
             context.invalidate_pool_on_disconnect = False
-        if client_timed_out or getattr(original, "sqlstate", None) == _QUERY_CANCELED_SQLSTATE:
+        if client_timed_out or _sqlstate(original) == _QUERY_CANCELED_SQLSTATE:
             logger.warning(
                 "db_statement_timeout",
                 extra={
@@ -195,8 +203,8 @@ def _install_error_translation(
                 code=DatabaseOutageCode.CONNECTION_LOST,
             ) from original
 
-    event.listen(sync_engine, "do_connect", _connect, insert=True)
-    event.listen(sync_engine, "handle_error", _translate)
+    event.listen(engine, "do_connect", _connect, insert=True)
+    event.listen(engine, "handle_error", _translate)
 
 
 _CHECKED_IN_AT = "tr_checked_in_at"
@@ -238,7 +246,7 @@ def _install_idle_validation(
     event.listen(sync_engine, "checkout", _validate)
 
 
-class OutageTypedAsyncQueuePool(AsyncAdaptedQueuePool):
+class OutageTypedQueuePool(QueuePool):
     def _do_get(self) -> ConnectionPoolEntry:
         try:
             return super()._do_get()
@@ -246,6 +254,10 @@ class OutageTypedAsyncQueuePool(AsyncAdaptedQueuePool):
             raise DatabaseUnavailableError(
                 "connection pool exhausted", code=DatabaseOutageCode.POOL_EXHAUSTED
             ) from exc
+
+
+class OutageTypedAsyncQueuePool(OutageTypedQueuePool, AsyncAdaptedQueuePool):
+    pass
 
 
 def create_async_engine_factory(
@@ -317,7 +329,9 @@ def create_async_engine_factory(
         **engine_kwargs,
     )
     _install_error_translation(
-        engine, service_name=service_name, statement_timeout_seconds=statement_timeout_seconds
+        engine.sync_engine,
+        service_name=service_name,
+        statement_timeout_seconds=statement_timeout_seconds,
     )
     if issubclass(pool_class, QueuePool):
         _install_idle_validation(
@@ -348,17 +362,27 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
     )
 
 
-def _set_local_statement_timeout(statement_timeout_seconds: float) -> str:
+def set_local_statement_timeout_sql(statement_timeout_seconds: float) -> str:
     return f"SET LOCAL statement_timeout = {int(statement_timeout_seconds * 1000)}"
 
 
-def install_transaction_statement_timeout(engine: Engine, statement_timeout_seconds: float) -> None:
-    statement = _set_local_statement_timeout(statement_timeout_seconds)
+def prepare_sync_engine(
+    engine: Engine, *, service_name: str, statement_timeout_seconds: float
+) -> None:
+    if not isinstance(engine.pool, (OutageTypedQueuePool, NullPool)):
+        raise ValueError(
+            f"poolclass={type(engine.pool).__name__} would leave pool exhaustion untyped; "
+            "pass poolclass=OutageTypedQueuePool, or NullPool"
+        )
+    statement = set_local_statement_timeout_sql(statement_timeout_seconds)
 
     def _cap(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
     event.listen(engine, "begin", _cap)
+    _install_error_translation(
+        engine, service_name=service_name, statement_timeout_seconds=statement_timeout_seconds
+    )
 
 
 async def get_db(

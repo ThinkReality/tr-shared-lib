@@ -13,6 +13,7 @@ from sqlalchemy.pool import (
     StaticPool,
 )
 
+import tr_shared.db
 from tr_shared.config import BaseServiceSettings
 from tr_shared.contracts.db_pool import (
     DB_CONNECT_TIMEOUT_SECONDS,
@@ -22,17 +23,23 @@ from tr_shared.contracts.db_pool import (
     DEFAULT_POOL_TIMEOUT_SECONDS,
     StatementTimeoutProfile,
 )
+from tr_shared.db import (
+    DATABASE_OUTAGE_ERRORS,
+    DatabaseTimeoutError,
+    DatabaseUnavailableError,
+    OutageTypedQueuePool,
+    prepare_sync_engine,
+    set_local_statement_timeout_sql,
+)
 from tr_shared.db.session import (
     PGBOUNCER_CONNECT_ARGS,
     OutageTypedAsyncQueuePool,
     _build_connect_args,
-    _set_local_statement_timeout,
     _to_asyncpg,
     create_async_engine_factory,
     create_session_factory,
     dispose_engines_after_fork,
     get_db,
-    install_transaction_statement_timeout,
 )
 
 _REQUEST_CAP = DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST]
@@ -421,19 +428,66 @@ class TestQueuePoolsAreTyped:
             )
 
 
-class TestTransactionStatementTimeout:
-    def test_the_cap_is_installed_on_begin(self):
+def _sync_engine(pool_class: type):
+    return create_engine("postgresql+psycopg://localhost/test", poolclass=pool_class)
+
+
+def _prepare(engine) -> None:
+    prepare_sync_engine(engine, service_name="svc", statement_timeout_seconds=_REQUEST_CAP)
+
+
+def _listeners(engine) -> tuple[bool, bool, bool]:
+    return (
+        bool(engine.dispatch.begin),
+        bool(engine.dialect.dispatch.do_connect),
+        bool(engine.dialect.dispatch.handle_error),
+    )
+
+
+class TestPrepareSyncEngine:
+    @pytest.mark.parametrize("pool_class", [OutageTypedQueuePool, NullPool])
+    def test_the_cap_and_the_error_translation_are_installed_together(self, pool_class):
+        engine = _sync_engine(pool_class)
+        assert _listeners(engine) == (False, False, False)
+        _prepare(engine)
+        assert _listeners(engine) == (True, True, True)
+
+    @pytest.mark.parametrize("pool_class", [QueuePool, StaticPool])
+    def test_an_untyped_pool_is_rejected_before_anything_is_installed(self, pool_class):
+        engine = _sync_engine(pool_class)
+        with pytest.raises(ValueError, match=rf"^poolclass={pool_class.__name__} "):
+            _prepare(engine)
+        assert _listeners(engine) == (False, False, False)
+
+    def test_the_default_pool_of_create_engine_is_rejected(self):
         engine = create_engine("postgresql+psycopg://localhost/test")
-        assert not engine.dispatch.begin
-        install_transaction_statement_timeout(engine, _REQUEST_CAP)
-        assert engine.dispatch.begin
+        with pytest.raises(ValueError, match=r"^poolclass=QueuePool "):
+            _prepare(engine)
 
     @pytest.mark.parametrize("profile", list(StatementTimeoutProfile))
     def test_the_cap_is_sent_in_whole_milliseconds(self, profile):
         seconds = DB_STATEMENT_TIMEOUT_SECONDS[profile]
-        assert _set_local_statement_timeout(seconds) == (
+        assert set_local_statement_timeout_sql(seconds) == (
             f"SET LOCAL statement_timeout = {int(seconds * 1000)}"
         )
+
+
+class TestPublicApi:
+    def test_the_sync_engine_surface_is_exported(self):
+        assert {
+            "DATABASE_OUTAGE_ERRORS",
+            "OutageTypedQueuePool",
+            "prepare_sync_engine",
+            "set_local_statement_timeout_sql",
+        } <= set(tr_shared.db.__all__)
+
+    def test_a_cap_without_the_typing_is_no_longer_public(self):
+        assert "install_transaction_statement_timeout" not in tr_shared.db.__all__
+        assert not hasattr(tr_shared.db, "install_transaction_statement_timeout")
+        assert not hasattr(tr_shared.db.session, "install_transaction_statement_timeout")
+
+    def test_the_outage_errors_are_the_two_typed_outages(self):
+        assert DATABASE_OUTAGE_ERRORS == (DatabaseUnavailableError, DatabaseTimeoutError)
 
 
 class TestIdleValidationWiring:

@@ -44,10 +44,12 @@ __all__ = [
     "assert_environment_vocabulary",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
+    "assert_no_flattened_errors",
     "assert_no_infra_skips",
     "assert_no_ryuk_disabled",
     "assert_no_schema_construction",
     "assert_no_sqlite_dsn",
+    "assert_no_swallowed_db_errors",
     "assert_no_testing_flag_in_production",
     "find_violations",
     "iter_shell_files",
@@ -654,4 +656,293 @@ def assert_environment_vocabulary(
         "alias — that is the shim the directive forbids. Note that omitting 'test' "
         "silently routes test containers down the production branch.",
         iterator=iter_shell_files,
+    )
+
+
+_GENERIC_SQLALCHEMY_ERRORS = frozenset(
+    {
+        "SQLAlchemyError",
+        "DBAPIError",
+        "OperationalError",
+        "InterfaceError",
+        "DatabaseError",
+        "TimeoutError",
+    }
+)
+_BROAD_EXCEPTIONS = frozenset({"Exception", "BaseException"})
+_OUTAGE_ERRORS = frozenset({"DatabaseUnavailableError", "DATABASE_OUTAGE_ERRORS"})
+_DB_CALLEE = re.compile(
+    r"Repository$|Repo$|SessionLocal|session_factory|^get_(sync_)?db$|execute_sql"
+    r"|(^|_)db($|_)|(^|_)repo($|_)|(^|_)uow($|_)"
+)
+_DB_RECEIVER = re.compile(
+    r"(^|_)(db|session|repo|repository|uow)($|_)|_repo$|Repository|SessionLocal"
+)
+_DB_METHODS = frozenset(
+    {
+        "execute",
+        "scalar",
+        "scalars",
+        "scalar_one",
+        "scalar_one_or_none",
+        "flush",
+        "commit",
+        "refresh",
+        "get_by_id",
+    }
+)
+_NOT_DB = ("cache", "redis", "pipe", "websocket", "driver")
+_FLATTENING_ERRORS = frozenset({"InternalServerError", "DatabaseError"})
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+
+def _own_nodes(body: list[ast.stmt]) -> Iterator[ast.AST]:
+    stack: list[ast.AST] = list(body)
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, _NESTED_SCOPES):
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def _chain(node: ast.expr) -> list[str]:
+    parts: list[str] = []
+    while True:
+        if isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        elif isinstance(node, ast.Name):
+            parts.append(node.id)
+            break
+        elif isinstance(node, ast.Call):
+            node = node.func
+        elif isinstance(node, (ast.Subscript, ast.Await)):
+            node = node.value
+        else:
+            break
+    return parts[::-1]
+
+
+def _last_name(node: ast.expr) -> str:
+    chain = _chain(node)
+    return chain[-1] if chain else ""
+
+
+def _imports(tree: ast.Module) -> dict[str, str]:
+    origins: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                origins[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    origins[alias.asname] = alias.name
+                else:
+                    root = alias.name.split(".")[0]
+                    origins[root] = root
+    return origins
+
+
+def _tries(
+    node: ast.AST, in_repository: bool = False
+) -> Iterator[tuple[ast.Try | ast.TryStar, bool]]:
+    if isinstance(node, ast.ClassDef) and node.name.endswith(("Repository", "Repo")):
+        in_repository = True
+    if isinstance(node, (ast.Try, ast.TryStar)):
+        yield node, in_repository
+    for child in ast.iter_child_nodes(node):
+        yield from _tries(child, in_repository)
+
+
+def _expand(elts: list[ast.expr], aliases: Mapping[str, list[ast.expr]]) -> list[ast.expr]:
+    return [
+        item
+        for elt in elts
+        for item in (aliases.get(elt.id, [elt]) if isinstance(elt, ast.Name) else [elt])
+    ]
+
+
+def _tuple_aliases(tree: ast.Module) -> dict[str, list[ast.expr]]:
+    aliases: dict[str, list[ast.expr]] = {}
+    for node in tree.body:
+        targets: list[ast.expr]
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        if isinstance(node.value, ast.Tuple):
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    aliases[target.id] = _expand(node.value.elts, aliases)
+    return aliases
+
+
+def _caught(handler: ast.ExceptHandler, aliases: Mapping[str, list[ast.expr]]) -> list[ast.expr]:
+    if handler.type is None:
+        return []
+    elts = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return _expand(elts, aliases)
+
+
+def _is_broad(handler: ast.ExceptHandler, aliases: Mapping[str, list[ast.expr]]) -> bool:
+    return handler.type is None or any(
+        isinstance(caught, ast.Name) and caught.id in _BROAD_EXCEPTIONS
+        for caught in _caught(handler, aliases)
+    )
+
+
+def _reraises(handler: ast.ExceptHandler) -> bool:
+    return any(isinstance(node, ast.Raise) for node in _own_nodes(handler.body))
+
+
+def _is_generic_sqlalchemy(caught: ast.expr, imports: Mapping[str, str]) -> bool:
+    parts = _chain(caught)
+    origin = imports.get(parts[0]) if parts else None
+    if origin is None:
+        return False
+    qualified = ".".join([origin, *parts[1:]])
+    return (
+        qualified.startswith("sqlalchemy.")
+        and qualified.rsplit(".", 1)[-1] in _GENERIC_SQLALCHEMY_ERRORS
+    )
+
+
+def _reraises_outage_only(
+    handler: ast.ExceptHandler, aliases: Mapping[str, list[ast.expr]]
+) -> bool:
+    body = handler.body
+    return (
+        len(body) == 1
+        and isinstance(body[0], ast.Raise)
+        and body[0].exc is None
+        and any(_last_name(caught) in _OUTAGE_ERRORS for caught in _caught(handler, aliases))
+    )
+
+
+def _calls_db(body: list[ast.stmt]) -> bool:
+    for node in _own_nodes(body):
+        if not isinstance(node, ast.Call):
+            continue
+        chain = _chain(node.func)
+        if not chain or any(word in part.lower() for part in chain for word in _NOT_DB):
+            continue
+        callee = chain[-1]
+        receiver = chain[-2] if len(chain) > 1 else None
+        if _DB_CALLEE.search(callee) or (
+            receiver is not None and (_DB_RECEIVER.search(receiver) or callee in _DB_METHODS)
+        ):
+            return True
+    return False
+
+
+def detect_swallowed_db_errors(source: str) -> list[int]:
+    """Handlers that stop a database error before it reaches the boundary."""
+    tree = ast.parse(source)
+    imports = _imports(tree)
+    aliases = _tuple_aliases(tree)
+    hits: list[int] = []
+    for node, in_repository in _tries(tree):
+        credited = False
+        for handler in node.handlers:
+            if _reraises_outage_only(handler, aliases):
+                credited = True
+            if _reraises(handler):
+                continue
+            caught = _caught(handler, aliases)
+            if any(_is_generic_sqlalchemy(expr, imports) for expr in caught):
+                hits.append(handler.lineno)
+            elif (
+                not credited
+                and _is_broad(handler, aliases)
+                and (in_repository or _calls_db(node.body))
+            ):
+                hits.append(handler.lineno)
+    return sorted(hits)
+
+
+def _flattens(raised: ast.Raise) -> bool:
+    if raised.exc is None:
+        return False
+    name = _last_name(raised.exc)
+    if name in _FLATTENING_ERRORS or name.endswith("InternalServerError"):
+        return True
+    call = raised.exc if isinstance(raised.exc, ast.Call) else None
+    if name != "HTTPException" or call is None:
+        return False
+    statuses = [*call.args[:1], *(kw.value for kw in call.keywords if kw.arg == "status_code")]
+    return any(
+        (isinstance(status, ast.Constant) and status.value == 500)
+        or (isinstance(status, ast.Attribute) and status.attr == "HTTP_500_INTERNAL_SERVER_ERROR")
+        for status in statuses
+    )
+
+
+def detect_flattened_errors(source: str) -> list[int]:
+    """Broad handlers that turn whatever they caught into a generic 500."""
+    tree = ast.parse(source)
+    aliases = _tuple_aliases(tree)
+    hits: list[int] = []
+    for node, _ in _tries(tree):
+        for handler in node.handlers:
+            if _is_broad(handler, aliases) and any(
+                isinstance(raised, ast.Raise) and _flattens(raised)
+                for raised in _own_nodes(handler.body)
+            ):
+                hits.append(handler.lineno)
+    return sorted(hits)
+
+
+def assert_no_swallowed_db_errors(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """A database error reaches the boundary, where the shared handlers type it.
+
+    An outage answers 503/504 and a SQL bug answers a paged 500 — but only if it
+    gets there. A catch that logs and returns ``None``, ``[]`` or ``False`` turns
+    either into a wrong answer: a false 404, an empty 200, "0 permits". Flags a
+    generic SQLAlchemy catch without a re-raise, a broad catch without a re-raise
+    inside a ``*Repository`` / ``*Repo`` class, and a broad catch without a
+    re-raise whose ``try`` body makes a DB-looking call. The last is a name
+    heuristic; a false positive or a health probe gets an ``Exemption``.
+    """
+    _assert(
+        app_root,
+        detect_swallowed_db_errors,
+        allowlist or {},
+        "A database error is swallowed before it reaches the boundary. A repository "
+        "never swallows; a generic SQLAlchemy catch (SQLAlchemyError, DBAPIError, "
+        "OperationalError, InterfaceError, DatabaseError, TimeoutError) must re-raise; "
+        "a broad catch around DB work must let an outage through. Fix: delete the "
+        "catch and let the error propagate. To keep a best-effort side step, put "
+        "`except DATABASE_OUTAGE_ERRORS: raise` (per-item loop: "
+        "`except DatabaseUnavailableError: raise`) as an earlier sibling of the broad "
+        "catch. Narrow IntegrityError/DataError/NoResultFound catches are allowed.",
+        skip=("alembic",),
+    )
+
+
+def assert_no_flattened_errors(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """Nobody converts an unknown exception into a generic 500.
+
+    ``GlobalErrorHandlerMiddleware`` already answers an unhandled exception with a
+    500 and a Slack page, and the registered DB handlers answer outages with an
+    unpaged 503/504. A broad catch that raises ``InternalServerError``,
+    ``DatabaseError``, any ``*InternalServerError`` or ``HTTPException(500)``
+    flattens an outage into a paged 500. Converting a specific exception into a
+    specific domain error stays allowed.
+    """
+    _assert(
+        app_root,
+        detect_flattened_errors,
+        allowlist or {},
+        "A broad catch converts an unknown exception into a generic 500, which turns "
+        "a database outage (503/504) into a paged 500. Fix: delete the wrapper — the "
+        "shared handlers own 500, 503 and 504. Converting a specific exception into a "
+        "specific domain error (except ValueError: raise ValidationError(...)) is fine.",
+        skip=("alembic",),
     )
