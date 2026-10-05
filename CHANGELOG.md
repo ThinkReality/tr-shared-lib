@@ -5,6 +5,26 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — `GlobalErrorHandlerMiddleware` stops paging deliberate 503s and budgets per error code
+
+A handled 503 that carries `Retry-After` no longer pages Slack. It is still logged as
+`Handled 5xx response`. The rule is exactly "status 503 and a `Retry-After` header", so a 500,
+502 or 504 that carries the header still pages, and so does a 503 without it. The
+`DatabaseOutageCode` exemption stays; after this change it is what keeps the statement-timeout
+504 unpaged.
+
+The paging budget (`rate_limit` per hour) is keyed by the response's error code, falling back
+to `HTTP<status>` when the body has none. It was keyed by status alone, so five harmless 503s
+muted the next, unrelated 503 for the rest of the hour. The log record and the Slack message
+gain nothing visible except a new `error_code` field on the log record.
+
+**Consumer action:** none. Who stops paging depends on who sends `Retry-After`: the gateway's
+503s, WAM's `WAM_UNAVAILABLE_001` and the database outage 503s do. The other raise sites of
+`ServiceUnavailableError` leave `retry_after` unset and keep paging. A service opts a 503 out
+of paging with `ServiceUnavailableError(retry_after=UNAVAILABLE_RETRY_AFTER_SECONDS)`.
+
 ## [0.85.0] - 2026-10-03
 
 ### Changed — BREAKING: `install_transaction_statement_timeout` is replaced by `prepare_sync_engine`

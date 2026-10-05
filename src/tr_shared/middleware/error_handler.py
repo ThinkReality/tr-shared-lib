@@ -59,6 +59,11 @@ def _error_code(body: bytes) -> str | None:
     return code if isinstance(code, str) else None
 
 
+def _is_unpaged(response: Response, code: str | None) -> bool:
+    announced_unavailable = response.status_code == 503 and "Retry-After" in response.headers
+    return announced_unavailable or code in _UNPAGED_ERROR_CODES
+
+
 _pending_alerts: set[asyncio.Task] = set()
 
 
@@ -93,13 +98,15 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
                 body_bytes = b"".join([chunk async for chunk in response.body_iterator])
                 body_text = body_bytes.decode("utf-8", errors="replace")[:500]
 
+                error_code = _error_code(body_bytes)
                 ctx = self._build_context(
                     request,
                     status_code=response.status_code,
                     response_body=body_text,
+                    error_code=error_code,
                 )
                 logger.error("Handled 5xx response", extra=ctx)
-                if _error_code(body_bytes) not in _UNPAGED_ERROR_CODES:
+                if not _is_unpaged(response, error_code):
                     self._fire_alert(ctx)
 
                 # Rebuild from raw_headers to avoid MutableHeaders.__getitem__ KeyError
@@ -142,6 +149,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
         request: Request,
         error: str = "",
         error_type: str = "",
+        error_code: str | None = None,
         tb: str | None = None,
         status_code: int = 500,
         response_body: str = "",
@@ -160,6 +168,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             "status_code": status_code,
             "error": error or f"HTTP {status_code}",
             "error_type": error_type or f"HTTP{status_code}",
+            "error_code": error_code,
             "user_id": user_id,
             "tenant_id": tenant_id,
             "correlation_id": getattr(request.state, "correlation_id", "unknown"),
@@ -189,7 +198,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
         task.add_done_callback(_pending_alerts.discard)
 
     async def _send_slack_alert(self, ctx: dict) -> None:
-        error_key = f"{ctx['service']}:{ctx['error_type']}"
+        error_key = f"{ctx['service']}:{ctx['error_code'] or ctx['error_type']}"
         now = datetime.now(UTC)
 
         if error_key not in self._error_timestamps:
