@@ -19,6 +19,8 @@ from tr_shared.redis.client import get_redis_client
 logger = logging.getLogger(__name__)
 
 _PROCESSING_SENTINEL = json.dumps({"s": "processing"})
+_PROCESSING_TTL_SECONDS = 300
+_UNCACHED_STATUSES = frozenset({401, 403, 429})
 
 
 class APIIdempotencyMiddleware(BaseHTTPMiddleware):
@@ -72,7 +74,9 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
         cache_key = self._build_key(str(tenant_id), idempotency_key)
 
         try:
-            was_set = await redis.set(cache_key, _PROCESSING_SENTINEL, nx=True, ex=self._ttl)
+            was_set = await redis.set(
+                cache_key, _PROCESSING_SENTINEL, nx=True, ex=_PROCESSING_TTL_SECONDS
+            )
         except Exception:
             logger.warning("Idempotency SET NX failed — processing normally", exc_info=True)
             return await call_next(request)
@@ -130,34 +134,19 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
         redis: Any,
         cache_key: str,
     ) -> Response:
-        response = await call_next(request)
-
-        body_bytes = b""
-        async for chunk in response.body_iterator:
-            body_bytes += chunk
+        try:
+            response = await call_next(request)
+            body_bytes = b""
+            async for chunk in response.body_iterator:
+                body_bytes += chunk
+        except BaseException:
+            await self._release(redis, cache_key)
+            raise
 
         status_code = response.status_code
         content_type = response.headers.get("content-type", "application/json")
-
-        # Cache 2xx and 4xx; skip 5xx (allow retry)
-        if status_code < 500 and len(body_bytes) <= self._max_response_size:
-            try:
-                cache_value = json.dumps(
-                    {
-                        "s": "completed",
-                        "sc": status_code,
-                        "b": body_bytes.decode("utf-8", errors="replace"),
-                        "ct": content_type,
-                    }
-                )
-                await redis.set(cache_key, cache_value, ex=self._ttl)
-            except Exception:
-                logger.warning("Idempotency: failed to cache response", exc_info=True)
-        elif status_code >= 500:
-            try:
-                await redis.delete(cache_key)
-            except Exception:
-                pass
+        if not await self._store_completed(redis, cache_key, status_code, body_bytes, content_type):
+            await self._release(redis, cache_key)
 
         response_headers = {
             k: v
@@ -170,3 +159,35 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
             media_type=content_type,
             headers=response_headers,
         )
+
+    async def _store_completed(
+        self,
+        redis: Any,
+        cache_key: str,
+        status_code: int,
+        body_bytes: bytes,
+        content_type: str,
+    ) -> bool:
+        executed = status_code < 500 and status_code not in _UNCACHED_STATUSES
+        if not executed or len(body_bytes) > self._max_response_size:
+            return False
+        try:
+            cache_value = json.dumps(
+                {
+                    "s": "completed",
+                    "sc": status_code,
+                    "b": body_bytes.decode("utf-8", errors="replace"),
+                    "ct": content_type,
+                }
+            )
+            await redis.set(cache_key, cache_value, ex=self._ttl)
+        except Exception:
+            logger.warning("Idempotency: failed to cache response", exc_info=True)
+            return False
+        return True
+
+    async def _release(self, redis: Any, cache_key: str) -> None:
+        try:
+            await redis.delete(cache_key)
+        except Exception:
+            logger.warning("Idempotency: failed to release key", exc_info=True)
