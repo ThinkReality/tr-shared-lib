@@ -17,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from tr_shared.contracts.availability import DatabaseOutageCode
+from tr_shared.contracts.headers import HttpHeader
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,9 @@ def _error_code(body: bytes) -> str | None:
 
 
 def _is_unpaged(response: Response, code: str | None) -> bool:
-    announced_unavailable = response.status_code == 503 and "Retry-After" in response.headers
+    announced_unavailable = (
+        response.status_code == 503 and HttpHeader.RETRY_AFTER.value in response.headers
+    )
     return announced_unavailable or code in _UNPAGED_ERROR_CODES
 
 

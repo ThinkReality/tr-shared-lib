@@ -40,3 +40,7 @@ def test_celery_correlation_header_is_a_python_identifier():
 
 def test_request_timeout_header_name():
     assert HttpHeader.REQUEST_TIMEOUT_MS.value == "X-Request-Timeout-Ms"
+
+
+def test_retry_after_header_name():
+    assert HttpHeader.RETRY_AFTER.value == "Retry-After"
