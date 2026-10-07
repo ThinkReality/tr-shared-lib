@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -21,8 +22,15 @@ from tr_shared.rate_limiter.schemas import (
     RateLimitResult,
     WindowConfig,
 )
+from tr_shared.redis.connection import require_plain_redis_url
+from tr_shared.redis.pool import build_connection_pool
 
 logger = logging.getLogger(__name__)
+
+RATE_LIMIT_REDIS_TIMEOUT_SECONDS = 1
+RATE_LIMIT_REDIS_MAX_CONNECTIONS = 50
+
+RedisProvider = Callable[[], Awaitable[Any | None]]
 
 _ALGORITHMS: dict[Algorithm, BaseAlgorithm] = {
     Algorithm.FIXED_WINDOW: FixedWindowAlgorithm(),
@@ -40,27 +48,36 @@ class RateLimiter:
         redis_url: str = "",
         key_prefix: str = "",
         enable_memory_fallback: bool = True,
+        redis_provider: RedisProvider | None = None,
     ) -> None:
+        sources = [redis_client is not None, bool(redis_url), redis_provider is not None]
+        if sum(sources) > 1:
+            raise ValueError(
+                "RateLimiter takes at most one of redis_client, redis_url, redis_provider"
+            )
+        if redis_url:
+            require_plain_redis_url(redis_url)
         self._redis_client = redis_client
         self._redis_url = redis_url
+        self._redis_provider = redis_provider
         self._key_prefix = key_prefix
         self._memory_fallback = MemoryFallback() if enable_memory_fallback else None
 
     async def _get_redis(self) -> Any | None:
-        if self._redis_client is not None:
-            return self._redis_client
+        if self._redis_provider is not None:
+            return await self._redis_provider()
 
-        if self._redis_url:
-            try:
-                self._redis_client = aioredis.from_url(
-                    self._redis_url, encoding="utf-8", decode_responses=True
+        if self._redis_client is None and self._redis_url:
+            self._redis_client = aioredis.Redis(
+                connection_pool=build_connection_pool(
+                    self._redis_url,
+                    max_connections=RATE_LIMIT_REDIS_MAX_CONNECTIONS,
+                    socket_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
+                    socket_connect_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
+                    decode_responses=True,
                 )
-                return self._redis_client
-            except Exception as e:
-                logger.warning("Failed to connect to Redis for rate limiting: %s", e)
-                return None
-
-        return None
+            )
+        return self._redis_client
 
     async def check(
         self,
