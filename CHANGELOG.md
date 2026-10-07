@@ -5,7 +5,95 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.86.0] - 2026-10-07
+
+**Upgrade at a glance** (every item is detailed below):
+
+- `CircuitBreaker(...)`: drop `redis_client=` and `state_ttl=` (WAM, people-finance). Nothing reads
+  `last_failure_time` any more (lead-management's uncalled `listing.py` helpers do; delete them).
+- `IntegrationConfigClient(...)`: drop `redis_client=` if passed (no service passes it today).
+- `RateLimiter`: pass at most one of `redis_client` / `redis_url` / `redis_provider`; the gateway
+  replaces its `_get_redis` override with `redis_provider=`.
+- Replace `hmac.compare_digest` / `secrets.compare_digest` with
+  `tr_shared.security.constant_time_equals`, and add the `TID251` ban to the service's ruff config.
+- Replace raw `"Retry-After"` literals with `HttpHeader.RETRY_AFTER`.
+- Wire `tr_shared.alerts.alert_task_failed_permanently` where a task can fail for good
+  (lead-management's `process_webhook_task` first).
+- Everything else needs no consumer change.
+
+### Changed — BREAKING: `CircuitBreaker` is per process, admits one probe, and a lost probe expires
+
+- **One probe.** After `recovery_timeout` an open breaker admits exactly one call. It admitted two:
+  the call that moved it to HALF_OPEN and the next one.
+- **A lost probe expires.** A probe that never reports (`record_success`/`record_failure`) within
+  another `recovery_timeout` is treated as lost and the next call becomes the new probe. Before,
+  the breaker refused every call until the process restarted. Callers that hit this: WAM's bot
+  client on any bot 4xx or `ReadError`, crm-core's AuthContext cache on a cache miss, the
+  PropertyFinder client's 401 retry, and every 4xx path that records nothing.
+- **No Redis.** `redis_client` and `state_ttl` are removed, with `last_failure_time`. Redis state
+  was loaded once per process and then overwritten last-writer-wins, so it was never shared, and
+  its I/O ran inside the breaker's lock, so a hung Redis queued every guarded call.
+  `IntegrationConfigClient` loses its `redis_client` argument, which only fed its breaker.
+- Timing uses `time.monotonic()`; `recovery_timeout` accepts a float.
+
+**Consumer action:** drop `redis_client=` from `CircuitBreaker(...)` (WAM `whatsapp_client`,
+people-finance `app/main.py`). lead-management's `listing.py` `get_circuit_breaker_status` /
+`reset_circuit_breaker` read `last_failure_time`; they have no callers.
+
+### Fixed — `APIIdempotencyMiddleware` no longer replays "never executed" answers or keeps a stuck lock
+
+- **401, 403 and 429 are not cached.** They mean the request never ran, so the key is deleted as for
+  a 5xx and a retry runs the route. A 429 under a client's key used to be replayed for 24 h
+  without `Retry-After`, so every retry of a rate-limited message got the stored 429 (WAM inbound
+  WhatsApp loss). 2xx, 400, 409 and 422 are still cached for the TTL.
+- **The processing lock always goes.** An untyped exception or a cancelled request (`BaseException`
+  around `call_next` and the body read), an answer over `max_response_size`, and a failed save of
+  the completed answer each delete the key. Before, each left the lock for 24 h and every retry got
+  409 `IDEMPOTENCY_CONFLICT`.
+- **The lock has its own 300 s TTL** (completed answers keep `ttl`, 86400), so a killed process
+  heals itself.
+- A failed delete is logged instead of silently passed.
+
+**Consumer action:** none.
+
+### Fixed — `RateLimiter(redis_url=...)` builds a bounded, proxy-safe client; new `redis_provider`
+
+`RateLimiter` built its client with a bare `redis.asyncio.from_url`: no socket or connect timeout,
+no `ProxySafeConnection`, no keepalive. Against a Redis that accepts and never answers, `check`
+never returned (measured: still waiting at 30 s), and `RateLimitMiddleware` runs on every
+request. The client now comes from `build_connection_pool` with a 1 s socket and connect timeout
+(`RATE_LIMIT_REDIS_TIMEOUT_SECONDS`), so a silent Redis falls back to memory within about 1 s.
+A `redis_url` the pool cannot serve (`rediss://`, `unix://`) is refused at construction instead of
+on the first request.
+
+New `redis_provider`: an async callable returning a client or `None`, asked on every check. At most
+one of `redis_client`, `redis_url`, `redis_provider` may be passed (`ValueError` otherwise); none
+still means memory fallback only.
+
+**Consumer action:** tr-api-gateway replaces its `GatewayRateLimiter._get_redis` override with
+`RateLimiter(redis_provider=get_shared_redis_client, ...)`. Every other caller: none.
+
+### Fixed — `DatabaseUnavailableError` survives Celery
+
+A task that failed with `DatabaseUnavailableError` reached `task_failure` handlers, `on_failure`
+and the result backend as `UnpickleableExceptionWrapper`, and a JSON result backend rebuilt it
+as a plain `Exception("<class '…DatabaseUnavailableError'>(…)")`: the class and `.code` were
+lost. The keyword-only `code` was not in `args`, so neither pickle nor Celery's `cls(*args)`
+could rebuild it. `code` is now part of `args` and `str(exc)` is still the message alone.
+
+**Consumer action:** none. `code=` by keyword still works. `repr(exc)` now shows the code.
+
+### Added — `tr_shared.security.constant_time_equals`; webhook verifiers stop raising on non-ASCII
+
+`hmac.compare_digest` raises `TypeError` when either `str` holds a non-ASCII character, so one
+crafted byte in a webhook signature header turned a 401 into an unhandled 500 (and a Slack
+page). `constant_time_equals(a, b)` accepts `str` or `bytes`, encodes text as UTF-8 and compares
+bytes. `HMACVerifier` (PropertyFinder), `MetaWebhookVerifier` and `BayutMD5Verifier` (Dubizzle)
+use it. Ruff `TID251` now bans `hmac.compare_digest` and `secrets.compare_digest` everywhere
+except `tr_shared/security.py`, and CI now runs `tests/unit/webhooks`.
+
+**Consumer action:** call `constant_time_equals` instead of `compare_digest`, and add the same
+`TID251` `banned-api` entries to the service's ruff config.
 
 ### Changed — `GlobalErrorHandlerMiddleware` stops paging deliberate 503s and budgets per error code
 
@@ -24,6 +112,31 @@ gain nothing visible except a new `error_code` field on the log record.
 503s, WAM's `WAM_UNAVAILABLE_001` and the database outage 503s do. The other raise sites of
 `ServiceUnavailableError` leave `retry_after` unset and keep paging. A service opts a 503 out
 of paging with `ServiceUnavailableError(retry_after=UNAVAILABLE_RETRY_AFTER_SECONDS)`.
+
+### Added — `tr_shared.alerts`: one Slack path, and an alert when a Celery task fails for good
+
+`alert_task_failed_permanently(webhook_url=, service=, environment=, task_name=, task_id=,
+correlation_id=, error_type=)` posts one Slack alert for a task that has exhausted its retries.
+It is synchronous (Celery task code is), never raises, sends no task arguments or payload, and is
+budgeted per `service:task:<name>` at `TASK_ALERTS_PER_HOUR` (5) per process. Nothing alerted on
+a permanent task failure before; the only Slack path in the lib was the HTTP middleware.
+
+`SlackAlertBudget` and `slack_message` are the shared budget and Block Kit layout.
+`GlobalErrorHandlerMiddleware` now uses both; its Slack payload is byte-identical to before.
+Needs the `http` or `middleware` extra (httpx).
+
+**Consumer action:** lead-management calls it from `process_webhook_task`'s permanent-failure
+branch. The service-local Slack senders (crm-core `slack_alert.py`, realty `scraping/shared/slack.py`,
+gateway `error_handler.send_slack_alert`) are candidates to move onto it.
+
+### Added — `HttpHeader.RETRY_AFTER`
+
+`Retry-After` joins the header SSOT, and the five raw `"Retry-After"` literals in the lib
+(`RateLimitError`, `ServiceUnavailableError`, the error handler's paging rule, the rate-limit
+middleware and dependency) now read it. `contracts/http-headers.json` is regenerated.
+
+**Consumer action:** replace raw `"Retry-After"` literals with `HttpHeader.RETRY_AFTER` (the
+gateway has three).
 
 ## [0.85.0] - 2026-10-03
 
