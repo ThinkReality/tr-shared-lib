@@ -1,193 +1,127 @@
-"""Tests for CircuitBreaker."""
+import asyncio
+import inspect
 
-import time
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock
+import pytest
 
 from tr_shared.http.circuit_breaker import CircuitBreaker, CircuitState
 
-
-class TestInitialization:
-    def test_starts_closed(self):
-        cb = CircuitBreaker("svc")
-        assert cb.state == CircuitState.CLOSED
-
-    def test_failure_count_starts_zero(self):
-        cb = CircuitBreaker("svc")
-        assert cb.failure_count == 0
-
-    def test_default_threshold_is_5(self):
-        cb = CircuitBreaker("svc")
-        assert cb.failure_threshold == 5
-
-    def test_custom_threshold(self):
-        cb = CircuitBreaker("svc", failure_threshold=3)
-        assert cb.failure_threshold == 3
+RECOVERY = 0.05
 
 
-class TestClosedState:
-    async def test_is_open_returns_false_when_closed(self):
-        cb = CircuitBreaker("svc")
-        assert await cb.is_open() is False
-
-    async def test_record_success_resets_failure_count(self):
-        cb = CircuitBreaker("svc")
-        cb.failure_count = 3
-        await cb.record_success()
-        assert cb.failure_count == 0
-
-    async def test_failure_below_threshold_stays_closed(self):
-        cb = CircuitBreaker("svc", failure_threshold=5)
-        for _ in range(4):
-            await cb.record_failure()
-        assert cb.state == CircuitState.CLOSED
-
-    async def test_failure_at_threshold_opens_breaker(self):
-        cb = CircuitBreaker("svc", failure_threshold=3)
-        for _ in range(3):
-            await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
-
-    async def test_record_failure_increments_count(self):
-        cb = CircuitBreaker("svc", failure_threshold=10)
-        await cb.record_failure()
-        await cb.record_failure()
-        assert cb.failure_count == 2
+async def _opened(threshold: int = 1, recovery: float = RECOVERY) -> CircuitBreaker:
+    breaker = CircuitBreaker("svc", failure_threshold=threshold, recovery_timeout=recovery)
+    for _ in range(threshold):
+        await breaker.record_failure()
+    return breaker
 
 
-class TestOpenState:
-    async def test_is_open_returns_true_when_open(self):
-        cb = CircuitBreaker("svc", failure_threshold=1)
-        await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
-        assert await cb.is_open() is True
-
-    async def test_transitions_to_half_open_after_timeout(self):
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        assert await cb.is_open() is False
-        assert cb.state == CircuitState.HALF_OPEN
-
-    async def test_still_open_before_timeout(self):
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=3600)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now()
-        assert await cb.is_open() is True
+async def _half_open() -> CircuitBreaker:
+    breaker = await _opened()
+    await asyncio.sleep(RECOVERY * 1.5)
+    assert await breaker.is_open() is False
+    assert breaker.state == CircuitState.HALF_OPEN
+    return breaker
 
 
-class TestHalfOpenState:
-    async def test_first_probe_allowed(self):
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        is_open = await cb.is_open()
-        assert is_open is False
-        assert cb.state == CircuitState.HALF_OPEN
+async def test_a_new_breaker_is_closed_and_admits_calls():
+    breaker = CircuitBreaker("svc")
 
-    async def test_concurrent_probes_rejected(self):
-        """Only one probe may be in flight in HALF_OPEN; subsequent calls are rejected
-        until the probe resolves (call 1 transitions+allows, call 2 is the probe, call 3 rejected)."""
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()
-        await cb.is_open()
-        assert await cb.is_open() is True
-
-    async def test_success_in_half_open_closes_breaker(self):
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()
-        await cb.record_success()
-        assert cb.state == CircuitState.CLOSED
-
-    async def test_failure_in_half_open_reopens_breaker(self):
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()
-        await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+    assert breaker.state == CircuitState.CLOSED
+    assert breaker.failure_count == 0
+    assert await breaker.is_open() is False
 
 
-class TestTransition:
-    async def test_state_changes_are_logged(self):
-        cb = CircuitBreaker("svc", failure_threshold=1)
-        await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+async def test_failures_below_the_threshold_keep_it_closed():
+    breaker = CircuitBreaker("svc", failure_threshold=3)
+    await breaker.record_failure()
+    await breaker.record_failure()
 
-    def test_same_state_transition_is_noop(self):
-        cb = CircuitBreaker("svc")
-        old_state = cb.state
-        cb._transition(CircuitState.CLOSED)
-        assert cb.state == old_state
+    assert breaker.state == CircuitState.CLOSED
+    assert await breaker.is_open() is False
 
 
-def _mock_redis(state_data: dict | None = None):
-    """Return an AsyncMock Redis client, optionally pre-populated with state."""
-    r = AsyncMock()
-    r.hgetall = AsyncMock(return_value=state_data or {})
-    r.hset = AsyncMock(return_value=1)
-    r.expire = AsyncMock(return_value=1)
-    return r
+async def test_a_success_resets_the_failure_count():
+    breaker = CircuitBreaker("svc", failure_threshold=3)
+    await breaker.record_failure()
+    await breaker.record_failure()
+    await breaker.record_success()
+    await breaker.record_failure()
+
+    assert breaker.failure_count == 1
+    assert breaker.state == CircuitState.CLOSED
 
 
-class TestRedisStatePersistence:
-    async def test_open_state_loaded_from_redis_on_first_is_open(self):
-        """If Redis has state=open with a recent failure, the breaker starts OPEN."""
-        recent_ts = str(time.time())
-        redis = _mock_redis({"state": "open", "failure_count": "5", "last_failure_time": recent_ts})
-        cb = CircuitBreaker("svc", failure_threshold=10, recovery_timeout=9999, redis_client=redis)
-        result = await cb.is_open()
-        assert result is True
-        assert cb.state == CircuitState.OPEN
+async def test_the_threshold_opens_it_and_it_refuses_until_recovery():
+    breaker = await _opened(threshold=3, recovery=60)
 
-    async def test_state_saved_to_redis_on_failure(self):
-        redis = _mock_redis()
-        cb = CircuitBreaker("svc", failure_threshold=3, redis_client=redis)
-        await cb.record_failure()
-        redis.hset.assert_awaited_once()
-        saved = redis.hset.call_args.kwargs.get("mapping") or redis.hset.call_args[1].get("mapping")
-        assert saved["failure_count"] == "1"
+    assert breaker.state == CircuitState.OPEN
+    assert await breaker.is_open() is True
 
-    async def test_state_saved_to_redis_on_success(self):
-        redis = _mock_redis()
-        cb = CircuitBreaker("svc", failure_threshold=1, recovery_timeout=1, redis_client=redis)
-        await cb.record_failure()
-        cb.last_failure_time = datetime.now() - timedelta(seconds=10)
-        await cb.is_open()
-        redis.hset.reset_mock()
-        await cb.record_success()
-        redis.hset.assert_awaited_once()
-        saved = redis.hset.call_args.kwargs.get("mapping") or redis.hset.call_args[1].get("mapping")
-        assert saved["state"] == "closed"
 
-    async def test_redis_load_error_falls_back_to_memory_state(self):
-        redis = _mock_redis()
-        redis.hgetall.side_effect = ConnectionError("Redis down")
-        cb = CircuitBreaker("svc", failure_threshold=5, redis_client=redis)
-        result = await cb.is_open()
-        assert result is False
-        assert cb.state == CircuitState.CLOSED
+async def test_exactly_one_probe_is_admitted_when_recovery_elapses():
+    breaker = await _half_open()
 
-    async def test_redis_save_error_does_not_raise(self):
-        redis = _mock_redis()
-        redis.hset.side_effect = ConnectionError("Redis down")
-        cb = CircuitBreaker("svc", failure_threshold=1, redis_client=redis)
-        await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+    assert await breaker.is_open() is True
+    assert await breaker.is_open() is True
 
-    async def test_state_loaded_only_once(self):
-        redis = _mock_redis()
-        cb = CircuitBreaker("svc", redis_client=redis)
-        await cb.is_open()
-        await cb.is_open()
-        await cb.is_open()
-        redis.hgetall.assert_awaited_once()
 
-    async def test_no_redis_uses_memory_only(self):
-        cb = CircuitBreaker("svc", failure_threshold=1)
-        await cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+async def test_a_successful_probe_closes_it():
+    breaker = await _half_open()
+    await breaker.record_success()
+
+    assert breaker.state == CircuitState.CLOSED
+    assert await breaker.is_open() is False
+    assert await breaker.is_open() is False
+
+
+async def test_a_failed_probe_reopens_it_for_a_full_recovery_window():
+    breaker = await _half_open()
+    await breaker.record_failure()
+
+    assert breaker.state == CircuitState.OPEN
+    assert await breaker.is_open() is True
+
+
+async def test_a_failed_probe_reopens_it_even_after_a_late_success_reset_the_count():
+    breaker = await _opened(threshold=3)
+    await breaker.record_success()
+    await asyncio.sleep(RECOVERY * 1.5)
+    assert await breaker.is_open() is False
+
+    await breaker.record_failure()
+
+    assert breaker.state == CircuitState.OPEN
+    assert await breaker.is_open() is True
+
+
+async def test_a_probe_that_never_reports_is_replaced_after_the_recovery_window():
+    breaker = await _half_open()
+    assert await breaker.is_open() is True
+
+    await asyncio.sleep(RECOVERY * 1.5)
+
+    assert await breaker.is_open() is False
+    assert await breaker.is_open() is True
+    await breaker.record_success()
+    assert breaker.state == CircuitState.CLOSED
+
+
+async def test_a_reported_probe_is_not_replaced():
+    breaker = await _half_open()
+    await breaker.record_failure()
+    await asyncio.sleep(RECOVERY * 0.5)
+
+    assert await breaker.is_open() is True
+
+
+async def test_a_zero_recovery_window_admits_a_probe_at_once():
+    breaker = await _opened(recovery=0)
+
+    assert await breaker.is_open() is False
+    await breaker.record_success()
+    assert breaker.state == CircuitState.CLOSED
+
+
+@pytest.mark.parametrize("argument", ["redis_client", "state_ttl"])
+def test_state_lives_in_the_process_only(argument):
+    assert argument not in inspect.signature(CircuitBreaker).parameters
