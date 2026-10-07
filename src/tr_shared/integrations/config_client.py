@@ -26,7 +26,6 @@ import logging
 import os
 import time
 from collections import defaultdict
-from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -58,7 +57,6 @@ class IntegrationConfigClient:
         timeout: float = 5.0,
         circuit_failure_threshold: int = 5,
         circuit_recovery_timeout: int = 30,
-        redis_client: Any = None,
         local_cache_ttl: int = 1800,
         local_cache_max_size: int = 500,
         warm_all_concurrency: int = 10,
@@ -74,7 +72,6 @@ class IntegrationConfigClient:
             name="integration-config-client",
             failure_threshold=circuit_failure_threshold,
             recovery_timeout=circuit_recovery_timeout,
-            redis_client=redis_client,
         )
         self._local_cache: dict[str, tuple[float, IntegrationConfig]] = {}
         self._local_cache_ttl = local_cache_ttl

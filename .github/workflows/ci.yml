@@ -78,4 +78,5 @@ jobs:
           tests/unit/test_phone.py tests/unit/test_vault_service.py
           tests/unit/redis tests/unit/cache tests/unit/testing
           tests/unit/middleware tests/middleware
+          tests/unit/http
           --no-cov
