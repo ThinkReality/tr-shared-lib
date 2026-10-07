@@ -4,11 +4,8 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
-import socket
 import traceback
-from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import Request
@@ -16,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from tr_shared.alerts.slack import SlackAlertBudget, alert_footer, alert_host, slack_message
 from tr_shared.contracts.availability import DatabaseOutageCode
 
 logger = logging.getLogger(__name__)
@@ -87,8 +85,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
         self.alert_on_5xx = alert_on_5xx
         self.hash_pii = hash_pii
         self.rate_limit = rate_limit
-        self._error_counts: dict[str, int] = defaultdict(int)
-        self._error_timestamps: dict[str, datetime] = {}
+        self._budget = SlackAlertBudget(rate_limit)
 
     async def dispatch(self, request: Request, call_next):
         try:
@@ -175,7 +172,7 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             "traceback": tb,
             "response_body": response_body,
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-            "host": os.environ.get("HOSTNAME", socket.gethostname()),
+            "host": alert_host(),
         }
 
     @staticmethod
@@ -198,17 +195,8 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
         task.add_done_callback(_pending_alerts.discard)
 
     async def _send_slack_alert(self, ctx: dict) -> None:
-        error_key = f"{ctx['service']}:{ctx['error_code'] or ctx['error_type']}"
-        now = datetime.now(UTC)
-
-        if error_key not in self._error_timestamps:
-            self._error_timestamps[error_key] = now
-        if now - self._error_timestamps[error_key] > timedelta(hours=1):
-            self._error_counts[error_key] = 0
-            self._error_timestamps[error_key] = now
-        if self._error_counts[error_key] >= self.rate_limit:
+        if not self._budget.allow(f"{ctx['service']}:{ctx['error_code'] or ctx['error_type']}"):
             return
-        self._error_counts[error_key] += 1
 
         path_display = f"`{ctx['path']}`"
         if ctx.get("query"):
@@ -223,56 +211,22 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
                 f"*Response body:*\n```{body}```" if body else "_No body available_"
             )
 
-        message = {
-            "text": f"{self.service_name} error ({self.environment})",
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f"{self.service_name} — {ctx['error_type']}",
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": f"*Env:*\n{self.environment}"},
-                        {"type": "mrkdwn", "text": f"*Status:*\n{ctx['status_code']}"},
-                        {"type": "mrkdwn", "text": f"*Method:*\n{ctx['method']}"},
-                        {"type": "mrkdwn", "text": f"*Path:*\n{path_display}"},
-                        {"type": "mrkdwn", "text": f"*User:*\n{ctx.get('user_id') or 'N/A'}"},
-                        {"type": "mrkdwn", "text": f"*Tenant:*\n{ctx.get('tenant_id') or 'N/A'}"},
-                    ],
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*Error:*\n`{ctx['error'][:500]}`",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": tb_text,
-                    },
-                },
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": (
-                                f"{ctx.get('timestamp', '')} | "
-                                f"host: {ctx.get('host', 'unknown')} | "
-                                f"Correlation: `{ctx['correlation_id']}`"
-                            ),
-                        }
-                    ],
-                },
+        message = slack_message(
+            fallback=f"{self.service_name} error ({self.environment})",
+            title=f"{self.service_name} — {ctx['error_type']}",
+            fields=[
+                ("Env", self.environment),
+                ("Status", str(ctx["status_code"])),
+                ("Method", ctx["method"]),
+                ("Path", path_display),
+                ("User", ctx.get("user_id") or "N/A"),
+                ("Tenant", ctx.get("tenant_id") or "N/A"),
             ],
-        }
+            sections=[f"*Error:*\n`{ctx['error'][:500]}`", tb_text],
+            footer=alert_footer(
+                ctx.get("timestamp", ""), ctx.get("host", "unknown"), ctx["correlation_id"]
+            ),
+        )
 
         try:
             client = _get_slack_client()
