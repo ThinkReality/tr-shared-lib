@@ -11,8 +11,9 @@ Reference: ``tr-listing-service/Bayut_Dubizzle_Profolio_API/leads_openapi.json``
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
+
+from tr_shared.security import constant_time_equals
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class BayutMD5Verifier:
     - Header: ``X-Bayut-Signature`` (lowercased to ``x-bayut-signature``
       because the framework lowercases header keys before verification).
     - Algorithm: ``hashlib.md5(secret.encode() + raw_body).hexdigest()``.
-    - Comparison: ``hmac.compare_digest`` (timing-safe).
+    - Comparison: ``constant_time_equals`` (timing-safe).
 
     If *secret* is empty the verifier returns ``True`` to match the
     skip-when-unconfigured behaviour of :class:`HMACVerifier`.
@@ -42,7 +43,7 @@ class BayutMD5Verifier:
             return False
 
         expected = hashlib.md5(secret.encode("utf-8") + raw_body).hexdigest()
-        return hmac.compare_digest(expected, received.lower())
+        return constant_time_equals(expected, received.lower())
 
 
 DubizzleVerifier = BayutMD5Verifier

@@ -61,6 +61,9 @@ class TestBayutMD5Verifier:
     def test_implements_protocol(self):
         assert isinstance(BayutMD5Verifier(), WebhookVerifier)
 
+    def test_non_ascii_signature_is_rejected_not_raised(self):
+        assert BayutMD5Verifier().verify(BODY, {"x-bayut-signature": "\u00e9"}, SECRET) is False
+
 
 class TestDubizzleVerifierAlias:
     def test_alias_is_bayut_verifier(self):
@@ -86,6 +89,10 @@ class TestMetaWebhookVerifier:
     def test_missing_header(self):
         v = MetaWebhookVerifier()
         assert v.verify(BODY, {}, SECRET) is False
+
+    def test_non_ascii_signature_is_rejected_not_raised(self):
+        v = MetaWebhookVerifier()
+        assert v.verify(BODY, {"x-hub-signature-256": "sha256=\u00e9"}, SECRET) is False
 
     def test_empty_secret_skips_verification(self):
         v = MetaWebhookVerifier()

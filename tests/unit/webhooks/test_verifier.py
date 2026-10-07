@@ -56,6 +56,11 @@ class TestHMACVerifier:
         verifier = HMACVerifier()
         assert isinstance(verifier, WebhookVerifier)
 
+    def test_non_ascii_signature_is_rejected_not_raised(self):
+        assert HMACVerifier().verify(BODY, {"x-signature": "\u00e9"}, SECRET) is False
+        prefixed = HMACVerifier(signature_format="sha256={hex}")
+        assert prefixed.verify(BODY, {"x-signature": "sha256=\u00e9"}, SECRET) is False
+
     def test_timing_safe_comparison(self):
         """Verify we use hmac.compare_digest (constant-time)."""
         verifier = HMACVerifier()

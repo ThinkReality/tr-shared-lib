@@ -82,6 +82,15 @@ class TestWebhookEndpointPost:
         )
         assert resp.status_code == 401
 
+    def test_non_ascii_signature_returns_401_not_500(self):
+        client = TestClient(_build_app(), raise_server_exceptions=False)
+        resp = client.post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={"X-Signature": "\u00e9".encode("latin-1"), "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401
+
     def test_no_secret_configured_skips_verification(self):
         app = _build_app(
             configs=[ProviderConfig(name="propertyfinder", secret="")],

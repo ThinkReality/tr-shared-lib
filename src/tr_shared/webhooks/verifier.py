@@ -11,6 +11,8 @@ import hmac
 import logging
 from typing import Protocol, runtime_checkable
 
+from tr_shared.security import constant_time_equals
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,4 +65,4 @@ class HMACVerifier:
         if self.signature_format == "sha256={hex}":
             expected = f"sha256={expected}"
 
-        return hmac.compare_digest(expected, signature)
+        return constant_time_equals(expected, signature)
