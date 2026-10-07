@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from tr_shared.contracts.headers import HttpHeader
+
 _REQUIRED_ATTRS: tuple[str, ...] = (
     "status_code",
     "error",
@@ -140,7 +142,9 @@ class RateLimitError(BaseAPIException):
             error="Rate limit exceeded",
             detail=detail,
             code=code,
-            headers=None if retry_after is None else {"Retry-After": str(retry_after)},
+            headers=None
+            if retry_after is None
+            else {HttpHeader.RETRY_AFTER.value: str(retry_after)},
         )
 
 
@@ -172,7 +176,9 @@ class ServiceUnavailableError(BaseAPIException):
             error="Service unavailable",
             detail=detail,
             code=code,
-            headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
+            headers={HttpHeader.RETRY_AFTER.value: str(retry_after)}
+            if retry_after is not None
+            else None,
         )
 
 

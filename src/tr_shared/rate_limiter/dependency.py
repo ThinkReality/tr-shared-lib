@@ -63,7 +63,7 @@ def create_rate_limit_dependency(
                     HttpHeader.RATE_LIMIT_LIMIT.value: str(tightest.limit),
                     HttpHeader.RATE_LIMIT_REMAINING.value: "0",
                     HttpHeader.RATE_LIMIT_RESET.value: str(tightest.reset_at),
-                    "Retry-After": str(retry_after),
+                    HttpHeader.RETRY_AFTER.value: str(retry_after),
                 },
             )
 
