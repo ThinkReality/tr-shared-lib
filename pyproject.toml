@@ -107,7 +107,7 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "TID251"]
 # E501 (line length) is advisory — the formatter owns layout, and it cannot always
 # break a long string or URL. Unlike the services, E712/E711 are NOT ignored here:
 # there is no `== False` / `== None` in this repo (the db layer uses `.is_(None)`,
@@ -117,6 +117,11 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401", "F403"]  # re-exports are the point of these files
+"src/tr_shared/security.py" = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"hmac.compare_digest".msg = "Use tr_shared.security.constant_time_equals: it raises TypeError on non-ASCII str."
+"secrets.compare_digest".msg = "Use tr_shared.security.constant_time_equals: it raises TypeError on non-ASCII str."
 
 [tool.ruff.lint.isort]
 known-first-party = ["tr_shared"]

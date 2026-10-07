@@ -11,6 +11,8 @@ import hashlib
 import hmac
 import logging
 
+from tr_shared.security import constant_time_equals
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +46,7 @@ class MetaWebhookVerifier:
             ).hexdigest()
         )
 
-        return hmac.compare_digest(expected, signature)
+        return constant_time_equals(expected, signature)
 
     def handle_handshake(self, query_params: dict[str, str]) -> int | None:
         """Handle Meta's verification handshake (GET request)."""
