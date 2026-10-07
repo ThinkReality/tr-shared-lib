@@ -72,6 +72,7 @@ jobs:
       - name: Pytest (event consumer + S2S contracts)
         run: >-
           uv run pytest
+          tests/unit/alerts
           tests/unit/db tests/unit/events tests/integration tests/contracts
           tests/test_consumer.py tests/test_version_parity.py
           tests/unit/test_security.py tests/unit/webhooks
