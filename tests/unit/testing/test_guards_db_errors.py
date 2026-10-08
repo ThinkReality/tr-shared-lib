@@ -487,6 +487,46 @@ class TestFlattenedErrors:
         source = f"async def route():\n  try:\n    return await work()\n  {caught}\n    {raised}\n"
         assert detect_flattened_errors(source) == [_handler_line(source, "except")]
 
+    @pytest.mark.parametrize(
+        ("caught", "raised"),
+        [
+            (
+                "except SQLAlchemyError as e:",
+                'raise DatabaseError(f"Failed to create role: {e!s}") from e',
+            ),
+            (
+                "except SQLAlchemyError as exc:",
+                'raise DatabaseError("Database operation failed") from exc',
+            ),
+            ("except OperationalError:", 'raise InternalServerError("x")'),
+            ("except (ValueError, DBAPIError):", 'raise HTTPException(500, "Failed")'),
+        ],
+    )
+    def test_flags_a_generic_sqlalchemy_handler_that_raises_a_generic_500(
+        self, caught: str, raised: str
+    ) -> None:
+        source = (
+            "from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError\n"
+            f"async def route():\n  try:\n    return await work()\n  {caught}\n    {raised}\n"
+        )
+        assert detect_flattened_errors(source) == [_handler_line(source, "except")]
+
+    @pytest.mark.parametrize(
+        ("caught", "raised"),
+        [
+            ("except IntegrityError as e:", 'raise DatabaseError("integrity") from e'),
+            ("except SQLAlchemyError:", "raise"),
+        ],
+    )
+    def test_allows_a_narrow_sqlalchemy_conversion_and_a_generic_reraise(
+        self, caught: str, raised: str
+    ) -> None:
+        source = (
+            "from sqlalchemy.exc import IntegrityError, SQLAlchemyError\n"
+            f"async def route():\n  try:\n    return await work()\n  {caught}\n    {raised}\n"
+        )
+        assert detect_flattened_errors(source) == []
+
     def test_flags_a_conditional_conversion(self) -> None:
         source = _source(
             """

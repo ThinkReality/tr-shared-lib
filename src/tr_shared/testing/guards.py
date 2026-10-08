@@ -881,13 +881,17 @@ def _flattens(raised: ast.Raise) -> bool:
 
 
 def detect_flattened_errors(source: str) -> list[int]:
-    """Broad handlers that turn whatever they caught into a generic 500."""
+    """Broad or generic-SQLAlchemy handlers that turn whatever they caught into a generic 500."""
     tree = ast.parse(source)
     aliases = _tuple_aliases(tree)
+    imports = _imports(tree)
     hits: list[int] = []
     for node, _ in _tries(tree):
         for handler in node.handlers:
-            if _is_broad(handler, aliases) and any(
+            catches_everything = _is_broad(handler, aliases) or any(
+                _is_generic_sqlalchemy(expr, imports) for expr in _caught(handler, aliases)
+            )
+            if catches_everything and any(
                 isinstance(raised, ast.Raise) and _flattens(raised)
                 for raised in _own_nodes(handler.body)
             ):
@@ -931,7 +935,7 @@ def assert_no_flattened_errors(
 
     ``GlobalErrorHandlerMiddleware`` already answers an unhandled exception with a
     500 and a Slack page, and the registered DB handlers answer outages with an
-    unpaged 503/504. A broad catch that raises ``InternalServerError``,
+    unpaged 503/504. A broad or generic SQLAlchemy catch that raises ``InternalServerError``,
     ``DatabaseError``, any ``*InternalServerError`` or ``HTTPException(500)``
     flattens an outage into a paged 500. Converting a specific exception into a
     specific domain error stays allowed.
@@ -940,7 +944,7 @@ def assert_no_flattened_errors(
         app_root,
         detect_flattened_errors,
         allowlist or {},
-        "A broad catch converts an unknown exception into a generic 500, which turns "
+        "A broad or generic SQLAlchemy catch converts an unknown exception into a generic 500, which turns "
         "a database outage (503/504) into a paged 500. Fix: delete the wrapper — the "
         "shared handlers own 500, 503 and 504. Converting a specific exception into a "
         "specific domain error (except ValueError: raise ValidationError(...)) is fine.",
