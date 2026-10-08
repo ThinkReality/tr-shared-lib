@@ -5,6 +5,21 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `assert_no_flattened_errors` / `detect_flattened_errors` now treat a generic SQLAlchemy catch
+  (`SQLAlchemyError`, `DBAPIError`, `OperationalError`, `InterfaceError`, `DatabaseError`,
+  `TimeoutError`, imported from `sqlalchemy`) as broad, the same as `except Exception`. Converting one
+  into a generic 500 (`DatabaseError`, `InternalServerError`, `HTTPException(500)`) is now flagged.
+  Such a wrapper hides the real error from the shared handlers and, when it echoes the exception
+  text, sends SQL and bound parameters to the client in `error.detail` (found in crm-core, D6).
+  Narrow catches (`IntegrityError` -> a domain error) and bare re-raises stay allowed.
+
+**Consumer action:** none, provided tr-crm-core and tr-content-platform have merged their wrapper
+removals before relocking (they held the only 27 hits fleet-wide; every other service and
+shared-auth-lib has 0 new hits). Otherwise their `test_db_errors_reach_the_boundary.py` fails.
+
 ## [0.86.0] - 2026-10-07
 
 **Upgrade at a glance** (every item is detailed below):
