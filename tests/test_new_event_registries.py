@@ -7,6 +7,10 @@ def test_lead_reassign_escalated_event():
     assert LeadEvents.REASSIGN_ESCALATED == "lead.reassigned.escalated"
 
 
+def test_leads_are_closed_never_deleted():
+    assert "lead.deleted" not in vars(LeadEvents).values()
+
+
 def test_task_events():
     assert TaskEvents.CREATED == "task.created"
     assert TaskEvents.ASSIGNED == "task.assigned"

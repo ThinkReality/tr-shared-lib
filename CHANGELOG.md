@@ -20,6 +20,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 removals before relocking (they held the only 27 hits fleet-wide; every other service and
 shared-auth-lib has 0 new hits). Otherwise their `test_db_errors_reach_the_boundary.py` fails.
 
+### Removed
+- `LeadEvents.DELETED` (`"lead.deleted"`). Leads are closed, never deleted (lead-management #141,
+  2026-10-08): the delete route, its service and the event's only publisher are gone, and crm-core
+  dropped its notification consumer (#146). A test pins that the registry carries no delete event.
+
+**Consumer action:** tr-lead-management's
+`tests/unit/workers/test_lead_event_consumer_start.py` names `LeadEvents.DELETED` in its
+self-published set; drop that line in the relock. No service code references the constant.
+
 ## [0.86.0] - 2026-10-07
 
 **Upgrade at a glance** (every item is detailed below):

@@ -7,7 +7,6 @@ Naming: ``{domain}.{action}`` or ``{domain}.{subdomain}.{action}``
 class LeadEvents:
     CREATED = "lead.created"
     UPDATED = "lead.updated"
-    DELETED = "lead.deleted"
     ASSIGNED = "lead.assigned"
     REASSIGNED = "lead.reassigned"
     REASSIGN_ESCALATED = "lead.reassigned.escalated"
