@@ -7,6 +7,25 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- `assert_no_swallowed_db_errors` decides that a broad catch guards DB work by following the calls
+  in its `try` body into the service's own code, not by the callee's name (T-44). A call is followed
+  when the receiver's class is known: a parameter or class annotation, `self.x = X(...)` /
+  `x or X(...)`, a local `x = X(...)`, a return annotation (incl. `type[X]`), a module singleton or an
+  import (absolute, relative, function-local, package re-export). A Protocol method dispatches to every
+  class that matches the Protocol (each method present with the same parameter names), an abstract
+  method to its overrides; `self.m()` reaches sibling mixins through subclasses. A call
+  that resolves to project code is judged by that code; one that resolves to nothing (a session, a
+  library object) by the old name heuristic. A `*Repository` method always reaches the database.
+  The failure message shows the chain (`136 via _mark_unscraped_failed -> ... -> UrlStatusService.update_url_status`).
+  New `find_swallowed_db_errors(root)` returns the hits with their chains.
+  Measured on all 8 services: sees 79 of the 84 catches that carry an outage re-raise (was 50).
+
+**Consumer action:** a receiver typed `Any` (or an untyped callable) hides its reach; type it.
+Services fix their new hits before relocking (crm-core 8, realty 9, WAM 2, content 2,
+media 2, people-finance 1; media's `api/v1/endpoints/health.py` is a probe and gets an exemption in
+its relock commit). Gateway, lead and shared-auth-lib have none.
+
 ## [0.87.0] - 2026-10-09
 
 ### Changed
