@@ -34,13 +34,16 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
+from tr_shared.testing.db_reach import DbReach, own_nodes
 from tr_shared.testing.tenant_header_guard import Exemption
 
 __all__ = [
     "Exemption",
+    "SwallowedDbError",
     "assert_environment_vocabulary",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
@@ -51,6 +54,7 @@ __all__ = [
     "assert_no_sqlite_dsn",
     "assert_no_swallowed_db_errors",
     "assert_no_testing_flag_in_production",
+    "find_swallowed_db_errors",
     "find_violations",
     "iter_shell_files",
 ]
@@ -135,8 +139,20 @@ def _assert(
     exclude: tuple[Path, ...] = (),
     iterator: Callable[..., Iterator[Path]] = iter_python_files,
 ) -> None:
-    found = find_violations(root, detector, skip=skip, exclude=exclude, iterator=iterator)
+    _check(
+        root,
+        find_violations(root, detector, skip=skip, exclude=exclude, iterator=iterator),
+        allowlist,
+        message,
+    )
 
+
+def _check(
+    root: Path,
+    found: Mapping[str, Sequence[object]],
+    allowlist: Mapping[str, Exemption],
+    message: str,
+) -> None:
     undocumented = {m: lines for m, lines in found.items() if m not in allowlist}
     assert not undocumented, f"{message}\n{undocumented}"
 
@@ -693,16 +709,6 @@ _DB_METHODS = frozenset(
 )
 _NOT_DB = ("cache", "redis", "pipe", "websocket", "driver")
 _FLATTENING_ERRORS = frozenset({"InternalServerError", "DatabaseError"})
-_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-
-
-def _own_nodes(body: list[ast.stmt]) -> Iterator[ast.AST]:
-    stack: list[ast.AST] = list(body)
-    while stack:
-        node = stack.pop()
-        yield node
-        if not isinstance(node, _NESTED_SCOPES):
-            stack.extend(ast.iter_child_nodes(node))
 
 
 def _chain(node: ast.expr) -> list[str]:
@@ -795,7 +801,7 @@ def _is_broad(handler: ast.ExceptHandler, aliases: Mapping[str, list[ast.expr]])
 
 
 def _reraises(handler: ast.ExceptHandler) -> bool:
-    return any(isinstance(node, ast.Raise) for node in _own_nodes(handler.body))
+    return any(isinstance(node, ast.Raise) for node in own_nodes(handler.body))
 
 
 def _is_generic_sqlalchemy(caught: ast.expr, imports: Mapping[str, str]) -> bool:
@@ -822,28 +828,33 @@ def _reraises_outage_only(
     )
 
 
-def _calls_db(body: list[ast.stmt]) -> bool:
-    for node in _own_nodes(body):
-        if not isinstance(node, ast.Call):
-            continue
-        chain = _chain(node.func)
-        if not chain or any(word in part.lower() for part in chain for word in _NOT_DB):
-            continue
-        callee = chain[-1]
-        receiver = chain[-2] if len(chain) > 1 else None
-        if _DB_CALLEE.search(callee) or (
-            receiver is not None and (_DB_RECEIVER.search(receiver) or callee in _DB_METHODS)
-        ):
-            return True
-    return False
+def _is_db_call(call: ast.Call) -> bool:
+    chain = _chain(call.func)
+    if not chain or any(word in part.lower() for part in chain for word in _NOT_DB):
+        return False
+    callee = chain[-1]
+    receiver = chain[-2] if len(chain) > 1 else None
+    return bool(
+        _DB_CALLEE.search(callee)
+        or (receiver is not None and (_DB_RECEIVER.search(receiver) or callee in _DB_METHODS))
+    )
 
 
-def detect_swallowed_db_errors(source: str) -> list[int]:
-    """Handlers that stop a database error before it reaches the boundary."""
-    tree = ast.parse(source)
+class SwallowedDbError(NamedTuple):
+    line: int
+    via: tuple[str, ...]
+
+    def __str__(self) -> str:
+        return f"{self.line} via {' -> '.join(self.via)}" if self.via else str(self.line)
+
+
+def _swallowed(reach: DbReach, module_name: str) -> list[SwallowedDbError]:
+    tree = reach.tree(module_name)
+    if tree is None:
+        return []
     imports = _imports(tree)
     aliases = _tuple_aliases(tree)
-    hits: list[int] = []
+    hits: list[SwallowedDbError] = []
     for node, in_repository in _tries(tree):
         credited = False
         for handler in node.handlers:
@@ -853,14 +864,30 @@ def detect_swallowed_db_errors(source: str) -> list[int]:
                 continue
             caught = _caught(handler, aliases)
             if any(_is_generic_sqlalchemy(expr, imports) for expr in caught):
-                hits.append(handler.lineno)
-            elif (
-                not credited
-                and _is_broad(handler, aliases)
-                and (in_repository or _calls_db(node.body))
-            ):
-                hits.append(handler.lineno)
+                hits.append(SwallowedDbError(handler.lineno, ()))
+            elif not credited and _is_broad(handler, aliases):
+                via = () if in_repository else reach.try_reaches(node, module_name)
+                if via is not None:
+                    hits.append(SwallowedDbError(handler.lineno, via))
     return sorted(hits)
+
+
+def detect_swallowed_db_errors(source: str) -> list[int]:
+    """Handlers that stop a database error before it reaches the boundary."""
+    return [hit.line for hit in _swallowed(DbReach({"module": source}, _is_db_call), "module")]
+
+
+def find_swallowed_db_errors(
+    root: Path, *, skip: tuple[str, ...] = ("alembic",)
+) -> dict[str, list[SwallowedDbError]]:
+    indexed = [p for p in sorted(root.rglob("*.py")) if not any(part in skip for part in p.parts)]
+    reach = DbReach.from_root(root, indexed, _is_db_call)
+    found: dict[str, list[SwallowedDbError]] = {}
+    for path in iter_python_files(root, skip=skip):
+        hits = _swallowed(reach, DbReach.module_name(root, path))
+        if hits:
+            found[str(path.relative_to(root))] = hits
+    return found
 
 
 def _flattens(raised: ast.Raise) -> bool:
@@ -893,7 +920,7 @@ def detect_flattened_errors(source: str) -> list[int]:
             )
             if catches_everything and any(
                 isinstance(raised, ast.Raise) and _flattens(raised)
-                for raised in _own_nodes(handler.body)
+                for raised in own_nodes(handler.body)
             ):
                 hits.append(handler.lineno)
     return sorted(hits)
@@ -909,12 +936,15 @@ def assert_no_swallowed_db_errors(
     either into a wrong answer: a false 404, an empty 200, "0 permits". Flags a
     generic SQLAlchemy catch without a re-raise, a broad catch without a re-raise
     inside a ``*Repository`` / ``*Repo`` class, and a broad catch without a
-    re-raise whose ``try`` body makes a DB-looking call. The last is a name
-    heuristic; a false positive or a health probe gets an ``Exemption``.
+    re-raise whose ``try`` body reaches the database. Reach follows calls into the
+    project wherever the receiver's class is typed; a call that resolves to nothing
+    is judged by name. A receiver typed ``Any`` hides its reach. A health probe gets
+    an ``Exemption``.
     """
-    _assert(
+    found = find_swallowed_db_errors(app_root)
+    _check(
         app_root,
-        detect_swallowed_db_errors,
+        {path: [str(hit) for hit in hits] for path, hits in found.items()},
         allowlist or {},
         "A database error is swallowed before it reaches the boundary. A repository "
         "never swallows; a generic SQLAlchemy catch (SQLAlchemyError, DBAPIError, "
@@ -924,7 +954,6 @@ def assert_no_swallowed_db_errors(
         "`except DATABASE_OUTAGE_ERRORS: raise` (per-item loop: "
         "`except DatabaseUnavailableError: raise`) as an earlier sibling of the broad "
         "catch. Narrow IntegrityError/DataError/NoResultFound catches are allowed.",
-        skip=("alembic",),
     )
 
 
