@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-10-09
+
 ### Changed
 - `assert_no_swallowed_db_errors` decides that a broad catch guards DB work by following the calls
   in its `try` body into the service's own code, not by the callee's name (T-44). A call is followed
