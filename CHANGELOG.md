@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-10-09
+
 ### Changed
 - `assert_no_flattened_errors` / `detect_flattened_errors` now treat a generic SQLAlchemy catch
   (`SQLAlchemyError`, `DBAPIError`, `OperationalError`, `InterfaceError`, `DatabaseError`,
