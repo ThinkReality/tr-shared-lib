@@ -6,7 +6,11 @@ from tr_shared.schemas.responses import (
     PaginationData,
     SuccessResponse,
 )
-from tr_shared.schemas.validators import coerce_enum
+from tr_shared.schemas.validators import (
+    coerce_enum,
+    reject_unstorable_text,
+    unstorable_text_location,
+)
 
 __all__ = [
     "ErrorDetail",
@@ -16,4 +20,6 @@ __all__ = [
     "SuccessResponse",
     "build_error_envelope",
     "coerce_enum",
+    "reject_unstorable_text",
+    "unstorable_text_location",
 ]

@@ -9,12 +9,14 @@ from tr_shared.middleware.exception_handlers import (
     validation_exception_handler,
 )
 from tr_shared.middleware.logging_middleware import LoggingMiddleware
+from tr_shared.middleware.unstorable_text import UnstorableTextMiddleware
 
 __all__ = [
     "APIIdempotencyMiddleware",
     "CorrelationIDMiddleware",
     "GlobalErrorHandlerMiddleware",
     "LoggingMiddleware",
+    "UnstorableTextMiddleware",
     "base_api_exception_handler",
     "http_exception_handler",
     "register_exception_handlers",

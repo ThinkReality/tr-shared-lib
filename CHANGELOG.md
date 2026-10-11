@@ -7,6 +7,22 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `UnstorableTextMiddleware` (T-43). Postgres cannot store NUL (`\u0000`) or a lone surrogate
+  (`\ud800`) in text or JSONB; a request carrying one used to reach the database, fail with
+  `DBAPIError` (22021 / 22P05 / 22000), and come back as a paged 500 — reads (`?search=%00`) as well
+  as writes. The middleware checks the path, the query string, and the body when FastAPI would parse
+  it as JSON (no content-type, `application/json`, `application/*+json`) or as an urlencoded form,
+  and answers 422 `VALIDATION_ERROR` with `fields[0].type = "string_unstorable"` and the `loc`. The
+  offending text is never echoed. Multipart is not inspected.
+- `tr_shared.schemas.unstorable_text_location(value)` (the rule, walking str / dict keys and values /
+  lists) and `reject_unstorable_text(value, label)` for Pydantic validators on multipart inputs.
+
+**Consumer action:** shared-auth-lib's `install_standard_middleware` installs the middleware (next
+shared-auth-lib release); the gateway, which has no factory, adds it by hand. Service-local NUL
+checks (media `validate_no_nul`, content's `^[^\x00]*$` query pattern) move to the shared rule in
+their relock commits.
+
 ## [0.89.0] - 2026-10-11
 
 ### Removed
