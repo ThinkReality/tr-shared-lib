@@ -7,6 +7,20 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- `tr_shared.testing.fixtures.tr_engine` is built by `create_async_engine_factory` (still `NullPool`)
+  instead of a plain `create_async_engine` (T-46). An outage through `tr_session` now reaches the
+  test typed the way it reaches a service: a lost connection (08xxx / 57P) is
+  `DatabaseUnavailableError` with code `CONNECTION_LOST`, a cancelled or over-cap statement is
+  `DatabaseTimeoutError`, and a failed connect is `DatabaseUnavailableError` `CONNECT_FAILED`; before,
+  each was a raw `DBAPIError`. The engine also gets the factory's connect args: the request-profile
+  statement cap (20 s, client-side `command_timeout`), a 3 s connect timeout, no prepared-statement
+  cache, `jit` off. Integrity and data errors are unchanged.
+
+**Consumer action:** none required. Every `tr_session` / `tr_engine` test file in gateway (24),
+crm-core (12), media (27) and WAM (87) passed against this change before release. crm-core can drop
+the `translated_session` engine in `test_delivery_outage_reaches_the_caller.py` for `tr_session`.
+
 ## [0.90.0] - 2026-10-11
 
 ### Added
