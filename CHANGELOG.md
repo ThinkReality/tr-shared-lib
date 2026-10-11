@@ -7,6 +7,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- Log masking (T-35). `tr_shared.logging` no longer exports `safe_log_context`, `sanitize_traceback`,
+  `sanitize_for_logging` or `sanitize_context`, and `configure_logging` no longer replaces the value
+  of any field whose name matches `token|secret|key|auth|credential|...` with `[REDACTED]` (it hit
+  `external_auth_id`, `cache_key`, `auth_provider`). Dev-phase logs carry full raw data; log an
+  exception with `exc_info=True`. CI now runs `tests/unit/logging`, which it never did.
+
+**Consumer action:** only crm-core imported the helpers. Its T-35 PR removes every import and must be
+merged before a service relocks onto this release, or crm-core fails at import.
+
 ## [0.88.0] - 2026-10-09
 
 ### Changed

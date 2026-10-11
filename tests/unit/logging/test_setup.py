@@ -7,54 +7,11 @@ from unittest.mock import MagicMock
 import structlog
 
 from tr_shared.logging.setup import (
-    _mask_sensitive_fields,
     bind_correlation_id,
     configure_logging,
     get_correlation_id,
     get_logger,
 )
-
-
-class TestMaskSensitiveFields:
-    def _mask(self, event: dict) -> dict:
-        return _mask_sensitive_fields(None, "info", event)
-
-    def test_redacts_known_and_widened_field_names(self):
-        for field in (
-            "token",
-            "secret",
-            "password",
-            "passwd",
-            "pwd",
-            "api_key",
-            "apikey",
-            "x-api-key",
-            "authorization",
-            "auth",
-            "credential",
-            "private_key",
-            "database_url",
-            "redis_url",
-        ):
-            out = self._mask({field: "supersecretvalue"})
-            assert out[field] == "[REDACTED]", f"{field} not redacted"
-
-    def test_full_redaction_not_partial(self):
-        out = self._mask({"password": "abcdefghij"})
-        assert out["password"] == "[REDACTED]"
-        assert "abc" not in out["password"]
-
-    def test_short_secret_still_fully_redacted(self):
-        assert self._mask({"token": "ab"})["token"] == "[REDACTED]"
-
-    def test_non_sensitive_fields_untouched(self):
-        out = self._mask({"tenant_id": "t-1", "event": "created", "count": 5})
-        assert out == {"tenant_id": "t-1", "event": "created", "count": 5}
-
-    def test_non_str_and_empty_values_untouched(self):
-        out = self._mask({"password": "", "secret_count": 3})
-        assert out["password"] == ""
-        assert out["secret_count"] == 3
 
 
 class TestGetLogger:
@@ -229,7 +186,16 @@ class TestStdlibExtraFields:
         assert payload["event"] == "something happened"
         assert "extra_event" not in payload
 
-    def test_sensitive_extra_fields_are_still_redacted(self, capsys):
-        payload = self._emit(capsys, api_key="supersecretvalue")
+    def test_extra_fields_are_logged_raw(self, capsys):
+        payload = self._emit(capsys, external_auth_id="auth-1", api_key="key-1", email="a@b.ae")
 
-        assert payload["api_key"] == "[REDACTED]"
+        assert payload["external_auth_id"] == "auth-1"
+        assert payload["api_key"] == "key-1"
+        assert payload["email"] == "a@b.ae"
+
+
+def test_logging_package_exports_no_masking_helper():
+    import tr_shared.logging
+
+    masking = {"safe_log_context", "sanitize_context", "sanitize_for_logging", "sanitize_traceback"}
+    assert not masking & set(dir(tr_shared.logging))
