@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-10-11
+
 ### Changed
 - `tr_shared.testing.fixtures.tr_engine` is built by `create_async_engine_factory` (still `NullPool`)
   instead of a plain `create_async_engine` (T-46). An outage through `tr_session` now reaches the
