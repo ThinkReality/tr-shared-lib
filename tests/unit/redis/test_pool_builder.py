@@ -4,7 +4,7 @@ each call site's kwargs are pinned so the two paths cannot drift apart again."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis.backoff import ExponentialBackoff
+from redis.asyncio.retry import Retry as AsyncRetry
 
 import tr_shared.redis.client as redis_module
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
@@ -44,11 +44,10 @@ class TestBuildConnectionPool:
         assert kwargs["health_check_interval"] == 10
         assert kwargs["socket_keepalive"] is True
         assert kwargs["socket_keepalive_options"] == keepalive_options()
-        assert kwargs["retry_on_error"] == [ConnectionError, TimeoutError, OSError]
+        assert "retry_on_error" not in kwargs
         retry = kwargs["retry"]
-        assert retry._retries == 3
-        assert isinstance(retry._backoff, ExponentialBackoff)
-        assert (retry._backoff._cap, retry._backoff._base) == (2, 0.1)
+        assert isinstance(retry, AsyncRetry)
+        assert retry.get_retries() == 1
 
     @pytest.mark.parametrize("url", ["rediss://host:6379/0", "unix:///tmp/redis.sock"])
     def test_url_that_would_swap_connection_class_is_rejected(self, url):

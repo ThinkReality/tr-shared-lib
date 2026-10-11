@@ -1,8 +1,9 @@
 """The one place a Redis connection pool is configured for the fleet."""
 
 from redis.asyncio import ConnectionPool
-from redis.backoff import ExponentialBackoff
-from redis.retry import Retry
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
+from redis.exceptions import ConnectionError
 
 from tr_shared.redis.connection import (
     ProxySafeConnection,
@@ -30,6 +31,5 @@ def build_connection_pool(
         health_check_interval=10,
         socket_keepalive=True,
         socket_keepalive_options=keepalive_options(),
-        retry=Retry(ExponentialBackoff(cap=2, base=0.1), retries=3),
-        retry_on_error=[ConnectionError, TimeoutError, OSError],
+        retry=Retry(NoBackoff(), retries=1, supported_errors=(ConnectionError,)),
     )
