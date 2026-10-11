@@ -78,6 +78,7 @@ jobs:
           tests/test_new_event_registries.py
           tests/unit/test_security.py tests/unit/webhooks
           tests/unit/test_phone.py tests/unit/test_vault_service.py
+          tests/test_validators.py
           tests/unit/redis tests/unit/cache tests/unit/testing
           tests/unit/middleware tests/middleware
           tests/unit/http tests/unit/logging
