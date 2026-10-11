@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-10-11
+
 ### Added
 - `UnstorableTextMiddleware` (T-43). Postgres cannot store NUL (`\u0000`) or a lone surrogate
   (`\ud800`) in text or JSONB; a request carrying one used to reach the database, fail with
