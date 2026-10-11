@@ -69,10 +69,16 @@ async def tr_engine(tr_database_url: str) -> AsyncIterator[AsyncEngine]:
     do not share a lifetime; a pooled connection outliving its loop is the classic
     "attached to a different loop" failure.
     """
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    engine = create_async_engine(tr_database_url, poolclass=NullPool)
+    from tr_shared.contracts.db_pool import DB_STATEMENT_TIMEOUT_SECONDS, StatementTimeoutProfile
+    from tr_shared.db import create_async_engine_factory
+
+    engine = create_async_engine_factory(
+        tr_database_url,
+        statement_timeout_seconds=DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST],
+        pool_class=NullPool,
+    )
     try:
         yield engine
     finally:

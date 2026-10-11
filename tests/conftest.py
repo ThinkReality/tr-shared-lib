@@ -6,6 +6,8 @@ import pytest
 import structlog
 import structlog.testing
 
+pytest_plugins = ["tr_shared.testing.fixtures"]
+
 
 @pytest.fixture
 def fake_redis_server():
