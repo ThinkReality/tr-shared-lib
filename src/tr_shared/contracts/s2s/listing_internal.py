@@ -48,6 +48,10 @@ def agent_listing_counts_batch() -> str:
     return f"{LISTINGS_BASE_PATH}/agents:batch-count"
 
 
+def listing_owners_batch() -> str:
+    return f"{LISTINGS_BASE_PATH}/owners:batch"
+
+
 def apply_for_owner() -> str:
     return f"{LISTINGS_BASE_PATH}/owner-sheet/apply-for-owner"
 
@@ -119,6 +123,27 @@ class AgentListingCountRow(BaseModel):
 
 class AgentListingCountsResponse(BaseModel):
     rows: list[AgentListingCountRow]
+
+
+class ListingOwnersRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID
+    listing_ids: list[UUID] = Field(..., min_length=1, max_length=500)
+
+
+class ListingOwnerRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    listing_id: UUID
+    owner_id: str | None
+    owner_name: str | None
+
+
+class ListingOwnersResponse(BaseModel):
+    """One row per requested listing the tenant has, soft-deleted included; an unknown id has no row."""
+
+    rows: list[ListingOwnerRow]
 
 
 SheetOwnerName = Annotated[
