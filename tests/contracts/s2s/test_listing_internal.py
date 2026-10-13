@@ -278,3 +278,47 @@ def test_apply_for_owner_request_trims_each_name():
     assert body.names == ["Hassan Saeed"]
     with pytest.raises(ValidationError):
         c.ApplyForOwnerRequest(crm_user_id=uuid4(), names=["   "])
+
+
+def test_listing_owners_batch_path():
+    assert c.listing_owners_batch() == "/api/v1/listing/internal/listings/owners:batch"
+
+
+def test_listing_owners_request_caps_ids_at_500_and_needs_one():
+    c.ListingOwnersRequest(tenant_id=uuid4(), listing_ids=[uuid4() for _ in range(500)])
+    with pytest.raises(ValidationError):
+        c.ListingOwnersRequest(tenant_id=uuid4(), listing_ids=[uuid4() for _ in range(501)])
+    with pytest.raises(ValidationError):
+        c.ListingOwnersRequest(tenant_id=uuid4(), listing_ids=[])
+
+
+def test_listing_owners_request_rejects_an_unknown_key():
+    with pytest.raises(ValidationError):
+        c.ListingOwnersRequest.model_validate(
+            {"tenant_id": str(uuid4()), "listing_ids": [str(uuid4())], "reference": "R-1"}
+        )
+
+
+def test_listing_owner_row_keeps_null_owner_but_rejects_a_missing_key():
+    row = c.ListingOwnerRow.model_validate(
+        {"listing_id": str(uuid4()), "owner_id": None, "owner_name": None}
+    )
+    assert row.owner_id is None and row.owner_name is None
+    with pytest.raises(ValidationError):
+        c.ListingOwnerRow.model_validate({"listing_id": str(uuid4()), "owner_id": None})
+
+
+def test_listing_owners_response_ignores_extra_provider_fields():
+    page = c.ListingOwnersResponse.model_validate(
+        {
+            "rows": [
+                {
+                    "listing_id": str(uuid4()),
+                    "owner_id": "11111111-1111-1111-1111-111111111111",
+                    "owner_name": "M. Haider Ali",
+                    "reference_number": "R-1",
+                }
+            ]
+        }
+    )
+    assert page.rows[0].owner_name == "M. Haider Ali"

@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `listing_internal.listing_owners_batch()` (`POST /api/v1/listing/internal/listings/owners:batch`) with
+  `ListingOwnersRequest` (`tenant_id`, 1–500 `listing_ids`, unknown keys rejected), `ListingOwnerRow`
+  (`listing_id`, `owner_id`, `owner_name`; both owner fields required, nullable) and `ListingOwnersResponse`.
+  One row per requested listing the tenant has, soft-deleted included; an unknown id has no row. `owner_id`
+  is `str` because the provider stores the owner as untyped JSONB, so callers keep validating it.
+  Lead's pooled-portal sweep re-fetched 267 full listings by reference every 5 minutes to read their owner;
+  this lets it ask once (Phase R5, `plans/2026-10-12-ci-cost-and-speed.md`).
+
+**Consumer action:** none. tr-content-platform serves it, then tr-lead-management calls it, each in its own PR
+after the relock.
+
 ## [0.91.0] - 2026-10-11
 
 ### Changed
