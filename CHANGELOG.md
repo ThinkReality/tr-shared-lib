@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-10-13
+
 ### Added
 - `listing_internal.listing_owners_batch()` (`POST /api/v1/listing/internal/listings/owners:batch`) with
   `ListingOwnersRequest` (`tenant_id`, 1–500 `listing_ids`, unknown keys rejected), `ListingOwnerRow`
