@@ -51,6 +51,7 @@ __all__ = [
     "REUSE_LABEL",
     "Stack",
     "StackError",
+    "create_run_database",
     "drop_run_databases",
     "provision",
 ]
@@ -408,7 +409,7 @@ def _names(config: TestingConfig, run_id: str, worker_id: str) -> tuple[str, str
 
 
 def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
-    """Containers up, template built if needed, this worker's database cloned."""
+    """Containers up and template built if needed. The run database is not created."""
     client = _docker()
     pg_name, template, run_db = _names(config, run_id, worker_id)
     redis_name = f"tr-test-redis-{config.key[:10]}"
@@ -439,9 +440,6 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
         if not _database_exists(container, template):
             _build_template(container, config, template, pg_port)
 
-        _psql(container, f'DROP DATABASE IF EXISTS "{run_db}" WITH (FORCE)')
-        _psql(container, f'CREATE DATABASE "{run_db}" TEMPLATE "{template}"')
-
     with _lock(redis_name):
         redis_port = _ensure_container(
             client,
@@ -463,6 +461,15 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
         celery_broker_url=broker_url,
         celery_result_backend=result_url,
     )
+
+
+def create_run_database(config: TestingConfig, run_id: str, worker_id: str) -> None:
+    client = _docker()
+    pg_name, template, run_db = _names(config, run_id, worker_id)
+    with _lock(pg_name):
+        container = client.containers.get(pg_name)
+        _psql(container, f'DROP DATABASE IF EXISTS "{run_db}" WITH (FORCE)')
+        _psql(container, f'CREATE DATABASE "{run_db}" TEMPLATE "{template}"')
 
 
 def _redis_index(worker_id: str) -> int:

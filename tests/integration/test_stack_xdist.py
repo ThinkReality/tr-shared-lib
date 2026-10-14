@@ -93,6 +93,26 @@ def test_eight(): assert True
 """
 
 
+_SNAPSHOT_TEST_FILE = """
+import json, os, pathlib, subprocess
+
+def _snapshot():
+    listed = subprocess.run(
+        ["docker", "exec", os.environ["TR_PG_CONTAINER"], "psql", "-tAc",
+         "SELECT datname FROM pg_database", "-U", "postgres"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    pathlib.Path(f"snapshot_{worker}.json").write_text(json.dumps({
+        "database": os.environ["DATABASE_URL"].rsplit("/", 1)[1],
+        "databases": listed,
+    }))
+
+def test_a(): _snapshot()
+def test_b(): _snapshot()
+"""
+
+
 def _project(tmp_path: Path, token: str) -> Path:
     """A project whose fingerprint is unique to `token`.
 
@@ -252,3 +272,63 @@ class TestOneContainerServesEveryWorker:
             == created
         )
         assert _psql(pg_container, "SELECT count(*) FROM migrated_marker", templates[0]) == "0"
+
+
+@requires_docker
+class TestOnlyProcessesThatRunTestsGetADatabase:
+    @pytest.mark.parametrize(
+        ("args", "extra_env"),
+        [
+            (["-n", "2"], {}),
+            (["-n", "0"], {}),
+            (["-n", "auto"], {"PYTEST_XDIST_AUTO_NUM_WORKERS": "0"}),
+            ([], {}),
+        ],
+        ids=["two-workers", "n-zero", "auto-resolving-to-zero", "no-xdist"],
+    )
+    def test_run_databases_are_exactly_the_ones_tests_use(
+        self,
+        tmp_path: Path,
+        cleanup_containers: list[str],
+        args: list[str],
+        extra_env: dict[str, str],
+    ) -> None:
+        project = _project(tmp_path, f"clones-{'-'.join(args) or 'none'}-{len(extra_env)}")
+        (project / "tests" / "integration" / "test_demo.py").write_text(_SNAPSHOT_TEST_FILE)
+        key = _key(project)
+        cleanup_containers.append(key)
+        pg_container = f"tr-test-pg-{key}"
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/integration/",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                *args,
+            ],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            env={
+                "PATH": f"/usr/local/bin:/usr/bin:/bin:{Path(sys.executable).parent}",
+                "HOME": str(project),
+                "TR_PG_CONTAINER": pg_container,
+                **extra_env,
+            },
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        snapshots = [json.loads(p.read_text()) for p in project.glob("snapshot_*.json")]
+        assert snapshots, result.stdout
+        used = {s["database"] for s in snapshots}
+        existed = {
+            name
+            for s in snapshots
+            for name in s["databases"]
+            if key in name and "_tmpl_" not in name
+        }
+        assert existed == used, f"existed={sorted(existed)} used={sorted(used)}"

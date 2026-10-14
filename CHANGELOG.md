@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- The testing plugin no longer clones a database for the pytest-xdist controller. The controller runs no
+  tests, but `provision()` cloned `<svc>_<key>_<run>_main` for it and dropped it at teardown on every
+  `-n` run. The clone now happens at `pytest_sessionstart`, once xdist has decided whether this process
+  distributes (it registers `dsession` only then), so `-n 0`, `-n auto` resolving to 0 and runs without
+  xdist still get their database. New `stack.create_run_database()`; `provision()` builds containers
+  and the template only.
+
+**Consumer action:** relock only. New constraint: nothing may connect to `DATABASE_URL` before
+`pytest_sessionstart`, because the run database does not exist until then. A fleet scan on 2026-10-14
+found no conftest or test helper that does.
+
 ## [0.92.0] - 2026-10-13
 
 ### Added

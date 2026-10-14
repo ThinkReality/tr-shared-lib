@@ -26,7 +26,9 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pytest
 
 from tr_shared.testing.config import TestingConfig, find_config
 from tr_shared.testing.lanes import (
@@ -35,9 +37,6 @@ from tr_shared.testing.lanes import (
     lane_for_path,
     run_needs_infrastructure,
 )
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    import pytest
 
 __all__ = ["pytest_collection_modifyitems", "pytest_load_initial_conftests"]
 
@@ -117,13 +116,28 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(lane)
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    config: TestingConfig | None = _STATE.get("config")
+    if config is None or "run_id" not in _STATE or _is_xdist_controller(session):
+        return
+    from tr_shared.testing.stack import create_run_database
+
+    create_run_database(config, _STATE["run_id"], _STATE["worker_id"])
+    _STATE["run_database_created"] = True
+
+
 def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     config: TestingConfig | None = _STATE.get("config")
-    if config is None or "run_id" not in _STATE:
+    if config is None or not _STATE.get("run_database_created"):
         return
     from tr_shared.testing.stack import drop_run_databases
 
     drop_run_databases(config, _STATE["run_id"], _STATE["worker_id"])
+
+
+def _is_xdist_controller(session: pytest.Session) -> bool:
+    return bool(session.config.pluginmanager.has_plugin("dsession"))
 
 
 def _use_override(config: TestingConfig, dsn: str, worker_id: str) -> None:
