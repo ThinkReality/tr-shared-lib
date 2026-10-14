@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-10-14
+
 ### Fixed
 - The testing plugin no longer clones a database for the pytest-xdist controller. The controller runs no
   tests, but `provision()` cloned `<svc>_<key>_<run>_main` for it and dropped it at teardown on every
