@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-10-15
+
+### Added
+- `tr_shared.testing.guards.assert_every_test_file_has_a_lane(tests_root)` (G16). It fails when a `test_*.py` sits in a
+  folder `lane_for_path` cannot place in the unit or integration lane. Such a file gets Postgres and Redis provisioned
+  for any run that names it, and it is left out of `make test` unless it also happens to be under `UNIT_PATHS`. On
+  2026-10-15, 26 files across 6 services were laneless. tr-realty-data-hub had a local copy of this rule; this is the
+  single definition.
+
+**Consumer action:** add `tests/architecture/test_every_test_file_has_a_lane.py` calling it with `TESTS_ROOT`. Realty
+replaces its local copy.
+
 ## [0.94.2] - 2026-10-15
 
 ### Fixed

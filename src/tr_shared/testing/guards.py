@@ -39,12 +39,14 @@ from pathlib import Path
 from typing import NamedTuple
 
 from tr_shared.testing.db_reach import DbReach, own_nodes
+from tr_shared.testing.lanes import lane_for_path
 from tr_shared.testing.tenant_header_guard import Exemption
 
 __all__ = [
     "Exemption",
     "SwallowedDbError",
     "assert_environment_vocabulary",
+    "assert_every_test_file_has_a_lane",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
     "assert_no_flattened_errors",
@@ -528,6 +530,19 @@ def assert_no_infra_skips(
         "Skipping because infrastructure is missing turns an outage into a green "
         "run. Let it fail; the integration lane provisions what it needs.",
     )
+
+
+def assert_every_test_file_has_a_lane(tests_root: Path) -> None:
+    """G16. A test file outside every lane folder gets infrastructure it may not need and
+    is left out of the unit lane, so it runs only in CI's full suite."""
+    root = tests_root.parent
+    laneless = sorted(
+        str(path.relative_to(root))
+        for path in tests_root.rglob("test_*.py")
+        if lane_for_path(str(path.relative_to(root))) is None
+    )
+    if laneless:
+        raise AssertionError(f"Move these under a unit/ or integration/ folder: {laneless}")
 
 
 _TEST_FLAGS = {"TESTING", "PYTEST_CURRENT_TEST", "IS_TEST", "UNDER_TEST"}
