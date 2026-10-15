@@ -86,4 +86,5 @@ jobs:
           tests/unit/redis tests/unit/cache tests/unit/testing
           tests/unit/middleware tests/middleware
           tests/unit/http tests/unit/logging
+          tests/config
           --no-cov

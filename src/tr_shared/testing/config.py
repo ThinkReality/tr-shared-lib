@@ -24,8 +24,7 @@ import hashlib
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from sqlalchemy import make_url
+from urllib.parse import urlsplit, urlunsplit
 
 __all__ = ["TestingConfig", "admin_database_url", "find_config"]
 
@@ -98,8 +97,9 @@ def admin_database_url(database_url: str) -> str:
     Tests connect as ``APP_ROLE``, which cannot alter extension-owned objects such as
     ``vault.create_secret``. Fault injection that renames them needs this URL.
     """
-    url = make_url(database_url).set(username=ADMIN_ROLE, password=PASSWORD)
-    return url.render_as_string(hide_password=False)
+    parts = urlsplit(database_url)
+    host = parts.netloc.rpartition("@")[2]
+    return urlunsplit(parts._replace(netloc=f"{ADMIN_ROLE}:{PASSWORD}@{host}"))
 
 
 def find_config(start: Path) -> TestingConfig | None:

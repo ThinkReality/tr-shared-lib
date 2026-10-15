@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.94.1] - 2026-10-15
+
+### Fixed
+- 0.94.0 broke every consumer without the `[db]` extra at pytest start (shared-auth-lib:
+  `ModuleNotFoundError: No module named 'sqlalchemy'`). `testing/config.py` is loaded by the `pytest11` plugin in
+  every venv, and `admin_database_url` imported SQLAlchemy at module level; it now uses `urllib.parse`.
+- `tests/config` was not in CI's hand-picked pytest scope, so `test_import_surface.py`, the guard written after the
+  same failure in 0.78.0, never ran in CI. It does now.
+
+**Consumer action:** skip 0.94.0; relock straight to this release.
+
 ## [0.94.0] - 2026-10-15
 
 ### Changed
