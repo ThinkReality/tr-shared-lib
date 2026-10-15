@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from tr_shared.testing import config as config_module
 from tr_shared.testing.config import find_config
 
 _OPTED_IN = """
@@ -55,13 +58,6 @@ class TestOptIn:
         config = find_config(nested)
         assert config is not None and config.root == root
 
-    def test_defaults_cover_the_non_trusted_extensions(self, tmp_path: Path) -> None:
-        config = find_config(_service(tmp_path))
-        assert config is not None
-        # All three need a superuser to create; btree_gin was missing from the
-        # plan's list and is required by tr-content-platform.
-        assert set(config.extensions) == {"pgcrypto", "pg_trgm", "btree_gin"}
-
 
 class TestFingerprint:
     def test_stable_across_calls(self, tmp_path: Path) -> None:
@@ -103,6 +99,21 @@ class TestFingerprint:
 
         (root / "pyproject.toml").write_text(
             _OPTED_IN + '\npostgres_image = "postgres:17-alpine"\n'
+        )
+        after = find_config(root)
+        assert after is not None
+        assert after.fingerprint() != first
+
+    def test_changes_when_the_database_layout_changes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _service(tmp_path)
+        before = find_config(root)
+        assert before is not None
+        first = before.fingerprint()
+
+        monkeypatch.setattr(
+            config_module, "DATABASE_LAYOUT", (*config_module.DATABASE_LAYOUT, "SELECT 1")
         )
         after = find_config(root)
         assert after is not None

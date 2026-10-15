@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import time
 
 import pytest
@@ -7,10 +8,19 @@ from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tr_shared.testing.stack import _adopt_or_create, _docker, _lock, _wait_ready
+from tr_shared.testing.config import _DEFAULT_POSTGRES_IMAGE, APP_ROLE, PASSWORD
+from tr_shared.testing.stack import (
+    _POSTGRES_ENVIRONMENT,
+    _POSTGRES_READY_PROBE,
+    _adopt_or_create,
+    _docker,
+    _lock,
+    _wait_ready,
+)
 
-_CONTAINER = "tr-test-shared-lib-pg"
-_IMAGE = "postgres:16-alpine"
+_CONTAINER = (
+    f"tr-test-shared-lib-pg-{hashlib.sha256(_DEFAULT_POSTGRES_IMAGE.encode()).hexdigest()[:10]}"
+)
 _TERMINATE_POLLS = 50
 _TERMINATE_POLL_SECONDS = 0.1
 _SYNC_DRIVERS = ["postgresql+psycopg2", "postgresql+psycopg"]
@@ -23,23 +33,15 @@ def postgres_dsn() -> str:
         container = _adopt_or_create(
             client,
             name=_CONTAINER,
-            image=_IMAGE,
+            image=_DEFAULT_POSTGRES_IMAGE,
             container_port=5432,
-            environment={
-                "POSTGRES_USER": "postgres",
-                "POSTGRES_PASSWORD": "test",
-                "POSTGRES_DB": "postgres",
-            },
+            environment=_POSTGRES_ENVIRONMENT,
             command=None,
         )
         container.reload()
         port = int(container.ports["5432/tcp"][0]["HostPort"])
-        _wait_ready(
-            container,
-            ["psql", "-U", "postgres", "-d", "postgres", "-tAc", "SELECT 1"],
-            _CONTAINER,
-        )
-    return f"postgresql+asyncpg://postgres:test@127.0.0.1:{port}/postgres"
+        _wait_ready(container, _POSTGRES_READY_PROBE, _CONTAINER)
+    return f"postgresql+asyncpg://{APP_ROLE}:{PASSWORD}@127.0.0.1:{port}/postgres"
 
 
 @pytest_asyncio.fixture

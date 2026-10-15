@@ -1,9 +1,6 @@
 """Unit tests for the Supabase Vault write path (``tr_shared.vault.VaultService``).
 
-Lane note: there is no integration lane for this. ``vault.*`` is a Supabase
-extension and is absent from the ``postgres:16-alpine`` container the test
-plugin provisions, and TR_Testing_Standard forbids a test reaching remote
-Supabase. So the session is a recording fake — same precedent as
+The session is a recording fake — same precedent as
 ``tests/test_repository_tenant_guard.py``'s ``_FakeSession`` — and the
 assertions pin the emitted SQL, its ordering, and the error mapping.
 """

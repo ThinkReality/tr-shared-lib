@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from tr_shared.testing.config import TestingConfig
+from tr_shared.testing.config import ADMIN_ROLE, APP_ROLE, DATABASE_LAYOUT, PASSWORD, TestingConfig
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     pass
@@ -60,8 +60,8 @@ __all__ = [
 #: ``docker rm -f $(docker ps -aq -f label=tr.testing=1)``
 REUSE_LABEL = {"tr.testing": "1"}
 
-_POSTGRES_SUPERUSER = "postgres"
-_POSTGRES_PASSWORD = "test"
+_POSTGRES_ENVIRONMENT = {"POSTGRES_PASSWORD": PASSWORD}
+_POSTGRES_READY_PROBE = ["psql", "-U", ADMIN_ROLE, "-d", "postgres", "-tAc", "SELECT 1"]
 _READY_TIMEOUT_SECONDS = 60
 # Consecutive successes required before a container counts as ready, and the gap
 # between probes. See _wait_ready for why one success is not enough.
@@ -290,7 +290,7 @@ def _psql(container: Any, sql: str, *, database: str = "postgres") -> str:
             "ON_ERROR_STOP=1",
             "--no-psqlrc",
             "-U",
-            _POSTGRES_SUPERUSER,
+            ADMIN_ROLE,
             "-d",
             database,
             "-tAc",
@@ -373,9 +373,9 @@ def _build_template(
     """
     building = f"{template}_building"
     _psql(container, f'DROP DATABASE IF EXISTS "{building}" WITH (FORCE)')
-    _psql(container, f'CREATE DATABASE "{building}"')
-    for extension in config.extensions:
-        _psql(container, f"CREATE EXTENSION IF NOT EXISTS {extension}", database=building)
+    _psql(container, f'CREATE DATABASE "{building}" OWNER {APP_ROLE}')
+    for statement in DATABASE_LAYOUT:
+        _psql(container, statement, database=building)
 
     dsn = _dsn(host_port, building)
     result = run_migrations(config, dsn)
@@ -392,10 +392,7 @@ def _build_template(
 
 
 def _dsn(host_port: int, database: str) -> str:
-    return (
-        f"postgresql+asyncpg://{_POSTGRES_SUPERUSER}:{_POSTGRES_PASSWORD}"
-        f"@127.0.0.1:{host_port}/{database}"
-    )
+    return f"postgresql+asyncpg://{APP_ROLE}:{PASSWORD}@127.0.0.1:{host_port}/{database}"
 
 
 def _names(config: TestingConfig, run_id: str, worker_id: str) -> tuple[str, str, str]:
@@ -420,21 +417,9 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
             name=pg_name,
             image=config.postgres_image,
             container_port=5432,
-            environment={
-                "POSTGRES_USER": _POSTGRES_SUPERUSER,
-                "POSTGRES_PASSWORD": _POSTGRES_PASSWORD,
-                "POSTGRES_DB": _POSTGRES_SUPERUSER,
-            },
+            environment=_POSTGRES_ENVIRONMENT,
             command=None,
-            ready_probe=[
-                "psql",
-                "-U",
-                _POSTGRES_SUPERUSER,
-                "-d",
-                _POSTGRES_SUPERUSER,
-                "-tAc",
-                "SELECT 1",
-            ],
+            ready_probe=_POSTGRES_READY_PROBE,
         )
         container = client.containers.get(pg_name)
         if not _database_exists(container, template):
@@ -469,7 +454,7 @@ def create_run_database(config: TestingConfig, run_id: str, worker_id: str) -> N
     with _lock(pg_name):
         container = client.containers.get(pg_name)
         _psql(container, f'DROP DATABASE IF EXISTS "{run_db}" WITH (FORCE)')
-        _psql(container, f'CREATE DATABASE "{run_db}" TEMPLATE "{template}"')
+        _psql(container, f'CREATE DATABASE "{run_db}" TEMPLATE "{template}" OWNER {APP_ROLE}')
 
 
 def _redis_index(worker_id: str) -> int:

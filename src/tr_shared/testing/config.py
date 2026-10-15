@@ -25,15 +25,23 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["TestingConfig", "find_config"]
+from sqlalchemy import make_url
 
-_DEFAULT_POSTGRES_IMAGE = "postgres:16-alpine"
+__all__ = ["TestingConfig", "admin_database_url", "find_config"]
+
+_DEFAULT_POSTGRES_IMAGE = "supabase/postgres:17.6.1.178"
 _DEFAULT_REDIS_IMAGE = "redis:7-alpine"
 
-# pgcrypto (gen_random_uuid), pg_trgm and btree_gin are all NON-TRUSTED
-# extensions, so creating them needs a superuser — not merely CREATEDB. The
-# container therefore runs as the postgres superuser.
-_DEFAULT_EXTENSIONS = ("pgcrypto", "pg_trgm", "btree_gin")
+ADMIN_ROLE = "supabase_admin"
+APP_ROLE = "postgres"
+PASSWORD = "test"
+DATABASE_LAYOUT = (
+    f"CREATE SCHEMA extensions AUTHORIZATION {APP_ROLE}",
+    "CREATE EXTENSION pgcrypto WITH SCHEMA extensions",
+    'CREATE EXTENSION "uuid-ossp" WITH SCHEMA extensions',
+    "CREATE EXTENSION pg_trgm WITH SCHEMA public",
+    "CREATE EXTENSION supabase_vault",
+)
 
 
 @dataclass(frozen=True)
@@ -44,14 +52,13 @@ class TestingConfig:
     root: Path
     migrate_command: tuple[str, ...]
     migration_globs: tuple[str, ...]
-    extensions: tuple[str, ...] = _DEFAULT_EXTENSIONS
     postgres_image: str = _DEFAULT_POSTGRES_IMAGE
     redis_image: str = _DEFAULT_REDIS_IMAGE
     database_name: str = "test"
     _fingerprint: list[str] = field(default_factory=list, compare=False, repr=False)
 
     def fingerprint(self) -> str:
-        """Hex digest over the service, its images, and every migration file.
+        """Hex digest over the service, its images, the database layout and every migration file.
 
         Content, not filenames: editing a migration in place (legal while a chain
         is being re-baselined) must invalidate the template, and a filename-only
@@ -64,6 +71,8 @@ class TestingConfig:
         digest.update(self.service.encode())
         digest.update(self.postgres_image.encode())
         digest.update(self.redis_image.encode())
+        for statement in DATABASE_LAYOUT:
+            digest.update(statement.encode())
         for path in sorted(self.migration_files()):
             digest.update(str(path.relative_to(self.root)).encode())
             digest.update(path.read_bytes())
@@ -81,6 +90,16 @@ class TestingConfig:
     def key(self) -> str:
         """Short fingerprint, used in container and database names."""
         return self.fingerprint()[:12]
+
+
+def admin_database_url(database_url: str) -> str:
+    """The same test database, connected as the image's superuser.
+
+    Tests connect as ``APP_ROLE``, which cannot alter extension-owned objects such as
+    ``vault.create_secret``. Fault injection that renames them needs this URL.
+    """
+    url = make_url(database_url).set(username=ADMIN_ROLE, password=PASSWORD)
+    return url.render_as_string(hide_password=False)
 
 
 def find_config(start: Path) -> TestingConfig | None:
@@ -128,7 +147,6 @@ def _build(table: dict[str, object], root: Path) -> TestingConfig | None:
         root=root,
         migrate_command=_strings("migrate_command", ("alembic", "upgrade", "head")),
         migration_globs=_strings("migration_globs", ("**/alembic/versions/*.py",)),
-        extensions=_strings("extensions", _DEFAULT_EXTENSIONS),
         postgres_image=_string("postgres_image", _DEFAULT_POSTGRES_IMAGE),
         redis_image=_string("redis_image", _DEFAULT_REDIS_IMAGE),
         database_name=_string("database_name", "test"),
