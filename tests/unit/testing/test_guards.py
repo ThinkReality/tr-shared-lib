@@ -16,6 +16,7 @@ import pytest
 from tr_shared.testing.guards import (
     Exemption,
     assert_environment_vocabulary,
+    assert_every_test_file_has_a_lane,
     assert_no_auth_chain_bypass,
     assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
@@ -326,3 +327,39 @@ esac"""
         _tree(tmp_path, ".venv/bin/activate.sh", bad)
         _tree(tmp_path, ".worktrees/other-branch/deploy.sh", bad)
         assert_environment_vocabulary(tmp_path)
+
+
+class TestG16EveryTestFileHasALane:
+    def _tests(self, tmp_path: Path, *files: str) -> Path:
+        for name in files:
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("def test_x(): pass\n")
+        return tmp_path / "tests"
+
+    def test_a_file_in_a_folder_that_names_no_lane_fails_and_is_named(self, tmp_path: Path) -> None:
+        tests_root = self._tests(
+            tmp_path,
+            "tests/core/test_audit_context.py",
+            "tests/test_phase_g_role_drift.py",
+            "tests/core/unit/test_session_boundary.py",
+        )
+
+        with pytest.raises(AssertionError) as caught:
+            assert_every_test_file_has_a_lane(tests_root)
+
+        assert "tests/core/test_audit_context.py" in str(caught.value)
+        assert "tests/test_phase_g_role_drift.py" in str(caught.value)
+        assert "test_session_boundary.py" not in str(caught.value)
+
+    def test_every_lane_folder_passes(self, tmp_path: Path) -> None:
+        tests_root = self._tests(
+            tmp_path,
+            "tests/core/unit/test_audit_context.py",
+            "tests/architecture/test_phase_g_role_drift.py",
+            "tests/auth/contract/test_auth_contract.py",
+            "tests/integration/test_service_token_repository.py",
+            "tests/cms/unit/test_geo_tasks_session.py",
+        )
+
+        assert_every_test_file_has_a_lane(tests_root)
