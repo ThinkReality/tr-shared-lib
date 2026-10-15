@@ -148,3 +148,33 @@ def test_a_run_database_looks_like_the_staging_database(tmp_path: Path) -> None:
     assert seen["decrypted"] == "s3cret"
     assert "function vault.create_secret(unknown) does not exist" in failure
     assert restored == "back"
+
+
+@requires_docker
+def test_a_fresh_container_counts_as_ready_only_once_its_final_server_is_up(
+    tmp_path: Path,
+) -> None:
+    from tr_shared.testing.stack import (
+        _POSTGRES_ENVIRONMENT,
+        _POSTGRES_READY_PROBE,
+        _docker,
+        _ensure_container,
+    )
+
+    name = f"tr-test-ready-{tmp_path.name[-12:].lower()}"
+    client = _docker()
+    try:
+        _ensure_container(
+            client,
+            name=name,
+            image=_config(tmp_path).postgres_image,
+            container_port=5432,
+            environment=_POSTGRES_ENVIRONMENT,
+            command=None,
+            ready_probe=_POSTGRES_READY_PROBE,
+        )
+        logs = client.containers.get(name).logs().decode(errors="replace")
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
+
+    assert 'listening on IPv4 address "0.0.0.0", port 5432' in logs
