@@ -7,6 +7,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-10-15
+
 ### Changed
 - The test plugin's Postgres is now `supabase/postgres:17.6.1.178`, the same image family, major and minor as hosted
   Supabase (staging: PostgreSQL 17.6, `supabase_vault` 0.3.1). It was `postgres:16-alpine`: one major behind, no
