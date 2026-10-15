@@ -7,6 +7,29 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- The test plugin's Postgres is now `supabase/postgres:17.6.1.178`, the same image family, major and minor as hosted
+  Supabase (staging: PostgreSQL 17.6, `supabase_vault` 0.3.1). It was `postgres:16-alpine`: one major behind, no
+  Vault, no Supabase roles.
+- Tests and migrations connect as `postgres`, a non-superuser, the role staging apps use; container admin DDL runs as
+  `supabase_admin`. Every test database is created `OWNER postgres`. A migration that only works as a superuser now
+  fails in the integration lane instead of on deploy.
+- Test databases get staging's extension layout (`testing.config.DATABASE_LAYOUT`, part of the reuse key):
+  `pgcrypto` and `uuid-ossp` in `extensions`, `pg_trgm` in `public`, `supabase_vault` in `vault`.
+
+### Removed
+- `[tool.tr_testing] extensions` and the `btree_gin` default. No service set the key, no migration uses `btree_gin`,
+  and staging does not have it.
+
+### Added
+- `tr_shared.testing.admin_database_url(database_url)`: the same database as `supabase_admin`, for fault injection on
+  objects the app role cannot alter (rename `vault.create_secret` away and back).
+
+**Consumer action:** relock, then run the integration lane once; every reuse key changes, so the first run builds a
+new container per service. tr-crm-core must delete `tests/_vault_stub.py` in its relock PR: real Vault's functions
+belong to `supabase_admin`, so the stub's DDL fails with `permission denied for schema vault`. Its fault-injection
+fixtures move to `admin_database_url` (offline, slow read) or a held `LOCK TABLE vault.secrets` (slow write).
+
 ## [0.93.0] - 2026-10-14
 
 ### Fixed

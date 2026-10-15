@@ -36,7 +36,7 @@ from tr_shared.testing.celery_topology import (
     registered_task_names,
     unmatched_route_patterns,
 )
-from tr_shared.testing.config import TestingConfig, find_config
+from tr_shared.testing.config import TestingConfig, admin_database_url, find_config
 from tr_shared.testing.env_contract import assert_no_orphan_env_keys
 from tr_shared.testing.guards import (
     assert_no_auth_chain_bypass,
@@ -77,6 +77,7 @@ __all__ = [
     "CeleryTopologyError",
     "Exemption",
     "TestingConfig",
+    "admin_database_url",
     "assert_default_queue_is_consumed",
     "assert_every_beat_entry_sets_expires",
     "assert_every_beat_entry_targets_a_consumed_queue",
