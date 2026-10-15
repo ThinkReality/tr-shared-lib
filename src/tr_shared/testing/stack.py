@@ -61,7 +61,17 @@ __all__ = [
 REUSE_LABEL = {"tr.testing": "1"}
 
 _POSTGRES_ENVIRONMENT = {"POSTGRES_PASSWORD": PASSWORD}
-_POSTGRES_READY_PROBE = ["psql", "-U", ADMIN_ROLE, "-d", "postgres", "-tAc", "SELECT 1"]
+_POSTGRES_READY_PROBE = [
+    "psql",
+    "-h",
+    "127.0.0.1",
+    "-U",
+    ADMIN_ROLE,
+    "-d",
+    "postgres",
+    "-tAc",
+    "SELECT 1",
+]
 _READY_TIMEOUT_SECONDS = 60
 # Consecutive successes required before a container counts as ready, and the gap
 # between probes. See _wait_ready for why one success is not enough.

@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.94.2] - 2026-10-15
+
+### Fixed
+- A fresh Postgres container could be declared ready while the image's temporary init server was still up; the
+  plugin's next statement then died with `FATAL: terminating connection due to administrator command`
+  (tr-crm-core, first run on 0.94.1). The Supabase image runs its init scripts on a socket-only server for about
+  1.3 s, longer than the 3-probe streak. The ready probe now connects over TCP to 127.0.0.1, which only the final
+  server listens on (`trust` inside the container, so no password).
+
+**Consumer action:** skip 0.94.0 and 0.94.1; relock to this release.
+
 ## [0.94.1] - 2026-10-15
 
 ### Fixed
