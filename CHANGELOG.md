@@ -7,6 +7,25 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-15
+
+### Added
+- `tr_shared.testing.roundtrip_database(database_url, suffix="roundtrip")`. A context manager that creates an empty
+  `<db>_<suffix>` next to the test database, owned by `APP_ROLE` and laid out with `DATABASE_LAYOUT`. It yields that
+  database's URL and drops it on exit, even if the body raises. Seven services each had their own copy of this fixture,
+  and the copies disagreed:
+  - No copy laid the database out like staging. Gateway, crm-core and people-finance created `pgcrypto` in `public`,
+    but staging keeps it in `extensions`. content-platform seeded its own list of three extensions, including
+    `btree_gin`, which staging does not have. The others created a bare database.
+  - Four copies called `pytest.skip` when Postgres was unreachable.
+  - Every copy pointed the service at the new database by writing `DATABASE_URL` and calling
+    `get_settings.cache_clear()`. That leaves the process with two settings objects: code that read settings at import
+    keeps the old one, and later `monkeypatch.setattr(get_settings(), ...)` calls miss it. In lead-management, the Slack
+    alert test failed whenever it ran after the round-trip test.
+
+**Consumer action:** replace the local round-trip fixture with `roundtrip_database(...)`. Point the live settings object
+at the yielded URL with `monkeypatch.setattr`. Do not write `os.environ` and do not call `cache_clear`.
+
 ## [0.95.0] - 2026-10-15
 
 ### Added
