@@ -71,20 +71,5 @@ jobs:
           enable-cache: true
       - name: Sync deps
         run: uv sync --locked
-      # Hand-picked scope — the full suite has pre-existing failures in
-      # unrelated modules (tests/unit/celery, tests/unit/integrations/pf).
-      - name: Pytest (event consumer + S2S contracts)
-        run: >-
-          uv run pytest
-          tests/unit/alerts
-          tests/unit/db tests/unit/events tests/integration tests/contracts
-          tests/test_consumer.py tests/test_version_parity.py
-          tests/test_new_event_registries.py
-          tests/unit/test_security.py tests/unit/webhooks
-          tests/unit/test_phone.py
-          tests/test_validators.py
-          tests/unit/redis tests/unit/cache tests/unit/testing
-          tests/unit/middleware tests/middleware
-          tests/unit/http tests/unit/logging
-          tests/config
-          --no-cov
+      - name: Pytest
+        run: uv run pytest
