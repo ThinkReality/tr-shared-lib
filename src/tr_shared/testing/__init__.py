@@ -59,6 +59,7 @@ from tr_shared.testing.lanes import (
     run_needs_infrastructure,
 )
 from tr_shared.testing.primary_keys import assert_no_server_default_primary_keys
+from tr_shared.testing.roundtrip import roundtrip_database
 from tr_shared.testing.session_scope import assert_session_dependencies_are_function_scoped
 from tr_shared.testing.statements import describe_statements, record_statements
 from tr_shared.testing.tenant_header_guard import (
@@ -104,6 +105,7 @@ __all__ = [
     "iter_app_modules",
     "lane_for_path",
     "redis_index_for_worker",
+    "roundtrip_database",
     "run_needs_infrastructure",
     "savepoint_session",
     "worker_id",

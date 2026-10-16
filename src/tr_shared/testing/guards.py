@@ -431,9 +431,7 @@ def assert_no_env_mutation_in_conftest(
     """G9. The plugin owns the infrastructure variables.
 
     Scoped to conftests, because that is where a value set at import time wins
-    the race against the app's engine construction. The migration round-trip
-    fixtures legitimately retarget ``DATABASE_URL`` mid-session and belong in the
-    allowlist with ``requires_symbols=("_roundtrip",)``.
+    the race against the app's engine construction.
     """
     found_conftests = {str(p.relative_to(tests_root)): p for p in tests_root.rglob("conftest.py")}
     violations = {}
