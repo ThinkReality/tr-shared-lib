@@ -7,6 +7,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-10-16
+
+### Added
+- `tr_shared.redis.LoopBoundRedis(url, *, max_connections, socket_timeout, socket_connect_timeout, decode_responses)`.
+  `.client()` returns a Redis client whose pool belongs to the running event loop, and builds a new one when the loop
+  changes. A redis-py asyncio connection works only on the loop that opened it. The URL is checked at construction.
+
+### Fixed
+- `RateLimiter(redis_url=...)` kept the client it built on first use for its whole life. A limiter that outlived its
+  event loop got `Event loop is closed` on the next loop's first call and quietly fell back to the memory counter. When
+  the pool's 10 s health check ran first, the request never reached Redis, so the Redis and memory counters each saw
+  part of the traffic and the limit was not enforced. In WAM, `test_rate_limit_tenant_isolation` failed with
+  `assert 200 == 429` whenever an earlier test on the same xdist worker had used the limiter more than 10 s before.
+  crm-core calendar hid the same bug with a test fixture that reset the limiter's private client. The `redis_url`
+  limiter now uses `LoopBoundRedis`. A `redis_client` or `redis_provider` stays the caller's to manage.
+
+**Consumer action:** none for `RateLimiter`. Delete any test fixture that resets a limiter's `_redis_client`.
+
 ## [0.96.0] - 2026-10-15
 
 ### Added
