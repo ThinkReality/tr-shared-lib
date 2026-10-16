@@ -3,7 +3,6 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-import redis.asyncio as aioredis
 from starlette.requests import Request
 
 from tr_shared.contracts.headers import HttpHeader
@@ -22,8 +21,7 @@ from tr_shared.rate_limiter.schemas import (
     RateLimitResult,
     WindowConfig,
 )
-from tr_shared.redis.connection import require_plain_redis_url
-from tr_shared.redis.pool import build_connection_pool
+from tr_shared.redis.pool import LoopBoundRedis
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +53,18 @@ class RateLimiter:
             raise ValueError(
                 "RateLimiter takes at most one of redis_client, redis_url, redis_provider"
             )
-        if redis_url:
-            require_plain_redis_url(redis_url)
         self._redis_client = redis_client
-        self._redis_url = redis_url
+        self._url_redis = (
+            LoopBoundRedis(
+                redis_url,
+                max_connections=RATE_LIMIT_REDIS_MAX_CONNECTIONS,
+                socket_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
+                socket_connect_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
+                decode_responses=True,
+            )
+            if redis_url
+            else None
+        )
         self._redis_provider = redis_provider
         self._key_prefix = key_prefix
         self._memory_fallback = MemoryFallback() if enable_memory_fallback else None
@@ -67,16 +73,8 @@ class RateLimiter:
         if self._redis_provider is not None:
             return await self._redis_provider()
 
-        if self._redis_client is None and self._redis_url:
-            self._redis_client = aioredis.Redis(
-                connection_pool=build_connection_pool(
-                    self._redis_url,
-                    max_connections=RATE_LIMIT_REDIS_MAX_CONNECTIONS,
-                    socket_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
-                    socket_connect_timeout=RATE_LIMIT_REDIS_TIMEOUT_SECONDS,
-                    decode_responses=True,
-                )
-            )
+        if self._url_redis is not None:
+            return self._url_redis.client()
         return self._redis_client
 
     async def check(

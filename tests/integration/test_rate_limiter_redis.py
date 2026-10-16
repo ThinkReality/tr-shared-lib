@@ -33,6 +33,17 @@ async def test_a_url_limiter_counts_in_redis():
     assert verdicts == [False, False, True]
 
 
+def test_a_url_limiter_enforces_its_limit_across_event_loops():
+    assert TEST_REDIS_URL is not None
+    limiter = RateLimiter(redis_url=TEST_REDIS_URL, enable_memory_fallback=False)
+    one_per_minute = RateLimitConfig(windows=[WindowConfig(limit=1, window_seconds=60)])
+    key = f"itest:{uuid.uuid4().hex}"
+
+    verdicts = [asyncio.run(limiter.check(key, one_per_minute)).is_blocked for _ in range(2)]
+
+    assert verdicts == [False, True]
+
+
 async def test_a_silent_redis_falls_back_within_the_client_timeout():
     async def silent(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await reader.read()
