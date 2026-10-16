@@ -41,7 +41,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tr_shared.exceptions import DatabaseError, ServiceUnavailableError
+from tr_shared.exceptions import ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +148,8 @@ class VaultService:
         """Store a new secret and return its id.
 
         A named secret is deleted first. Callers use deterministic per-entity
-        names, ``vault.secrets.name`` carries a real (non-partial) unique
-        constraint, and a stale row left by a partial write would otherwise make
+        names, ``vault.secrets.name`` carries a unique index (``WHERE name IS NOT
+        NULL``), and a stale row left by a partial write would otherwise make
         every future store under that name raise an unhandled ``IntegrityError``.
         Clearing first makes a retried write self-healing.
         """
@@ -164,10 +164,7 @@ class VaultService:
                 text("SELECT vault.create_secret(:secret, :name, :description) AS secret_id"),
                 {"secret": secret_value, "name": name, "description": description or ""},
             )
-            row = result.fetchone()
-            if not row or not row[0]:
-                raise DatabaseError(detail="Vault did not return a secret ID")
-            secret_id = cast("UUID", row[0])
+            secret_id = cast("UUID", result.scalar_one())
             logger.info("Vault secret created (vault_secret_id=%s)", secret_id)
             return secret_id
 

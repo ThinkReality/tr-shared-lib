@@ -7,6 +7,11 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- `VaultService.create_secret` no longer raises `DatabaseError` when Vault returns no id. `vault.create_secret`
+  always returns one, so the branch could not run. Its tests now run against real Vault in
+  `tests/integration/test_vault.py` instead of a fake session that only checked the SQL text.
+
 ## [0.97.0] - 2026-10-16
 
 ### Added
