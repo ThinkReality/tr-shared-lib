@@ -16,7 +16,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-import tr_shared.redis.client as redis_module
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.middleware.idempotency import APIIdempotencyMiddleware
 from tr_shared.redis.client import close_redis_client
@@ -76,7 +75,7 @@ class App:
 
 async def test_the_key_is_kept_only_for_answers_that_executed():
     assert TEST_REDIS_URL is not None
-    redis_module._client = None
+    await close_redis_client()
     service = f"itest-{uuid.uuid4().hex[:8]}"
     app = App(service)
     inspector = Redis.from_url(TEST_REDIS_URL, decode_responses=True)

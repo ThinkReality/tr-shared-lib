@@ -7,6 +7,28 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-10-17
+
+### Fixed
+- `StandardRedisAdapter` and `get_redis_client()` kept the client they built on first use for the life of the process.
+  A redis-py asyncio connection works only on the loop that opened it, so the first call on any later event loop failed
+  with `Event loop is closed`. The `CacheService` of crm-core, media, people-finance and lead-management sits on this
+  adapter, which is why crm-core's calendar tests rebuilt the cache singleton before each test. Both now hold a `LoopBoundRedis`, so each event loop gets its own
+  client and the same object serves every loop.
+
+### Changed
+- `StandardRedisAdapter.client` is the current loop's client. The adapter no longer has `_client` or `_pool`; the
+  shared methods in `BaseRedisAdapter` read `self.client`.
+
+### Added
+- `LoopBoundRedis.aclose()` closes the client bound to the running loop and forgets it. A client bound to another loop
+  is dropped, not closed, since its loop can no longer run the close.
+
+**Consumer action:** read the adapter's client through `.client`, never `._client`. people-finance's
+`_extract_redis_client` uses `getattr(provider, "_client", None)` and would silently return `None` on this version.
+Reset the shared client with `close_redis_client()`, not by writing `tr_shared.redis.client._client`. Test fixtures that
+rebuild a `CacheService` because of a closed event loop, such as crm-core's `_fresh_cache_singleton`, can be deleted.
+
 ### Removed
 - `VaultService.create_secret` no longer raises `DatabaseError` when Vault returns no id. `vault.create_secret`
   always returns one, so the branch could not run. Its tests now run against real Vault in

@@ -7,7 +7,7 @@ methods: ``initialize()``, ``close()``, ``ping()``, ``set()``, and ``xadd()``.
 
 All methods follow the same two-step pattern:
   1. Guard: raise CacheConnectionError if client is not initialised.
-  2. Delegate + wrap: call self._client.<op>(); on any exception raise
+  2. Delegate + wrap: call self.client.<op>(); on any exception raise
      CacheOperationError so callers see a provider-agnostic error type.
 """
 
@@ -28,7 +28,7 @@ class BaseRedisAdapter(CacheInterface):
     class and only override the provider-specific methods.
     """
 
-    # Subclasses must assign _client before any operation is called.
+    # Subclasses assign _client, or override client, before any operation is called.
     _client: Any = None
     _available: bool = False
 
@@ -59,20 +59,20 @@ class BaseRedisAdapter(CacheInterface):
 
     def _check_initialized(self, op: str) -> None:
         """Raise CacheConnectionError if the client has not been initialised."""
-        if not self._client or not self._available:
+        if not self.client or not self._available:
             raise CacheConnectionError(f"Cache not initialized — call initialize() before {op}()")
 
     async def get(self, key: str) -> str | None:
         self._check_initialized("get")
         try:
-            return await self._client.get(key)
+            return await self.client.get(key)
         except Exception as e:
             raise CacheOperationError(f"GET failed: {e}") from e
 
     async def setex(self, key: str, ttl: int, value: str) -> bool:
         self._check_initialized("setex")
         try:
-            await self._client.setex(key, ttl, value)
+            await self.client.setex(key, ttl, value)
             return True
         except Exception as e:
             raise CacheOperationError(f"SETEX failed: {e}") from e
@@ -82,7 +82,7 @@ class BaseRedisAdapter(CacheInterface):
         if not keys:
             return 0
         try:
-            return await self._client.delete(*keys)
+            return await self.client.delete(*keys)
         except Exception as e:
             raise CacheOperationError(f"DELETE failed: {e}") from e
 
@@ -91,21 +91,21 @@ class BaseRedisAdapter(CacheInterface):
         if not keys:
             return 0
         try:
-            return await self._client.exists(*keys)
+            return await self.client.exists(*keys)
         except Exception as e:
             raise CacheOperationError(f"EXISTS failed: {e}") from e
 
     async def ttl(self, key: str) -> int:
         self._check_initialized("ttl")
         try:
-            return await self._client.ttl(key)
+            return await self.client.ttl(key)
         except Exception as e:
             raise CacheOperationError(f"TTL failed: {e}") from e
 
     async def expire(self, key: str, seconds: int) -> bool:
         self._check_initialized("expire")
         try:
-            result = await self._client.expire(key, seconds)
+            result = await self.client.expire(key, seconds)
             return bool(result)
         except Exception as e:
             raise CacheOperationError(f"EXPIRE failed: {e}") from e
@@ -115,14 +115,14 @@ class BaseRedisAdapter(CacheInterface):
         if not keys:
             return []
         try:
-            return await self._client.mget(keys)
+            return await self.client.mget(keys)
         except Exception as e:
             raise CacheOperationError(f"MGET failed: {e}") from e
 
     async def hgetall(self, key: str) -> dict[str, str]:
         self._check_initialized("hgetall")
         try:
-            result = await self._client.hgetall(key)
+            result = await self.client.hgetall(key)
             return result if result else {}
         except Exception as e:
             raise CacheOperationError(f"HGETALL failed: {e}") from e
@@ -130,7 +130,7 @@ class BaseRedisAdapter(CacheInterface):
     async def hset(self, key: str, mapping: dict[str, str]) -> int:
         self._check_initialized("hset")
         try:
-            return await self._client.hset(key, mapping=mapping)
+            return await self.client.hset(key, mapping=mapping)
         except Exception as e:
             raise CacheOperationError(f"HSET failed: {e}") from e
 
@@ -139,28 +139,28 @@ class BaseRedisAdapter(CacheInterface):
     ) -> tuple[int, list[str]]:
         self._check_initialized("scan")
         try:
-            return await self._client.scan(cursor=cursor, match=match, count=count)
+            return await self.client.scan(cursor=cursor, match=match, count=count)
         except Exception as e:
             raise CacheOperationError(f"SCAN failed: {e}") from e
 
     async def eval(self, script: str, numkeys: int, *keys_and_args: str | int) -> Any:
         self._check_initialized("eval")
         try:
-            return await self._client.eval(script, numkeys, *keys_and_args)
+            return await self.client.eval(script, numkeys, *keys_and_args)
         except Exception as e:
             raise CacheOperationError(f"EVAL failed: {e}") from e
 
     async def incrby(self, key: str, amount: int) -> int:
         self._check_initialized("incrby")
         try:
-            return await self._client.incrby(key, amount)
+            return await self.client.incrby(key, amount)
         except Exception as e:
             raise CacheOperationError(f"INCRBY failed: {e}") from e
 
     async def zadd(self, key: str, mapping: dict[str, float]) -> int:
         self._check_initialized("zadd")
         try:
-            return await self._client.zadd(key, mapping)
+            return await self.client.zadd(key, mapping)
         except Exception as e:
             raise CacheOperationError(f"ZADD failed: {e}") from e
 
@@ -169,35 +169,35 @@ class BaseRedisAdapter(CacheInterface):
     ) -> list:
         self._check_initialized("zrangebyscore")
         try:
-            return await self._client.zrangebyscore(key, min, max, withscores=withscores)
+            return await self.client.zrangebyscore(key, min, max, withscores=withscores)
         except Exception as e:
             raise CacheOperationError(f"ZRANGEBYSCORE failed: {e}") from e
 
     async def zrange(self, key: str, start: int, end: int) -> list[str]:
         self._check_initialized("zrange")
         try:
-            return await self._client.zrange(key, start, end)
+            return await self.client.zrange(key, start, end)
         except Exception as e:
             raise CacheOperationError(f"ZRANGE failed: {e}") from e
 
     async def zrem(self, key: str, *members: str) -> int:
         self._check_initialized("zrem")
         try:
-            return await self._client.zrem(key, *members)
+            return await self.client.zrem(key, *members)
         except Exception as e:
             raise CacheOperationError(f"ZREM failed: {e}") from e
 
     async def sadd(self, key: str, *members: str) -> int:
         self._check_initialized("sadd")
         try:
-            return await self._client.sadd(key, *members)
+            return await self.client.sadd(key, *members)
         except Exception as e:
             raise CacheOperationError(f"SADD failed: {e}") from e
 
     async def srem(self, key: str, *members: str) -> int:
         self._check_initialized("srem")
         try:
-            return await self._client.srem(key, *members)
+            return await self.client.srem(key, *members)
         except Exception as e:
             raise CacheOperationError(f"SREM failed: {e}") from e
 

@@ -35,6 +35,19 @@ def test_each_event_loop_gets_its_own_client():
     assert asyncio.run(once()) is not asyncio.run(once())
 
 
+def test_closing_drops_the_bound_client():
+    store = _store()
+
+    async def close_between():
+        first = store.client()
+        await store.aclose()
+        return first, store.client()
+
+    first, second = asyncio.run(close_between())
+
+    assert first is not second
+
+
 def test_a_url_the_pool_cannot_serve_is_refused_at_construction():
     with pytest.raises(ValueError, match="only supports redis://"):
         LoopBoundRedis(

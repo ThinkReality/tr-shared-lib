@@ -1,14 +1,14 @@
 """One pool builder: the guards, keepalive and retry policy are configured once, and
 each call site's kwargs are pinned so the two paths cannot drift apart again."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from redis.asyncio import Redis
 from redis.backoff import ExponentialBackoff
 
-import tr_shared.redis.client as redis_module
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
-from tr_shared.redis.client import get_redis_client
+from tr_shared.redis.client import close_redis_client, get_redis_client
 from tr_shared.redis.connection import ProxySafeConnection, keepalive_options
 from tr_shared.redis.pool import build_connection_pool
 
@@ -16,10 +16,10 @@ URL = "redis://:pw@redis.example:6379/3"
 
 
 @pytest.fixture(autouse=True)
-def reset_redis_client():
-    redis_module._client = None
+async def no_shared_client():
+    await close_redis_client()
     yield
-    redis_module._client = None
+    await close_redis_client()
 
 
 class TestBuildConnectionPool:
@@ -64,35 +64,25 @@ class TestBuildConnectionPool:
 
 class TestCallSitesPinTheirKwargs:
     async def test_get_redis_client_uses_connect_timeout_for_both_timeouts(self):
-        with (
-            patch("tr_shared.redis.client.build_connection_pool") as build,
-            patch("tr_shared.redis.client.aioredis.Redis"),
-        ):
-            await get_redis_client(
-                URL, max_connections=7, decode_responses=False, socket_connect_timeout=3
-            )
-        build.assert_called_once_with(
-            URL,
-            max_connections=7,
-            socket_timeout=3,
-            socket_connect_timeout=3,
-            decode_responses=False,
+        client = await get_redis_client(
+            URL, max_connections=7, decode_responses=False, socket_connect_timeout=3
         )
 
+        pool = client.connection_pool
+        assert pool.max_connections == 7
+        assert pool.connection_kwargs["socket_timeout"] == 3
+        assert pool.connection_kwargs["socket_connect_timeout"] == 3
+        assert pool.connection_kwargs["decode_responses"] is False
+
     async def test_standard_redis_adapter_keeps_separate_timeouts_and_decodes(self):
-        with (
-            patch("tr_shared.cache.adapters.standard_redis.build_connection_pool") as build,
-            patch("tr_shared.cache.adapters.standard_redis.Redis") as redis_cls,
-        ):
-            redis_cls.return_value = MagicMock(ping=AsyncMock(return_value=True))
-            adapter = StandardRedisAdapter(
-                URL, max_connections=9, socket_timeout=4, socket_connect_timeout=2
-            )
-            assert await adapter.initialize()
-        build.assert_called_once_with(
-            URL,
-            max_connections=9,
-            socket_timeout=4,
-            socket_connect_timeout=2,
-            decode_responses=True,
+        adapter = StandardRedisAdapter(
+            URL, max_connections=9, socket_timeout=4, socket_connect_timeout=2
         )
+        with patch.object(Redis, "ping", AsyncMock(return_value=True)):
+            assert await adapter.initialize()
+
+        pool = adapter.client.connection_pool
+        assert pool.max_connections == 9
+        assert pool.connection_kwargs["socket_timeout"] == 4
+        assert pool.connection_kwargs["socket_connect_timeout"] == 2
+        assert pool.connection_kwargs["decode_responses"] is True

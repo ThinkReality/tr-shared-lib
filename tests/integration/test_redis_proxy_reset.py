@@ -25,7 +25,6 @@ import uvloop
 from redis.asyncio import ConnectionPool
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-import tr_shared.redis.client as redis_module
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
 from tr_shared.cache.service import CacheService
 from tr_shared.redis.client import close_redis_client, get_redis_client
@@ -132,7 +131,7 @@ async def _cache_service_read_after_reset():
         key = service.build_key(uuid.uuid4().hex)
         try:
             assert await service.set(key, "v", ttl=60)
-            await _reset_and_wait_until_client_sees_it(relay, adapter._pool)
+            await _reset_and_wait_until_client_sees_it(relay, adapter.client.connection_pool)
             return await service.get_result(key)
         finally:
             await adapter.close()
@@ -140,7 +139,7 @@ async def _cache_service_read_after_reset():
 
 async def _raw_client_read_after_reset():
     async with Relay(TEST_REDIS_URL) as relay:
-        redis_module._client = None
+        await close_redis_client()
         client = await get_redis_client(relay.url, max_connections=2)
         key = f"itest:{uuid.uuid4().hex}"
         try:
