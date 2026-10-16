@@ -11,12 +11,12 @@ is inherited from BaseRedisAdapter.
 import logging
 from typing import Any
 
-from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio import Redis
 
 from tr_shared.cache.adapters.base import BaseRedisAdapter
 from tr_shared.cache.exceptions import CacheConnectionError, CacheOperationError
 from tr_shared.cache.interface import PipelineInterface
-from tr_shared.redis.pool import build_connection_pool
+from tr_shared.redis.pool import LoopBoundRedis
 
 logger = logging.getLogger(__name__)
 
@@ -61,21 +61,23 @@ class StandardRedisAdapter(BaseRedisAdapter):
         self._max_connections = max_connections
         self._socket_timeout = socket_timeout
         self._socket_connect_timeout = socket_connect_timeout
-        self._pool: ConnectionPool | None = None
-        self._client: Redis | None = None
+        self._redis: LoopBoundRedis | None = None
         self._available = False
 
+    @property
+    def client(self) -> Redis | None:
+        return self._redis.client() if self._redis else None
+
     async def initialize(self) -> bool:
-        self._pool = build_connection_pool(
+        self._redis = LoopBoundRedis(
             self._url,
             max_connections=self._max_connections,
             socket_timeout=self._socket_timeout,
             socket_connect_timeout=self._socket_connect_timeout,
             decode_responses=True,
         )
-        self._client = Redis(connection_pool=self._pool)
         try:
-            await self._client.ping()
+            await self._redis.client().ping()
             self._available = True
             logger.info("Standard Redis connection initialized successfully")
             return True
@@ -85,22 +87,21 @@ class StandardRedisAdapter(BaseRedisAdapter):
             return False
 
     async def close(self) -> None:
-        if self._pool:
+        if self._redis:
             try:
-                await self._pool.disconnect()
+                await self._redis.aclose()
                 logger.info("Standard Redis connection pool closed")
             except Exception as e:
                 logger.warning("Error closing Redis connection: %s", e)
             finally:
-                self._pool = None
-                self._client = None
+                self._redis = None
                 self._available = False
 
     async def ping(self) -> bool:
-        if not self._client or not self._available:
+        if not self._redis or not self._available:
             return False
         try:
-            return await self._client.ping()
+            return await self._redis.client().ping()
         except Exception:
             return False
 
@@ -117,7 +118,7 @@ class StandardRedisAdapter(BaseRedisAdapter):
                 kwargs["ex"] = ttl
             if nx:
                 kwargs["nx"] = True
-            result = await self._client.set(key, value, **kwargs)
+            result = await self.client.set(key, value, **kwargs)
             return result is not None
         except Exception as e:
             raise CacheOperationError(f"SET failed: {e}") from e
@@ -130,11 +131,12 @@ class StandardRedisAdapter(BaseRedisAdapter):
             kwargs: dict[str, Any] = {}
             if maxlen is not None:
                 kwargs["maxlen"] = maxlen
-            return await self._client.xadd(stream, fields, **kwargs)
+            return await self.client.xadd(stream, fields, **kwargs)
         except Exception as e:
             raise CacheOperationError(f"XADD failed: {e}") from e
 
     def pipeline(self) -> PipelineInterface:
-        if not self._client:
+        client = self.client
+        if client is None:
             raise CacheConnectionError("Redis not initialized")
-        return StandardPipeline(self._client)
+        return StandardPipeline(client)

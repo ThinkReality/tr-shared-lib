@@ -6,7 +6,6 @@ import socket
 
 import pytest
 
-import tr_shared.redis.client as redis_module
 from tr_shared.redis.client import close_redis_client, get_redis_client
 from tr_shared.redis.connection import KEEPALIVE_COUNT, KEEPALIVE_IDLE_S, KEEPALIVE_INTERVAL_S
 
@@ -20,7 +19,7 @@ if not TEST_REDIS_URL:
 
 @pytest.fixture
 async def live_socket():
-    redis_module._client = None
+    await close_redis_client()
     client = await get_redis_client(TEST_REDIS_URL)
     conn = await client.connection_pool.get_connection()
     try:

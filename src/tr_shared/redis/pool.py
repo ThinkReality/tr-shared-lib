@@ -64,3 +64,8 @@ class LoopBoundRedis:
         if self._bound is None or self._bound[0] is not loop:
             self._bound = (loop, Redis(connection_pool=self._build_pool()))
         return self._bound[1]
+
+    async def aclose(self) -> None:
+        bound, self._bound = self._bound, None
+        if bound is not None and bound[0] is asyncio.get_running_loop():
+            await bound[1].aclose(close_connection_pool=True)

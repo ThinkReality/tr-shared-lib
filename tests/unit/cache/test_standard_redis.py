@@ -4,14 +4,15 @@ import pytest
 
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
 from tr_shared.cache.exceptions import CacheConnectionError
+from tr_shared.redis import LoopBoundRedis
 
 
 @pytest.fixture
-async def adapter(async_fake_redis):
-    """A StandardRedisAdapter pre-wired with fakeredis client."""
+async def adapter(async_fake_redis, monkeypatch):
+    """A StandardRedisAdapter whose loop-bound client is fakeredis."""
+    monkeypatch.setattr(LoopBoundRedis, "client", lambda self: async_fake_redis)
     a = StandardRedisAdapter(url="redis://localhost:6379/0")
-    a._client = async_fake_redis
-    a._available = True
+    assert await a.initialize()
     return a
 
 
@@ -22,15 +23,10 @@ class TestInitialization:
 
     def test_client_is_none_before_init(self):
         a = StandardRedisAdapter(url="redis://localhost:6379/0")
-        assert a._client is None
+        assert a.client is None
 
-    async def test_initialize_with_fakeredis_sets_available(self, async_fake_redis):
-        a = StandardRedisAdapter(url="redis://localhost:6379/0")
-        a._client = async_fake_redis
-        a._available = False
-        # Direct ping test — simulates successful initialize
-        result = await async_fake_redis.ping()
-        assert result is True
+    async def test_initialize_marks_the_adapter_available(self, adapter):
+        assert adapter._available is True
 
 
 class TestPing:
