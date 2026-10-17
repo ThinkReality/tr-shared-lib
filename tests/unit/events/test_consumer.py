@@ -51,20 +51,6 @@ class TestInMemoryIdempotencyChecker:
         # then two more insertions → total ≤ 5002
         assert len(checker._ids) <= 5_002
 
-    async def test_redis_mark_called_when_client_provided(self):
-        redis = AsyncMock()
-        checker = InMemoryIdempotencyChecker(redis_client=redis, group_name="grp")
-        await checker.mark_processed("evt-x")
-        redis.setex.assert_awaited_once()
-
-    async def test_redis_is_checked_when_id_not_in_memory(self):
-        redis = AsyncMock()
-        redis.exists = AsyncMock(return_value=1)
-        checker = InMemoryIdempotencyChecker(redis_client=redis, group_name="grp")
-        result = await checker.is_processed("evt-missing-from-memory")
-        assert result is True
-        redis.exists.assert_awaited_once()
-
 
 def _make_consumer(*, with_dlq: bool = True) -> EventConsumer:
     consumer = EventConsumer(

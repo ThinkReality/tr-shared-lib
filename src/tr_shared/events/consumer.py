@@ -24,10 +24,15 @@ from tr_shared.events.dead_letter import DeadLetterHandler
 from tr_shared.events.envelope import EventEnvelope
 from tr_shared.events.retry_policy import RetryPolicy
 from tr_shared.events.retry_state import RetryStateStore
+from tr_shared.redis.pool import LoopBoundRedis, build_connection_pool
 
 logger = logging.getLogger(__name__)
 
 EventHandler = Callable[[EventEnvelope], Awaitable[None]]
+
+CONSUMER_REDIS_MAX_CONNECTIONS = 10
+CONSUMER_REDIS_TIMEOUT_SECONDS = 5
+CONSUMER_READ_MARGIN_SECONDS = 5
 
 
 class IdempotencyChecker(Protocol):
@@ -39,11 +44,19 @@ class IdempotencyChecker(Protocol):
 class InMemoryIdempotencyChecker:
     """In-memory dedup with optional Redis fallback for cross-instance checks."""
 
-    def __init__(
-        self, redis_client: redis.Redis | None = None, group_name: str = "", ttl_days: int = 7
-    ) -> None:
+    def __init__(self, redis_url: str = "", group_name: str = "", ttl_days: int = 7) -> None:
         self._ids: OrderedDict[str, None] = OrderedDict()
-        self._redis = redis_client
+        self._redis = (
+            LoopBoundRedis(
+                redis_url,
+                max_connections=CONSUMER_REDIS_MAX_CONNECTIONS,
+                socket_timeout=CONSUMER_REDIS_TIMEOUT_SECONDS,
+                socket_connect_timeout=CONSUMER_REDIS_TIMEOUT_SECONDS,
+                decode_responses=True,
+            )
+            if redis_url
+            else None
+        )
         self._group = group_name
         self._ttl = ttl_days * 86400
 
@@ -52,7 +65,7 @@ class InMemoryIdempotencyChecker:
             return True
         if self._redis:
             key = f"{self._group}:processed:{event_id}"
-            return bool(await self._redis.exists(key))
+            return bool(await self._redis.client().exists(key))
         return False
 
     async def mark_processed(self, event_id: str) -> None:
@@ -66,7 +79,11 @@ class InMemoryIdempotencyChecker:
                     break
         if self._redis:
             key = f"{self._group}:processed:{event_id}"
-            await self._redis.setex(key, self._ttl, "1")
+            await self._redis.client().setex(key, self._ttl, "1")
+
+    async def aclose(self) -> None:
+        if self._redis:
+            await self._redis.aclose()
 
 
 class EventConsumer:
@@ -120,9 +137,20 @@ class EventConsumer:
         self._retry_state: RetryStateStore | None = None
         self._claimer_task: asyncio.Task[None] | None = None
 
+    def _new_client(self) -> redis.Redis:
+        return redis.Redis(
+            connection_pool=build_connection_pool(
+                self._redis_url,
+                max_connections=CONSUMER_REDIS_MAX_CONNECTIONS,
+                socket_timeout=self._block_ms // 1000 + CONSUMER_READ_MARGIN_SECONDS,
+                socket_connect_timeout=CONSUMER_REDIS_TIMEOUT_SECONDS,
+                decode_responses=True,
+            )
+        )
+
     async def connect(self) -> None:
         if self._redis is None:
-            self._redis = redis.from_url(self._redis_url, decode_responses=True)
+            self._redis = self._new_client()
         self._dlq = DeadLetterHandler(self._redis, self._stream_name, self._consumer_group)
         self._retry_state = RetryStateStore(self._redis, self._stream_name, self._consumer_group)
         await self._ensure_consumer_group()
@@ -130,7 +158,7 @@ class EventConsumer:
 
     async def disconnect(self) -> None:
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose(close_connection_pool=True)
             self._redis = None
 
     async def _ensure_consumer_group(self) -> None:
@@ -426,7 +454,7 @@ class EventConsumer:
         move entries out of ours, never in. With both our loops down the PEL can only
         shrink.
         """
-        client = redis.from_url(self._redis_url, decode_responses=True)
+        client = self._new_client()
         try:
             pending = await client.xpending_range(
                 self._stream_name,
@@ -456,7 +484,7 @@ class EventConsumer:
                 "Could not deregister consumer '%s' — continuing shutdown", self._consumer_name
             )
         finally:
-            await client.aclose()
+            await client.aclose(close_connection_pool=True)
 
     async def stop(self) -> None:
         self._running = False

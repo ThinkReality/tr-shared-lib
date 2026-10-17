@@ -24,12 +24,14 @@ from tr_shared.testing.guards import (
     assert_no_schema_construction,
     assert_no_sqlite_dsn,
     assert_no_testing_flag_in_production,
+    assert_no_unpooled_redis_clients,
     detect_auth_chain_bypass,
     detect_env_mutation,
     detect_environment_vocabulary,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
+    detect_unpooled_redis_client,
 )
 
 
@@ -363,3 +365,31 @@ class TestG16EveryTestFileHasALane:
         )
 
         assert_every_test_file_has_a_lane(tests_root)
+
+
+class TestUnpooledRedisClient:
+    def test_catches_a_client_kept_after_its_block(self) -> None:
+        assert detect_unpooled_redis_client(
+            "redis_client: redis.Redis = await redis.from_url(settings.REDIS_URL)"
+        )
+        assert detect_unpooled_redis_client(
+            "pool = ConnectionPool.from_url(redis_url, max_connections=10, decode_responses=True)"
+        )
+        assert detect_unpooled_redis_client(
+            "self._client = redis.Redis(connection_pool=redis.ConnectionPool.from_url(url))"
+        )
+
+    def test_allows_a_client_closed_by_its_block(self) -> None:
+        assert not detect_unpooled_redis_client(
+            "async def ping():\n"
+            "    async with redis.from_url(url, socket_timeout=1) as client:\n"
+            "        return await client.ping()\n"
+        )
+        assert not detect_unpooled_redis_client(
+            "with redis_lib.from_url(url) as r:\n    r.set(key, value)\n"
+        )
+
+    def test_assert_helper_fails(self, tmp_path: Path) -> None:
+        root = _tree(tmp_path, "app/core/redis.py", "client = aioredis.from_url(URL)")
+        with pytest.raises(AssertionError, match="build_connection_pool"):
+            assert_no_unpooled_redis_clients(root)

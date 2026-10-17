@@ -1,17 +1,19 @@
-import asyncio
 import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-import redis.asyncio as redis
 from redis.exceptions import RedisError
 
 from tr_shared.contracts.taxonomy import Feature
 from tr_shared.events.exceptions import EventPublishTransportError
+from tr_shared.redis.pool import LoopBoundRedis
 
 logger = logging.getLogger(__name__)
+
+EVENT_REDIS_MAX_CONNECTIONS = 50
+EVENT_REDIS_TIMEOUT_SECONDS = 5
 
 
 class EventProducer:
@@ -32,7 +34,7 @@ class EventProducer:
         self._source_service = self._normalize_source(source_service)
         self._maxlen = maxlen or self.STREAM_MAXLEN
         self._max_data_bytes = max_data_bytes
-        self._redis: redis.Redis | None = None
+        self._redis: LoopBoundRedis | None = None
 
     @staticmethod
     def _normalize_source(source: Feature | str) -> str:
@@ -50,20 +52,18 @@ class EventProducer:
 
     async def connect(self) -> None:
         if self._redis is None and self._redis_url:
-            try:
-                self._redis = redis.from_url(self._redis_url, decode_responses=True)
-            except Exception:
-                logger.warning("EventProducer initial connect failed, retrying once")
-                await asyncio.sleep(1)
-                self._redis = redis.from_url(self._redis_url, decode_responses=True)
+            self._redis = LoopBoundRedis(
+                self._redis_url,
+                max_connections=EVENT_REDIS_MAX_CONNECTIONS,
+                socket_timeout=EVENT_REDIS_TIMEOUT_SECONDS,
+                socket_connect_timeout=EVENT_REDIS_TIMEOUT_SECONDS,
+                decode_responses=True,
+            )
 
     async def disconnect(self) -> None:
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
             self._redis = None
-
-    def set_redis(self, client: redis.Redis) -> None:
-        self._redis = client
 
     async def publish(
         self,
@@ -123,7 +123,7 @@ class EventProducer:
         # an outbox table inside the caller's transaction, and a background drainer
         # publishes committed rows via this same XADD.
         try:
-            await self._redis.xadd(self._stream_name, envelope, maxlen=self._maxlen)
+            await self._redis.client().xadd(self._stream_name, envelope, maxlen=self._maxlen)
         except RedisError as exc:
             logger.error(
                 "Failed to publish event",

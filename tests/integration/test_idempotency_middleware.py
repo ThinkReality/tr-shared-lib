@@ -1,8 +1,4 @@
-"""APIIdempotencyMiddleware against a real Redis.
-
-Every scenario shares one app and one middleware instance, because the middleware caches its
-Redis client, and the client is bound to the event loop that first used it.
-"""
+"""APIIdempotencyMiddleware against a real Redis."""
 
 import asyncio
 import os
