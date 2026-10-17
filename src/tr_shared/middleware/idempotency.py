@@ -37,16 +37,12 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
         self._service_name = service_name
         self._ttl = ttl
         self._max_response_size = max_response_size
-        self._redis: Any | None = None
 
     async def _get_redis(self) -> Any | None:
-        if self._redis is not None:
-            return self._redis
         if not self._redis_url:
             return None
         try:
-            self._redis = await get_redis_client(self._redis_url)
-            return self._redis
+            return await get_redis_client(self._redis_url)
         except Exception:
             logger.warning("Idempotency: failed to connect to Redis", exc_info=True)
             return None

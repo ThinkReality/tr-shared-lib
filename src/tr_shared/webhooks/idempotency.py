@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from tr_shared.redis.client import get_redis_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,10 +41,7 @@ class WebhookIdempotencyGuard:
             return None
 
         try:
-            from tr_shared.redis.client import get_redis_client
-
-            self._redis_client = await get_redis_client(self._redis_url)
-            return self._redis_client
+            return await get_redis_client(self._redis_url)
         except Exception:
             logger.warning("Failed to connect to Redis for idempotency", exc_info=True)
             return None

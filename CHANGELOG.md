@@ -7,6 +7,41 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-10-17
+
+### Fixed
+- `APIIdempotencyMiddleware` and `WebhookIdempotencyGuard` stored the first `get_redis_client()` result on the instance,
+  so the per-loop rebuild from 0.98.0 never reached them. On a later event loop the `SET NX` reached Redis but its reply
+  was read on a closed loop: the middleware failed open and left the key's `processing` lock behind, so a retry of that
+  key got 409 for five minutes, and the guard reported a duplicate webhook as new. Both now ask `get_redis_client()` on
+  every use.
+- `EventProducer` built a raw `redis.from_url` client: bound to the first event loop, and with no socket timeout,
+  keepalive or dead-socket guard. It now holds a `LoopBoundRedis` (50 connections, 5 s timeouts).
+- `EventConsumer` built raw `redis.from_url` clients for its reads and for shutdown deregistration. Both are now built
+  by `build_connection_pool`, with a socket timeout of `block_ms` plus 5 s so a blocking read is never cut short.
+  `disconnect()` closes the pool it owns.
+
+### Changed
+- `InMemoryIdempotencyChecker(redis_url=..., group_name=..., ttl_days=...)` replaces `redis_client=`. Every caller
+  built that client with a raw `redis.from_url`; the checker now owns a `LoopBoundRedis` and closes it in `aclose()`.
+
+### Removed
+- `EventProducer.set_redis()`. Its callers handed it a loop-bound client from another pool, which is the bug above.
+  Construct the producer with `redis_url` instead.
+
+### Added
+- `tr_shared.testing.assert_no_unpooled_redis_clients(app_root)`: fails on a `from_url` client that is not the
+  context expression of a `with`/`async with` block. The lib runs the same detector over `src/tr_shared`.
+
+**Consumer action:**
+- Replace `producer.set_redis(client)` with `EventProducer(redis_url=..., ...)` (people-finance `app/main.py`,
+  crm-core `notification/utils/event_producer.py`). Code that read `producer._redis` as a redis client must call
+  `producer._redis.client()`.
+- Replace `InMemoryIdempotencyChecker(redis_client=aioredis.from_url(url), ...)` with
+  `InMemoryIdempotencyChecker(redis_url=url, ...)` (crm-core activity consumer and notification worker,
+  lead-management consumer).
+- Add `assert_no_unpooled_redis_clients(APP)` under `tests/architecture/`.
+
 ## [0.98.0] - 2026-10-17
 
 ### Fixed

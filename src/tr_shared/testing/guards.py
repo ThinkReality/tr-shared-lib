@@ -56,6 +56,8 @@ __all__ = [
     "assert_no_sqlite_dsn",
     "assert_no_swallowed_db_errors",
     "assert_no_testing_flag_in_production",
+    "assert_no_unpooled_redis_clients",
+    "detect_unpooled_redis_client",
     "find_swallowed_db_errors",
     "find_violations",
     "iter_shell_files",
@@ -991,4 +993,43 @@ def assert_no_flattened_errors(
         "shared handlers own 500, 503 and 504. Converting a specific exception into a "
         "specific domain error (except ValueError: raise ValidationError(...)) is fine.",
         skip=("alembic",),
+    )
+
+
+def detect_unpooled_redis_client(source: str) -> list[int]:
+    """A ``from_url`` client that outlives the ``with`` block it was opened in."""
+    tree = ast.parse(source)
+    closed_by_block = {
+        id(item.context_expr)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.With, ast.AsyncWith))
+        for item in node.items
+    }
+    return sorted(
+        {
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "from_url"
+            and id(node) not in closed_by_block
+        }
+    )
+
+
+def assert_no_unpooled_redis_clients(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """A Redis client that lives past one block is built by the lib's pool builder.
+
+    A ``from_url`` client is bound to the event loop that first used it and has no
+    socket timeout, keepalive or dead-socket guard, so kept in a module or an object
+    it fails on the next loop and after the proxy's idle kill.
+    """
+    _assert(
+        app_root,
+        detect_unpooled_redis_client,
+        allowlist or {},
+        "A Redis client built with from_url outlives its block. Use LoopBoundRedis or "
+        "build_connection_pool from tr_shared.redis, or open it in `async with ... as client`.",
     )
