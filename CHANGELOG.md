@@ -7,6 +7,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-10-17
+
+### Added
+- `assert_no_auth_chain_bypass(..., auth_dependencies=..., auth_middleware=...)`. G5 knew only the shared-auth-lib chain
+  (`require_auth`, `GatewayHMACMiddleware`, ...), so a service that authenticates with its own middleware and
+  dependencies ran it green while its tests patched that chain to pass-through. The names a service passes extend the
+  defaults.
+
+### Fixed
+- `resolve_vault_secrets` ran its own copy of the Vault read query with no timeout, so a blocked `vault.secrets`
+  table hung service startup indefinitely. It now reads through `VaultService.read_secret`, the one Vault read path,
+  and inherits its timeout; a timed-out field keeps its plain env var value like any other failure. The connection is
+  opened before the timed read, so a slow cold connect still waits rather than falling back, and a failed field rolls
+  the session back, so the fields after it still resolve.
+
 ## [0.99.0] - 2026-10-17
 
 ### Fixed

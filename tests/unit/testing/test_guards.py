@@ -97,6 +97,30 @@ class TestG5AuthChain:
         with pytest.raises(AssertionError, match="auth chain"):
             assert_no_auth_chain_bypass(root)
 
+    def test_a_service_names_its_own_auth_chain(self, tmp_path: Path) -> None:
+        """The gateway authenticates with its own middleware and deps, which the defaults never see."""
+        root = _tree(
+            tmp_path,
+            "integration/conftest.py",
+            'patch("app.middleware.jwt_middleware.JWTMiddleware.__call__", new=_through)\n'
+            "app.dependency_overrides[require_admin] = _fake_admin\n",
+        )
+        assert_no_auth_chain_bypass(root)
+
+        with pytest.raises(AssertionError, match="auth chain"):
+            assert_no_auth_chain_bypass(
+                root, auth_dependencies={"require_admin"}, auth_middleware={"JWTMiddleware"}
+            )
+
+    def test_service_names_extend_the_defaults(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "integration/conftest.py",
+            "app.dependency_overrides[require_auth] = lambda: ctx",
+        )
+        with pytest.raises(AssertionError, match="auth chain"):
+            assert_no_auth_chain_bypass(root, auth_dependencies={"require_admin"})
+
 
 class TestG7SchemaConstruction:
     def test_catches_create_all_called_and_passed(self) -> None:

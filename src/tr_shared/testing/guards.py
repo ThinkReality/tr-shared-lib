@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
@@ -238,7 +238,12 @@ _AUTH_DEPENDENCIES = {"require_auth", "optional_auth", "get_gateway_identity"}
 _AUTH_MIDDLEWARE = {"GatewayHMACMiddleware", "IdentityExtractionMiddleware"}
 
 
-def detect_auth_chain_bypass(source: str) -> list[int]:
+def detect_auth_chain_bypass(
+    source: str,
+    *,
+    dependencies: Collection[str] = _AUTH_DEPENDENCIES,
+    middleware: Collection[str] = _AUTH_MIDDLEWARE,
+) -> list[int]:
     """Overrides, patches and env flags that switch authentication off.
 
     ``dependency_overrides[require_auth]`` is named explicitly. An earlier
@@ -255,16 +260,16 @@ def detect_auth_chain_bypass(source: str) -> list[int]:
             target = node.value
             if isinstance(target, ast.Attribute) and target.attr == "dependency_overrides":
                 key = node.slice
-                if isinstance(key, ast.Name) and key.id in _AUTH_DEPENDENCIES:
+                if isinstance(key, ast.Name) and key.id in dependencies:
                     hits.append(node.lineno)
-                elif isinstance(key, ast.Attribute) and key.attr in _AUTH_DEPENDENCIES:
+                elif isinstance(key, ast.Attribute) and key.attr in dependencies:
                     hits.append(node.lineno)
 
         # GatewayHMACMiddleware.dispatch = _passthrough
         for target in _assignment_targets(node):
             if isinstance(target, ast.Attribute):
                 base = target.value
-                if isinstance(base, ast.Name) and base.id in _AUTH_MIDDLEWARE:
+                if isinstance(base, ast.Name) and base.id in middleware:
                     hits.append(target.lineno)
 
         if isinstance(node, ast.Call):
@@ -272,14 +277,14 @@ def detect_auth_chain_bypass(source: str) -> list[int]:
             # monkeypatch.setattr(GatewayHMACMiddleware, "dispatch", ...)
             if isinstance(func, ast.Attribute) and func.attr in {"setattr", "object"}:
                 for arg in node.args:
-                    if isinstance(arg, ast.Name) and arg.id in _AUTH_MIDDLEWARE:
+                    if isinstance(arg, ast.Name) and arg.id in middleware:
                         hits.append(node.lineno)
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                        if arg.value in _AUTH_MIDDLEWARE:
+                        if arg.value in middleware:
                             hits.append(node.lineno)
             # patch("...GatewayHMACMiddleware.dispatch")
             for value, lineno in _string_args(node):
-                if any(name in value for name in _AUTH_MIDDLEWARE):
+                if any(name in value for name in middleware):
                     hits.append(lineno)
                 if "DEV_MODE_BYPASS" in value:
                     hits.append(lineno)
@@ -293,7 +298,11 @@ def detect_auth_chain_bypass(source: str) -> list[int]:
 
 
 def assert_no_auth_chain_bypass(
-    tests_root: Path, allowlist: Mapping[str, Exemption] | None = None
+    tests_root: Path,
+    allowlist: Mapping[str, Exemption] | None = None,
+    *,
+    auth_dependencies: Collection[str] = (),
+    auth_middleware: Collection[str] = (),
 ) -> None:
     """G5. Vary the persona, never the middleware.
 
@@ -303,10 +312,17 @@ def assert_no_auth_chain_bypass(
     media tests returned 403 while their authors believed auth was stubbed.
     Use ``shared_auth_lib.testing.signed_client`` instead: every real layer runs,
     and only the out-of-process AuthContext lookup is substituted.
+
+    A service whose chain is not the shared-auth-lib one names its own
+    ``auth_dependencies`` and ``auth_middleware``; they extend the defaults.
     """
+    dependencies = _AUTH_DEPENDENCIES | set(auth_dependencies)
+    middleware = _AUTH_MIDDLEWARE | set(auth_middleware)
     _assert(
         tests_root,
-        detect_auth_chain_bypass,
+        lambda source: detect_auth_chain_bypass(
+            source, dependencies=dependencies, middleware=middleware
+        ),
         allowlist or {},
         "The auth chain is being disabled rather than satisfied. Use "
         "shared_auth_lib.testing.signed_client(app, persona) and vary the persona.",
