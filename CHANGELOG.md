@@ -7,6 +7,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-10-18
+
+### Fixed
+- `BaseRepository.soft_delete` marked only the soft-delete columns a model happened to have, then returned `True`.
+  On a model with no `deleted_at` it changed nothing but `updated_at` (and `is_active`, if present) and still reported
+  the row as deleted. It now raises `TypeError` for such a model, before any query runs.
+
 ### Fixed
 - G5 matched an auth middleware name anywhere inside any call, so the guard's own call site
   (`auth_middleware={"JWTMiddleware"}`), a log line or an `Exemption(reason=...)` naming the middleware failed the build.
