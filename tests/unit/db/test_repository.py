@@ -6,12 +6,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tr_shared.db.base import BaseModel
+from tr_shared.db.base import Base, BaseModel, TenantMixin, UUIDPrimaryKeyMixin
 from tr_shared.db.repository import BaseRepository
 
 
 class FakeEntity(BaseModel):
     __tablename__ = "test_fake_entity"
+
+
+class EntityWithoutSoftDelete(Base, UUIDPrimaryKeyMixin, TenantMixin):
+    __tablename__ = "test_entity_without_soft_delete"
 
 
 TENANT_ID = uuid.uuid4()
@@ -241,3 +245,12 @@ class TestSoftDelete:
         repo, _ = _repo(session)
         await repo.soft_delete(entity.id, TENANT_ID)
         session.delete.assert_not_called()
+
+    async def test_a_model_without_deleted_at_is_refused_before_any_query(self):
+        session = _make_session()
+        repo = BaseRepository(db_session=session, model=EntityWithoutSoftDelete)
+
+        with pytest.raises(TypeError, match="EntityWithoutSoftDelete"):
+            await repo.soft_delete(ENTITY_ID, TENANT_ID)
+
+        session.execute.assert_not_awaited()

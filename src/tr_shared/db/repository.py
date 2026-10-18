@@ -193,8 +193,14 @@ class BaseRepository(Generic[T]):
         return entity
 
     async def soft_delete(self, id: UUID, tenant_id: UUID) -> bool:
-        """Soft-delete by setting deleted_at. Returns False if not found."""
+        """Soft-delete by setting deleted_at. Returns False if not found.
+
+        A model with no ``deleted_at`` raises ``TypeError`` instead of reporting
+        success for a row it left untouched.
+        """
         self._require_tenant(tenant_id)
+        if not hasattr(self.model, "deleted_at"):
+            raise TypeError(f"{self.model.__name__} has no deleted_at column to soft-delete")
         entity = await self.get_by_id(id, tenant_id)
         if entity is None:
             return False
