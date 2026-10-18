@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- G5 matched an auth middleware name anywhere inside any call, so the guard's own call site
+  (`auth_middleware={"JWTMiddleware"}`), a log line or an `Exemption(reason=...)` naming the middleware failed the build.
+  It now reads only the string target of `patch(...)` / `patch.multiple(...)` / `setattr(...)` (f-strings and `target=`
+  included) and matches whole dotted segments. Object targets and the `DEV_MODE_BYPASS` flag are caught as before.
+
 ## [0.100.0] - 2026-10-17
 
 ### Added
