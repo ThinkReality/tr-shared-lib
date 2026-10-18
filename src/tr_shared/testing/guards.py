@@ -238,6 +238,27 @@ _AUTH_DEPENDENCIES = {"require_auth", "optional_auth", "get_gateway_identity"}
 _AUTH_MIDDLEWARE = {"GatewayHMACMiddleware", "IdentityExtractionMiddleware"}
 
 
+def _patch_target_segments(node: ast.Call) -> set[str]:
+    """Dotted segments of the string target of ``patch``, ``patch.multiple`` or ``setattr``."""
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if name not in {"patch", "multiple", "setattr"}:
+        return set()
+    target = (
+        node.args[0]
+        if node.args
+        else next((k.value for k in node.keywords if k.arg == "target"), None)
+    )
+    if target is None:
+        return set()
+    return {
+        segment
+        for part in ast.walk(target)
+        if isinstance(part, ast.Constant) and isinstance(part.value, str)
+        for segment in part.value.split(".")
+    }
+
+
 def detect_auth_chain_bypass(
     source: str,
     *,
@@ -283,11 +304,8 @@ def detect_auth_chain_bypass(
                         if arg.value in middleware:
                             hits.append(node.lineno)
             # patch("...GatewayHMACMiddleware.dispatch")
-            for value, lineno in _string_args(node):
-                if any(name in value for name in middleware):
-                    hits.append(lineno)
-                if "DEV_MODE_BYPASS" in value:
-                    hits.append(lineno)
+            if _patch_target_segments(node) & set(middleware):
+                hits.append(node.lineno)
 
         # os.environ["AUTH_LIB_DEV_MODE_BYPASS"] = "true"
         if isinstance(node, ast.Constant) and isinstance(node.value, str):

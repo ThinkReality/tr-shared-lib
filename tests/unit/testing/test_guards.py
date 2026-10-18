@@ -75,6 +75,33 @@ class TestG5AuthChain:
             'monkeypatch.setattr(GatewayHMACMiddleware, "dispatch", _passthrough)'
         )
 
+    def test_catches_a_string_patch_target(self) -> None:
+        assert detect_auth_chain_bypass(
+            'patch("shared_auth_lib.middleware.GatewayHMACMiddleware.dispatch", new=_through)'
+        )
+        assert detect_auth_chain_bypass(
+            'monkeypatch.setattr("app.middleware.GatewayHMACMiddleware.dispatch", _through)'
+        )
+        assert detect_auth_chain_bypass(
+            'patch(target="app.middleware.GatewayHMACMiddleware.dispatch", new=_through)'
+        )
+        assert detect_auth_chain_bypass(
+            'patch.multiple("app.middleware.GatewayHMACMiddleware", dispatch=_through)'
+        )
+
+    def test_catches_an_f_string_patch_target(self) -> None:
+        assert detect_auth_chain_bypass('mocker.patch(f"{MODULE}.GatewayHMACMiddleware.dispatch")')
+
+    def test_naming_a_middleware_is_not_patching_it(self) -> None:
+        assert not detect_auth_chain_bypass(
+            'assert_no_auth_chain_bypass(root, auth_middleware={"GatewayHMACMiddleware"})'
+        )
+        assert not detect_auth_chain_bypass('logger.info("GatewayHMACMiddleware rejected it")')
+        assert not detect_auth_chain_bypass('Exemption(reason="no GatewayHMACMiddleware here")')
+
+    def test_matches_whole_segments_of_the_patch_target(self) -> None:
+        assert not detect_auth_chain_bypass('patch("app.GatewayHMACMiddlewareMetrics.record")')
+
     def test_catches_the_bypass_flag(self) -> None:
         assert detect_auth_chain_bypass('os.environ["AUTH_LIB_DEV_MODE_BYPASS"] = "true"')
 
