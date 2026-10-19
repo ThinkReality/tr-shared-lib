@@ -1,12 +1,11 @@
 import logging
 from collections.abc import Callable
-from functools import wraps
 from typing import Any
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
 from tr_shared.contracts.headers import HttpHeader
-from tr_shared.rate_limiter.core import RateLimiter, default_identifier_extractor
+from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
     FailMode,
@@ -19,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 def create_rate_limit_dependency(
     limiter: RateLimiter,
+    *,
+    identifier: Callable[..., Any],
     limit: int = 100,
     window: int = 60,
     algorithm: Algorithm = Algorithm.FIXED_WINDOW,
@@ -32,10 +33,9 @@ def create_rate_limit_dependency(
         key_prefix=key_prefix,
     )
 
-    async def dependency(request: Request) -> None:
-        identifier = default_identifier_extractor(request)
+    async def dependency(request: Request, caller: str = Depends(identifier)) -> None:
         key = limiter.build_key(
-            identifier=identifier,
+            identifier=caller,
             endpoint=request.url.path,
             scope=key_prefix,
         )
@@ -49,7 +49,7 @@ def create_rate_limit_dependency(
             logger.warning(
                 "Rate limit exceeded (dependency)",
                 extra={
-                    "identifier": identifier,
+                    "identifier": caller,
                     "path": request.url.path,
                     "limit": tightest.limit,
                     "retry_after": retry_after,
@@ -70,41 +70,3 @@ def create_rate_limit_dependency(
         request.state.rate_limit_info = info
 
     return dependency
-
-
-def rate_limit(
-    limiter: RateLimiter,
-    limit: int = 100,
-    window: int = 60,
-    key_prefix: str = "api",
-    algorithm: Algorithm = Algorithm.FIXED_WINDOW,
-    fail_mode: FailMode = FailMode.OPEN,
-) -> Callable:
-    """The decorated function **must** accept ``request: Request`` as its first positional argument."""
-    dep = create_rate_limit_dependency(
-        limiter=limiter,
-        limit=limit,
-        window=window,
-        algorithm=algorithm,
-        key_prefix=key_prefix,
-        fail_mode=fail_mode,
-    )
-
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            request = kwargs.get("request")
-            if request is None:
-                for arg in args:
-                    if isinstance(arg, Request):
-                        request = arg
-                        break
-
-            if request is not None:
-                await dep(request)
-
-            return await func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
