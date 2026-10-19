@@ -7,6 +7,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-10-19
+
+### Added
+- `ServiceHTTPClient(transport=...)`. The client built its `httpx.AsyncClient` internally, so a test could not reach
+  the third-party boundary without patching the client or faking `HTTPStatusError`, which skipped the retry and
+  circuit-breaker path. Pass an `httpx.MockTransport` (e.g. `MockTransportBuilder().build()`) and the real request,
+  retry and breaker code runs.
+
 ## [0.101.0] - 2026-10-18
 
 ### Fixed

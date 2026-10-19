@@ -22,6 +22,7 @@ class ServiceHTTPClient:
         max_retries: int = 3,
         failure_threshold: int = 5,
         recovery_timeout: int = 60,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.service_name = service_name
         self.base_url = base_url
@@ -33,6 +34,7 @@ class ServiceHTTPClient:
             failure_threshold=failure_threshold,
             recovery_timeout=recovery_timeout,
         )
+        self._transport = transport
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -44,6 +46,7 @@ class ServiceHTTPClient:
                 base_url=self.base_url,
                 headers=headers,
                 timeout=self.timeout,
+                transport=self._transport,
             )
         return self._client
 
