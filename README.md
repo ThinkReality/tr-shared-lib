@@ -140,25 +140,29 @@ except Exception:
 ### Rate Limiter (FastAPI dependency)
 
 ```python
-from tr_shared.rate_limiter import RateLimiter, RateLimitMiddleware
+from fastapi import Depends
+from shared_auth_lib import AuthContext, require_auth
+from tr_shared.rate_limiter import RateLimiter, create_rate_limit_dependency
 
-# Add middleware (applies globally)
-app.add_middleware(
-    RateLimitMiddleware,
-    redis_url="redis://localhost:6379",
-    default_limit=100,  # requests
-    default_window=60,  # seconds
+limiter = RateLimiter(redis_url=settings.REDIS_URL, key_prefix="listing")
+
+
+def per_user(ctx: AuthContext = Depends(require_auth)) -> str:
+    return str(ctx.user_id)
+
+
+listing_writes = create_rate_limit_dependency(
+    limiter, identifier=per_user, limit=10, window=60, key_prefix="listings:write"
 )
 
-# Or per-route dependency
-from tr_shared.rate_limiter.dependency import rate_limit
 
-
-@router.post("/listings")
-async def create_listing(
-    _: None = Depends(rate_limit(limit=10, window=60)),
-): ...
+@router.post("/listings", dependencies=[Depends(listing_writes)])
+async def create_listing(): ...
 ```
+
+`identifier` is a FastAPI dependency that returns the bucket key, so whatever it depends on resolves
+before the limiter counts. The app-wide `RateLimitMiddleware` runs before authentication and keys on
+the client IP; install it through `shared_auth_lib.middleware.install_standard_middleware(rate_limit=...)`.
 
 ---
 

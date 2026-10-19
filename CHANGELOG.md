@@ -7,6 +7,23 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-10-19
+
+### Changed (breaking)
+- `create_rate_limit_dependency(limiter, *, identifier=...)`: `identifier` is a required FastAPI dependency that
+  returns the bucket key. The key used to come from `request.state.auth_context`, which is set only once
+  `require_auth` has run, so the same call keyed per user or per IP depending on dependency order: router-level auth
+  gave per-user buckets, route-level auth gave one IP bucket shared by every caller behind the gateway. Declaring the
+  identifier as a dependency makes FastAPI resolve it (and anything it depends on) first. A call without
+  `identifier=` raises `TypeError` where the dependency is built: at import for module-level builds, on the first
+  request for builds inside a request handler. A direct `await dep(request)` call no longer works; mount the
+  dependency with `Depends`. Relock verification must hit the rate-limited routes, not just boot the service.
+- `default_identifier_extractor` no longer reads `request.state.auth_context`. It is the pre-authentication
+  `RateLimitMiddleware` key, where that state is never set.
+
+### Removed
+- The `rate_limit` decorator. It had no callers and cannot resolve a dependency-based identifier.
+
 ## [0.102.0] - 2026-10-19
 
 ### Added

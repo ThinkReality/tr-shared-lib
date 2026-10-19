@@ -226,14 +226,6 @@ class RateLimiter:
 
 
 def default_identifier_extractor(request: Request) -> str:
-    """Extract rate-limit identifier: user_id > tenant_id > IP."""
-    if hasattr(request.state, "auth_context") and request.state.auth_context:
-        ctx = request.state.auth_context
-        if hasattr(ctx, "user_id") and ctx.user_id:
-            return str(ctx.user_id)
-        if hasattr(ctx, "tenant_id") and ctx.tenant_id:
-            return str(ctx.tenant_id)
-
     forwarded_for = request.headers.get(HttpHeader.FORWARDED_FOR.value)
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
