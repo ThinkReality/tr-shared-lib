@@ -7,6 +7,19 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-10-20
+
+### Added
+- `HttpHeader.BFF_TOKEN` (`X-BFF-Token`). The frontend BFF sends it with the browser's IP in `X-Original-IP`; the
+  gateway honours that IP only when the token matches, so the real client IP reaches downstream services and
+  Supabase Auth instead of the BFF's egress address.
+
+### Removed (breaking)
+- `RateLimitMiddleware` and `default_identifier_extractor`. They ran before authentication and keyed on the socket or
+  forwarded IP, which behind the gateway is one edge address for every caller, so the limit was one shared bucket.
+  No service installs them since the 2026-10-20 media and WAM changes. Use `create_rate_limit_dependency` with a
+  per-user, per-site or per-body identifier.
+
 ## [0.103.0] - 2026-10-19
 
 ### Changed (breaking)

@@ -3,9 +3,8 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import Depends, FastAPI, Header, HTTPException
-from starlette.requests import Request
 
-from tr_shared.rate_limiter.core import RateLimiter, default_identifier_extractor
+from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.dependency import create_rate_limit_dependency
 
 
@@ -78,40 +77,3 @@ class TestTheRefusal:
         assert response.headers["X-RateLimit-Limit"] == "1"
         assert response.headers["X-RateLimit-Remaining"] == "0"
         assert int(response.headers["Retry-After"]) >= 1
-
-
-def _request(headers: dict[str, str], host: str | None = "10.0.0.1") -> Request:
-    return Request(
-        {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
-            "client": (host, 1234) if host else None,
-        }
-    )
-
-
-class TestDefaultIdentifierExtractor:
-    def test_uses_the_first_forwarded_for_hop(self):
-        assert (
-            default_identifier_extractor(_request({"X-Forwarded-For": "203.0.113.5, 10.0.0.1"}))
-            == "203.0.113.5"
-        )
-
-    def test_uses_x_real_ip_without_forwarded_for(self):
-        assert (
-            default_identifier_extractor(_request({"X-Real-IP": "203.0.113.10"})) == "203.0.113.10"
-        )
-
-    def test_falls_back_to_the_socket_peer(self):
-        assert default_identifier_extractor(_request({})) == "10.0.0.1"
-
-    def test_unknown_without_a_client(self):
-        assert default_identifier_extractor(_request({}, host=None)) == "unknown"
-
-    def test_an_auth_context_on_state_does_not_change_the_key(self):
-        request = _request({})
-        request.state.auth_context = type("Ctx", (), {"user_id": "user-1"})()
-
-        assert default_identifier_extractor(request) == "10.0.0.1"

@@ -78,12 +78,6 @@ src/tr_shared/middleware/idempotency.py:0: error: Returning Any from function de
 src/tr_shared/middleware/idempotency.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
 src/tr_shared/middleware/idempotency.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
 src/tr_shared/middleware/idempotency.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
-src/tr_shared/rate_limiter/middleware.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
-src/tr_shared/rate_limiter/middleware.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
-src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
-src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
-src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
-src/tr_shared/rate_limiter/middleware.py:0: error: Returning Any from function declared to return "Response"  [no-any-return]
 src/tr_shared/cache/factory.py:0: error: Cannot assign to a type  [misc]
 src/tr_shared/cache/factory.py:0: note: Error code "misc" not covered by "type: ignore[assignment]" comment
 src/tr_shared/cache/factory.py:0: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]

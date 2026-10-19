@@ -3,9 +3,6 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from starlette.requests import Request
-
-from tr_shared.contracts.headers import HttpHeader
 from tr_shared.monitoring.path_normalizer import normalize_path
 from tr_shared.rate_limiter.algorithms import (
     BaseAlgorithm,
@@ -223,15 +220,3 @@ class RateLimiter:
         normalized = normalize_path(endpoint) if endpoint != "*" else "*"
         parts = [self._key_prefix, "rl", scope, identifier, normalized]
         return ":".join(p for p in parts if p)
-
-
-def default_identifier_extractor(request: Request) -> str:
-    forwarded_for = request.headers.get(HttpHeader.FORWARDED_FOR.value)
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-
-    real_ip = request.headers.get(HttpHeader.REAL_IP.value)
-    if real_ip:
-        return real_ip.strip()
-
-    return request.client.host if request.client else "unknown"
