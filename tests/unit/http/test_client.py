@@ -1,177 +1,125 @@
-"""Tests for ServiceHTTPClient."""
-
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import httpx
 import pytest
 import structlog
 
-from tr_shared.http.circuit_breaker import CircuitBreaker
 from tr_shared.http.client import ServiceHTTPClient
+from tr_shared.testing.stubs.http_stub import MockTransportBuilder
+
+BASE_URL = "http://tr-crm-core:8000"
 
 
-def _client(**kwargs) -> ServiceHTTPClient:
+def _client(builder: MockTransportBuilder, **kwargs) -> ServiceHTTPClient:
+    kwargs.setdefault("service_token", "test-token")
     return ServiceHTTPClient(
         service_name="crm-backend",
-        base_url="http://tr-crm-core:8000",
-        service_token="test-token",
+        base_url=BASE_URL,
+        transport=builder.build(),
         **kwargs,
     )
 
 
-def _mock_response(json_data=None, status_code=200):
-    response = MagicMock()
-    response.status_code = status_code
-    response.json.return_value = json_data or {"ok": True}
-    response.raise_for_status = MagicMock()
-    return response
+class TestRequests:
+    @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def test_each_verb_reaches_the_transport_and_returns_its_json(self, method):
+        builder = MockTransportBuilder().route(method, r"/things/1$", json={"id": 1})
+        client = _client(builder)
+
+        result = await getattr(client, method.lower())("/things/1")
+
+        assert result == {"id": 1}
+        assert [(r.method, r.url) for r in builder.requests] == [(method, f"{BASE_URL}/things/1")]
+
+    async def test_the_json_body_is_sent(self):
+        builder = MockTransportBuilder().route("POST", r"/things$", json={})
+        client = _client(builder)
+
+        await client.post("/things", json={"name": "x"})
+
+        assert builder.requests[0].json == {"name": "x"}
+
+    async def test_the_service_token_is_sent(self):
+        builder = MockTransportBuilder().route("GET", r"/ping$", json={})
+
+        await _client(builder).get("/ping")
+
+        assert builder.requests[0].headers["x-service-token"] == "test-token"
+
+    async def test_no_service_token_header_when_none_is_configured(self):
+        builder = MockTransportBuilder().route("GET", r"/ping$", json={})
+
+        await _client(builder, service_token="").get("/ping")
+
+        assert "x-service-token" not in builder.requests[0].headers
+
+    async def test_a_204_returns_an_empty_dict(self):
+        builder = MockTransportBuilder().route("DELETE", r"/things/1$", status_code=204)
+
+        assert await _client(builder).delete("/things/1") == {}
+
+    async def test_a_non_json_body_is_returned_raw(self):
+        builder = MockTransportBuilder().route(
+            "GET",
+            r"/text$",
+            handler=lambda request, match: httpx.Response(200, text="plain"),
+        )
+
+        assert await _client(builder).get("/text") == {"raw": "plain"}
 
 
-class TestInitialization:
-    def test_service_name_stored(self):
-        c = _client()
-        assert c.service_name == "crm-backend"
+class TestFailures:
+    async def test_a_4xx_raises_at_once_without_retrying_or_tripping_the_breaker(self):
+        builder = MockTransportBuilder().route("GET", r"/missing$", status_code=404, json={})
+        client = _client(builder, max_retries=3, failure_threshold=1)
 
-    def test_base_url_stored(self):
-        c = _client()
-        assert c.base_url == "http://tr-crm-core:8000"
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.get("/missing")
 
-    def test_service_token_stored(self):
-        c = _client()
-        assert c.service_token == "test-token"
+        assert len(builder.requests) == 1
+        assert await client.circuit.is_open() is False
 
-    def test_circuit_breaker_created(self):
-        c = _client()
-        assert isinstance(c.circuit, CircuitBreaker)
+    async def test_a_5xx_counts_against_the_breaker_and_raises_connection_error(self):
+        builder = MockTransportBuilder().route("GET", r"/boom$", status_code=503, json={})
+        client = _client(builder, max_retries=1, failure_threshold=1)
 
-    def test_default_client_is_none(self):
-        c = _client()
-        assert c._client is None
+        with pytest.raises(ConnectionError, match="failed after 1 retries"):
+            await client.get("/boom")
 
+        assert await client.circuit.is_open() is True
 
-class TestGetClient:
-    async def test_creates_httpx_client(self):
-        c = _client()
-        with patch("tr_shared.http.client.httpx.AsyncClient") as mock_httpx:
-            mock_httpx.return_value = MagicMock(is_closed=False)
-            await c._get_client()
-            mock_httpx.assert_called_once()
+    async def test_an_open_breaker_rejects_without_sending(self):
+        builder = MockTransportBuilder().route("GET", r"/boom$", status_code=503, json={})
+        client = _client(builder, max_retries=1, failure_threshold=1)
+        with pytest.raises(ConnectionError):
+            await client.get("/boom")
 
-    async def test_includes_service_token_header(self):
-        c = _client()
-        created_headers = {}
+        with pytest.raises(ConnectionError, match="Circuit breaker open"):
+            await client.get("/boom")
 
-        def fake_client(**kwargs):
-            created_headers.update(kwargs.get("headers", {}))
-            m = MagicMock()
-            m.is_closed = False
-            return m
-
-        with patch("tr_shared.http.client.httpx.AsyncClient", side_effect=fake_client):
-            await c._get_client()
-        assert created_headers.get("X-Service-Token") == "test-token"
-
-    async def test_no_service_token_header_when_empty(self):
-        c = ServiceHTTPClient(service_name="svc", base_url="http://svc:8000", service_token="")
-        created_headers = {}
-
-        def fake_client(**kwargs):
-            created_headers.update(kwargs.get("headers", {}))
-            m = MagicMock()
-            m.is_closed = False
-            return m
-
-        with patch("tr_shared.http.client.httpx.AsyncClient", side_effect=fake_client):
-            await c._get_client()
-        assert "X-Service-Token" not in created_headers
-
-    async def test_returns_same_client_if_open(self):
-        c = _client()
-        mock_http = MagicMock()
-        mock_http.is_closed = False
-        c._client = mock_http
-        with patch("tr_shared.http.client.httpx.AsyncClient") as mock_cls:
-            result = await c._get_client()
-            assert result is mock_http
-            mock_cls.assert_not_called()
+        assert len(builder.requests) == 1
 
 
-class TestClose:
-    async def test_close_calls_aclose(self):
-        c = _client()
-        mock_http = AsyncMock()
-        mock_http.is_closed = False
-        c._client = mock_http
-        await c.close()
-        mock_http.aclose.assert_awaited_once()
+class TestLifecycle:
+    async def test_the_client_is_reused_until_closed(self):
+        builder = MockTransportBuilder().route("GET", r"/ping$", json={})
+        client = _client(builder)
 
-    async def test_close_sets_client_to_none(self):
-        c = _client()
-        mock_http = AsyncMock()
-        mock_http.is_closed = False
-        c._client = mock_http
-        await c.close()
-        assert c._client is None
+        await client.get("/ping")
+        first = client._client
+        await client.get("/ping")
 
-    async def test_close_when_no_client_is_noop(self):
-        c = _client()
-        await c.close()
+        assert client._client is first
 
+    async def test_a_closed_client_reopens_on_the_same_transport(self):
+        builder = MockTransportBuilder().route("GET", r"/ping$", json={})
 
-class TestRequestCircuitBreaker:
-    async def test_raises_connection_error_when_circuit_open(self):
-        c = _client()
-        c.circuit.state = MagicMock()
-        with patch.object(c.circuit, "is_open", new=AsyncMock(return_value=True)):
-            with pytest.raises(ConnectionError, match="Circuit breaker open"):
-                await c._request("GET", "/test")
+        async with _client(builder) as client:
+            await client.get("/ping")
+        await client.get("/ping")
 
+        assert len(builder.requests) == 2
 
-class TestHttpVerbs:
-    async def test_get_calls_request_with_get(self):
-        c = _client()
-        with patch.object(c, "_request", new=AsyncMock(return_value={"ok": True})) as mock:
-            await c.get("/test")
-            mock.assert_awaited_once()
-            assert mock.call_args[0][0] == "GET"
-
-    async def test_post_calls_request_with_post(self):
-        c = _client()
-        with patch.object(c, "_request", new=AsyncMock(return_value={})) as mock:
-            await c.post("/test", json={"k": "v"})
-            assert mock.call_args[0][0] == "POST"
-
-    async def test_put_calls_request_with_put(self):
-        c = _client()
-        with patch.object(c, "_request", new=AsyncMock(return_value={})) as mock:
-            await c.put("/test", json={"k": "v"})
-            assert mock.call_args[0][0] == "PUT"
-
-    async def test_patch_calls_request_with_patch(self):
-        c = _client()
-        with patch.object(c, "_request", new=AsyncMock(return_value={})) as mock:
-            await c.patch("/test", json={"k": "v"})
-            assert mock.call_args[0][0] == "PATCH"
-
-    async def test_delete_calls_request_with_delete(self):
-        c = _client()
-        with patch.object(c, "_request", new=AsyncMock(return_value={})) as mock:
-            await c.delete("/test")
-            assert mock.call_args[0][0] == "DELETE"
-
-
-class TestContextManager:
-    async def test_aenter_returns_self(self):
-        c = _client()
-        with patch.object(c, "_get_client", new=AsyncMock(return_value=MagicMock())):
-            result = await c.__aenter__()
-            assert result is c
-
-    async def test_aexit_calls_close(self):
-        c = _client()
-        with patch.object(c, "close", new=AsyncMock()) as mock_close:
-            await c.__aexit__(None, None, None)
-            mock_close.assert_awaited_once()
+    async def test_closing_a_client_that_never_sent_is_a_noop(self):
+        await _client(MockTransportBuilder()).close()
 
 
 class TestCorrelationPropagation:
@@ -181,38 +129,27 @@ class TestCorrelationPropagation:
         yield
         structlog.contextvars.clear_contextvars()
 
-    async def _sent_headers(self, **request_kwargs) -> httpx.Headers:
-        seen: list[httpx.Headers] = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            seen.append(request.headers)
-            return httpx.Response(200, json={"ok": True})
-
-        c = _client()
-        c._client = httpx.AsyncClient(
-            base_url="http://tr-crm-core:8000", transport=httpx.MockTransport(handler)
-        )
-        try:
-            await c.get("/api/v1/internal/ping", **request_kwargs)
-        finally:
-            await c.close()
-        return seen[0]
+    async def _sent_headers(self, **request_kwargs) -> dict[str, str]:
+        builder = MockTransportBuilder().route("GET", r"/ping$", json={})
+        async with _client(builder) as client:
+            await client.get("/ping", **request_kwargs)
+        return builder.requests[0].headers
 
     async def test_the_bound_correlation_id_is_sent(self):
         structlog.contextvars.bind_contextvars(correlation_id="corr-1")
 
         headers = await self._sent_headers()
 
-        assert headers["X-Correlation-ID"] == "corr-1"
+        assert headers["x-correlation-id"] == "corr-1"
 
     async def test_an_explicit_header_wins_over_the_bound_id(self):
         structlog.contextvars.bind_contextvars(correlation_id="corr-1")
 
         headers = await self._sent_headers(headers={"X-Correlation-ID": "explicit"})
 
-        assert headers["X-Correlation-ID"] == "explicit"
+        assert headers["x-correlation-id"] == "explicit"
 
     async def test_nothing_bound_sends_no_correlation_header(self):
         headers = await self._sent_headers()
 
-        assert "X-Correlation-ID" not in headers
+        assert "x-correlation-id" not in headers
