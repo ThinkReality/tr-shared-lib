@@ -161,8 +161,8 @@ async def create_listing(): ...
 ```
 
 `identifier` is a FastAPI dependency that returns the bucket key, so whatever it depends on resolves
-before the limiter counts. The app-wide `RateLimitMiddleware` runs before authentication and keys on
-the client IP; install it through `shared_auth_lib.middleware.install_standard_middleware(rate_limit=...)`.
+before the limiter counts. There is no app-wide IP limiter: behind the gateway every caller arrives from
+the same edge address, so key on the user, the site or the request body instead.
 
 ---
 

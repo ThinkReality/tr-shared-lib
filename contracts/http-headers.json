@@ -21,6 +21,7 @@
     "FORWARDED_FOR": "X-Forwarded-For",
     "REAL_IP": "X-Real-IP",
     "ORIGINAL_IP": "X-Original-IP",
+    "BFF_TOKEN": "X-BFF-Token",
     "RATE_LIMIT_LIMIT": "X-RateLimit-Limit",
     "RATE_LIMIT_REMAINING": "X-RateLimit-Remaining",
     "RATE_LIMIT_RESET": "X-RateLimit-Reset",

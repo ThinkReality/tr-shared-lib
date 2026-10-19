@@ -5,14 +5,13 @@ Provides Redis-backed rate limiting with:
 - Multi-window support (e.g. 100/min AND 1000/hour)
 - Fail-open and fail-closed modes
 - In-memory fallback when Redis is unavailable
-- Middleware and FastAPI dependency usage patterns
+- A FastAPI dependency keyed by a caller-supplied identifier dependency
 """
 
-from tr_shared.rate_limiter.core import RateLimiter, default_identifier_extractor
+from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.dependency import create_rate_limit_dependency
 from tr_shared.rate_limiter.exceptions import RateLimitExceeded
 from tr_shared.rate_limiter.memory_fallback import MemoryFallback
-from tr_shared.rate_limiter.middleware import RateLimitMiddleware
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
     FailMode,
@@ -24,8 +23,6 @@ from tr_shared.rate_limiter.schemas import (
 
 __all__ = [
     "RateLimiter",
-    "default_identifier_extractor",
-    "RateLimitMiddleware",
     "MemoryFallback",
     "create_rate_limit_dependency",
     "Algorithm",
