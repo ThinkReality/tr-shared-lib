@@ -4,6 +4,7 @@ import structlog
 from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from tr_shared.client_ip import client_ip
 from tr_shared.contracts.headers import HttpHeader
 
 logger = structlog.get_logger(__name__)
@@ -64,6 +65,7 @@ class LoggingMiddleware:
                 duration_ms=self._elapsed_ms(start),
                 error_type=type(exc).__name__,
                 error_summary=str(exc)[:200],
+                client_ip=client_ip(connection),
                 **fields,
             )
             raise
@@ -74,6 +76,7 @@ class LoggingMiddleware:
             service=self.service_name,
             status_code=status_code,
             duration_ms=self._elapsed_ms(start),
+            client_ip=client_ip(connection),
             **fields,
         )
 
@@ -89,12 +92,6 @@ class LoggingMiddleware:
         }
         if connection.query_params:
             fields["query_string"] = str(connection.query_params)
-
-        forwarded = connection.headers.get(HttpHeader.FORWARDED_FOR.value)
-        if forwarded:
-            fields["client_ip"] = forwarded.split(",")[0].strip()
-        elif connection.client:
-            fields["client_ip"] = connection.client.host
 
         user_agent = connection.headers.get("User-Agent")
         if user_agent:

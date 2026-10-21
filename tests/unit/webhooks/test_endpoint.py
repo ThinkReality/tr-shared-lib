@@ -201,6 +201,29 @@ class TestWebhookEndpointPost:
         assert len(dispatched) == 1
         assert dispatched[0].tenant_id == "tenant-uuid"
 
+    def test_ip_address_ignores_forwarded_for(self):
+        dispatched = []
+
+        async def handler(event: WebhookEvent) -> None:
+            dispatched.append(event)
+
+        wr = WebhookRouter()
+        wr.register_default("propertyfinder", handler)
+        app = _build_app(
+            configs=[ProviderConfig(name="propertyfinder", secret="")],
+            webhook_router=wr,
+        )
+        TestClient(app).post(
+            "/webhooks/propertyfinder",
+            content=BODY,
+            headers={
+                "Content-Type": "application/json",
+                "X-Forwarded-For": "100.64.0.3",
+                "X-Real-IP": "198.51.100.7",
+            },
+        )
+        assert dispatched[0].ip_address == "198.51.100.7"
+
     def test_custom_tenant_resolver(self):
         dispatched = []
 

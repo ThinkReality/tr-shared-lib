@@ -7,6 +7,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-10-21
+
+### Added
+- `tr_shared.client_ip`: `client_ip(connection)` and `GATEWAY_VERIFIED`, moved here from shared-auth-lib so the
+  rule has one home both libraries can import. It returns `X-Original-IP` only once the gateway signature has been
+  verified, otherwise the edge-set `X-Real-IP`, otherwise the socket peer. `X-Forwarded-For` is never read.
+
+### Fixed
+- `LoggingMiddleware` logged `client_ip` from `X-Forwarded-For`, which the Railway edge overwrites with the gateway's
+  egress address, so every downstream request log showed the gateway instead of the caller. It now uses
+  `client_ip` on `request_completed` and `request_failed`, resolved after the inner app has run so the gateway's
+  verification is known. `request_started` no longer carries `client_ip`: at that point nothing is verified yet.
+- The webhook router keyed its rate limit and stamped `WebhookEvent.ip_address` from `X-Forwarded-For` too; both
+  use `client_ip` now.
+
 ## [0.104.0] - 2026-10-20
 
 ### Added
