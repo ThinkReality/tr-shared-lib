@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from tr_shared.client_ip import client_ip
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.schemas.error_envelope import build_error_envelope
 from tr_shared.webhooks.idempotency import WebhookIdempotencyGuard
@@ -38,15 +39,6 @@ def _correlation_id(request: Request) -> str | None:
     ``request.state``, so the header is the only source available here.
     """
     return request.headers.get(HttpHeader.CORRELATION_ID.value)
-
-
-def _get_client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get(HttpHeader.FORWARDED_FOR.value)
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
 
 
 def create_webhook_router(
@@ -113,9 +105,8 @@ def _register_provider_endpoints(
 
         if rate_limiter and rate_limit_config:
             try:
-                ip = _get_client_ip(request)
                 key = rate_limiter.build_key(
-                    identifier=ip or "unknown",
+                    identifier=client_ip(request),
                     endpoint=f"webhook_{pn}",
                     scope="webhook",
                 )
@@ -213,7 +204,7 @@ def _register_provider_endpoints(
             tenant_id=tenant_id,
             correlation_id=correlation_id,
             received_at=datetime.now(UTC).isoformat(),
-            ip_address=_get_client_ip(request),
+            ip_address=client_ip(request),
         )
 
         if event_producer:

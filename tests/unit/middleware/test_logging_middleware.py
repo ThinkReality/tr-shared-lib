@@ -1,10 +1,11 @@
 import asyncio
 
 import pytest
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
 from tests.unit.middleware.asgi_harness import http_scope
+from tr_shared.client_ip import GATEWAY_VERIFIED
 from tr_shared.middleware import logging_middleware
 from tr_shared.middleware.correlation_id import CorrelationIDMiddleware
 from tr_shared.middleware.logging_middleware import DEFAULT_EXCLUDED_PATHS, LoggingMiddleware
@@ -35,6 +36,11 @@ def _build_app(excluded_paths=None) -> FastAPI:
     def explode():
         raise RuntimeError("kaboom")
 
+    @app.get("/api/verified")
+    def verified(request: Request):
+        setattr(request.state, GATEWAY_VERIFIED, True)
+        return {"ok": True}
+
     return app
 
 
@@ -60,7 +66,7 @@ class TestRequestCompleted:
             "/api/test?page=2",
             headers={
                 "X-Tenant-ID": "tenant-abc",
-                "X-Forwarded-For": "10.0.0.1, 10.0.0.2",
+                "X-Real-IP": "10.0.0.1",
                 "User-Agent": "agent/1.0",
             },
         )
@@ -77,6 +83,36 @@ class TestRequestCompleted:
         assert completed["query_string"] == "page=2"
         assert completed["service"] == "test-svc"
 
+    def test_client_ip_is_the_original_ip_once_the_gateway_signature_is_verified(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        _client(_build_app()).get(
+            "/api/verified",
+            headers={
+                "X-Original-IP": "198.51.100.7",
+                "X-Real-IP": "100.64.0.2",
+                "X-Forwarded-For": "100.64.0.3",
+            },
+        )
+
+        assert _event(entries, "request_completed")["client_ip"] == "198.51.100.7"
+
+    def test_an_unverified_original_ip_is_not_logged_as_the_client(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        _client(_build_app()).get(
+            "/api/test", headers={"X-Original-IP": "198.51.100.7", "X-Real-IP": "100.64.0.2"}
+        )
+
+        assert _event(entries, "request_completed")["client_ip"] == "100.64.0.2"
+
+    def test_forwarded_for_is_never_logged_as_the_client(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        _client(_build_app()).get("/api/test", headers={"X-Forwarded-For": "100.64.0.3"})
+
+        assert _event(entries, "request_completed")["client_ip"] == "testclient"
+
     def test_client_ip_falls_back_to_the_socket_peer(self, log_capture):
         entries = log_capture(logging_middleware)
 
@@ -92,6 +128,15 @@ class TestRequestCompleted:
         started = _event(entries, "request_started")
         assert started["correlation_id"] == response.headers["x-correlation-id"]
         assert started["path"] == "/api/test"
+
+    def test_the_start_line_carries_no_client_ip_because_the_gateway_is_not_verified_yet(
+        self, log_capture
+    ):
+        entries = log_capture(logging_middleware)
+
+        _client(_build_app()).get("/api/verified", headers={"X-Original-IP": "198.51.100.7"})
+
+        assert "client_ip" not in _event(entries, "request_started")
 
     def test_no_stdlib_extra_dict_is_passed_through(self, log_capture):
         entries = log_capture(logging_middleware)
