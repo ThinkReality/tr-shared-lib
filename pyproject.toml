@@ -90,7 +90,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=src/tr_shared --cov-report=term-missing"
 markers = [
-    "integration: requires a real Redis (set TEST_REDIS_URL); skipped otherwise",
+    "integration: needs real Postgres/Redis, started in-process via the Docker API",
 ]
 
 [tool.coverage.run]

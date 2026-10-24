@@ -72,6 +72,11 @@ _POSTGRES_READY_PROBE = [
     "-tAc",
     "SELECT 1",
 ]
+# 16 databases is the Redis default, and D8 gives each xdist worker its own index
+# for cache, broker and result backend — three each, which caps the run at five
+# workers. 64 costs nothing.
+_REDIS_COMMAND = ["redis-server", "--databases", "64", "--save", ""]
+_REDIS_READY_PROBE = ["redis-cli", "ping"]
 _READY_TIMEOUT_SECONDS = 60
 # Consecutive successes required before a container counts as ready, and the gap
 # between probes. See _wait_ready for why one success is not enough.
@@ -442,11 +447,8 @@ def provision(config: TestingConfig, run_id: str, worker_id: str) -> Stack:
             image=config.redis_image,
             container_port=6379,
             environment={},
-            # 16 databases is the Redis default, and D8 gives each xdist worker
-            # its own index for cache, broker and result backend — three each,
-            # which caps the run at five workers. 64 costs nothing.
-            command=["redis-server", "--databases", "64", "--save", ""],
-            ready_probe=["redis-cli", "ping"],
+            command=_REDIS_COMMAND,
+            ready_probe=_REDIS_READY_PROBE,
         )
 
     cache_url, broker_url, result_url = redis_triple(f"redis://127.0.0.1:{redis_port}", worker_id)

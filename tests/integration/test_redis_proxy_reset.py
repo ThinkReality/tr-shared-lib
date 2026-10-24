@@ -5,14 +5,13 @@ asyncio surfaces the reset as ``reader.set_exception`` (not EOF), redis-py's
 checkout check is blind to it, and the next write hits a closed transport.
 
 The relay below is test-owned scaffolding in front of the lane's real Redis
-(``TEST_REDIS_URL``); it forwards bytes both ways and can reset every client
+(the ``redis_url`` fixture); it forwards bytes both ways and can reset every client
 leg with an RST (SO_LINGER 0 + abort), which is what a proxy idle-kill looks
 like from the client. Runs under both the default loop and uvloop — the
 production error is uvloop's.
 """
 
 import asyncio
-import os
 import socket
 import struct
 import uuid
@@ -31,11 +30,6 @@ from tr_shared.redis.client import close_redis_client, get_redis_client
 from tr_shared.redis.connection import ProxySafeConnection
 
 pytestmark = pytest.mark.integration
-
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
 
 RUNNERS = {"asyncio": asyncio.run, "uvloop": uvloop.run}
 
@@ -123,8 +117,8 @@ def write_guard_hits() -> Iterator[list[RedisConnectionError]]:
         ProxySafeConnection._send_packed_command = original  # type: ignore[method-assign]
 
 
-async def _cache_service_read_after_reset():
-    async with Relay(TEST_REDIS_URL) as relay:
+async def _cache_service_read_after_reset(redis_url: str):
+    async with Relay(redis_url) as relay:
         adapter = StandardRedisAdapter(url=relay.url)
         assert await adapter.initialize()
         service = CacheService(adapter, key_prefix="itest")
@@ -137,8 +131,8 @@ async def _cache_service_read_after_reset():
             await adapter.close()
 
 
-async def _raw_client_read_after_reset():
-    async with Relay(TEST_REDIS_URL) as relay:
+async def _raw_client_read_after_reset(redis_url: str):
+    async with Relay(redis_url) as relay:
         await close_redis_client()
         client = await get_redis_client(relay.url, max_connections=2)
         key = f"itest:{uuid.uuid4().hex}"
@@ -151,17 +145,17 @@ async def _raw_client_read_after_reset():
 
 
 @pytest.mark.parametrize("runner", RUNNERS.values(), ids=RUNNERS.keys())
-def test_cache_service_hit_survives_proxy_reset(runner):
+def test_cache_service_hit_survives_proxy_reset(runner, redis_url):
     with write_guard_hits() as hits:
-        result = runner(_cache_service_read_after_reset())
+        result = runner(_cache_service_read_after_reset(redis_url))
     assert result.error is None, f"cache read failed after reset: {result.error!r}"
     assert result.hit and result.value == "v"
     assert not hits, f"healed by the write guard (retry + backoff), not at checkout: {hits!r}"
 
 
 @pytest.mark.parametrize("runner", RUNNERS.values(), ids=RUNNERS.keys())
-def test_get_redis_client_get_survives_proxy_reset(runner):
+def test_get_redis_client_get_survives_proxy_reset(runner, redis_url):
     with write_guard_hits() as hits:
-        value = runner(_raw_client_read_after_reset())
+        value = runner(_raw_client_read_after_reset(redis_url))
     assert value == "v"
     assert not hits, f"healed by the write guard (retry + backoff), not at checkout: {hits!r}"

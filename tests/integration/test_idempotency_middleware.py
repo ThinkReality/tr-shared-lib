@@ -1,7 +1,6 @@
 """APIIdempotencyMiddleware against a real Redis."""
 
 import asyncio
-import os
 import uuid
 
 import httpx
@@ -18,17 +17,12 @@ from tr_shared.redis.client import close_redis_client
 
 pytestmark = pytest.mark.integration
 
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
-
 MAX_RESPONSE_SIZE = 64
 COMPLETED_TTL = 86400
 
 
 class App:
-    def __init__(self, service: str) -> None:
+    def __init__(self, service: str, redis_url: str) -> None:
         self.calls: dict[str, int] = {}
         self.release = asyncio.Event()
         self.entered = asyncio.Event()
@@ -41,7 +35,7 @@ class App:
         self.asgi = Starlette(routes=routes)
         self.asgi.add_middleware(
             APIIdempotencyMiddleware,
-            redis_url=TEST_REDIS_URL,
+            redis_url=redis_url,
             service_name=service,
             max_response_size=MAX_RESPONSE_SIZE,
         )
@@ -69,12 +63,11 @@ class App:
         return JSONResponse({"call": call})
 
 
-async def test_the_key_is_kept_only_for_answers_that_executed():
-    assert TEST_REDIS_URL is not None
+async def test_the_key_is_kept_only_for_answers_that_executed(redis_url):
     await close_redis_client()
     service = f"itest-{uuid.uuid4().hex[:8]}"
-    app = App(service)
-    inspector = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    app = App(service, redis_url)
+    inspector = Redis.from_url(redis_url, decode_responses=True)
     transport = httpx.ASGITransport(app=app.asgi, raise_app_exceptions=False)
 
     def stored(key: str) -> str:

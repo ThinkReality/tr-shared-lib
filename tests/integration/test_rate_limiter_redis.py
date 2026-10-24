@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 import uuid
 
@@ -10,22 +9,16 @@ from tr_shared.rate_limiter import RateLimitConfig, RateLimiter, WindowConfig
 
 pytestmark = pytest.mark.integration
 
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
-
 TWO_PER_MINUTE = RateLimitConfig(windows=[WindowConfig(limit=2, window_seconds=60)])
 
 
-async def test_a_url_limiter_counts_in_redis():
-    assert TEST_REDIS_URL is not None
-    limiter = RateLimiter(redis_url=TEST_REDIS_URL, enable_memory_fallback=False)
+async def test_a_url_limiter_counts_in_redis(redis_url):
+    limiter = RateLimiter(redis_url=redis_url, enable_memory_fallback=False)
     key = f"itest:{uuid.uuid4().hex}"
 
     verdicts = [(await limiter.check(key, TWO_PER_MINUTE)).is_blocked for _ in range(3)]
 
-    inspector = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    inspector = Redis.from_url(redis_url, decode_responses=True)
     try:
         assert await inspector.get(f"{key}:60s") == "3"
     finally:
@@ -33,9 +26,8 @@ async def test_a_url_limiter_counts_in_redis():
     assert verdicts == [False, False, True]
 
 
-def test_a_url_limiter_enforces_its_limit_across_event_loops():
-    assert TEST_REDIS_URL is not None
-    limiter = RateLimiter(redis_url=TEST_REDIS_URL, enable_memory_fallback=False)
+def test_a_url_limiter_enforces_its_limit_across_event_loops(redis_url):
+    limiter = RateLimiter(redis_url=redis_url, enable_memory_fallback=False)
     one_per_minute = RateLimitConfig(windows=[WindowConfig(limit=1, window_seconds=60)])
     key = f"itest:{uuid.uuid4().hex}"
 
@@ -61,9 +53,8 @@ async def test_a_silent_redis_falls_back_within_the_client_timeout():
     assert info.is_blocked is False
 
 
-async def test_a_provider_supplies_the_client_on_every_check():
-    assert TEST_REDIS_URL is not None
-    client = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+async def test_a_provider_supplies_the_client_on_every_check(redis_url):
+    client = Redis.from_url(redis_url, decode_responses=True)
     calls = 0
 
     async def provider() -> Redis:
