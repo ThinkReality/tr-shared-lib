@@ -1,5 +1,4 @@
 import json
-import os
 import uuid
 
 import pytest
@@ -10,16 +9,10 @@ from tr_shared.events.producer import EventProducer
 
 pytestmark = pytest.mark.integration
 
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
-
 
 @pytest.fixture
-def stream():
-    assert TEST_REDIS_URL is not None
-    inspector = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+def stream(redis_url):
+    inspector = redis.Redis.from_url(redis_url, decode_responses=True)
     name = f"itest:{uuid.uuid4().hex}"
     yield name, inspector
     inspector.delete(name)
@@ -27,9 +20,9 @@ def stream():
 
 
 @pytest.fixture
-async def producer(stream):
+async def producer(redis_url, stream):
     name, _inspector = stream
-    p = EventProducer(redis_url=TEST_REDIS_URL, stream_name=name, source_service=Feature.LISTING)
+    p = EventProducer(redis_url=redis_url, stream_name=name, source_service=Feature.LISTING)
     yield p
     await p.disconnect()
 
@@ -76,12 +69,10 @@ async def test_strict_mode_publishes_when_the_entity_fields_are_present(producer
     assert len(_entries(stream)) == 1
 
 
-async def test_the_stream_is_trimmed_towards_maxlen(stream):
+async def test_the_stream_is_trimmed_towards_maxlen(redis_url, stream):
     name, inspector = stream
     published = 250
-    p = EventProducer(
-        redis_url=TEST_REDIS_URL, stream_name=name, source_service=Feature.TASK, maxlen=1
-    )
+    p = EventProducer(redis_url=redis_url, stream_name=name, source_service=Feature.TASK, maxlen=1)
     try:
         for _ in range(published):
             await p.publish("x", "t1", {})

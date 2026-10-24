@@ -1,7 +1,6 @@
 """A live pooled connection carries SO_KEEPALIVE and the TCP probe options the
 platform supports (idle 60 s / interval 10 s / count 3)."""
 
-import os
 import socket
 
 import pytest
@@ -11,16 +10,11 @@ from tr_shared.redis.connection import KEEPALIVE_COUNT, KEEPALIVE_IDLE_S, KEEPAL
 
 pytestmark = pytest.mark.integration
 
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
-
 
 @pytest.fixture
-async def live_socket():
+async def live_socket(redis_url):
     await close_redis_client()
-    client = await get_redis_client(TEST_REDIS_URL)
+    client = await get_redis_client(redis_url)
     conn = await client.connection_pool.get_connection()
     try:
         yield conn._writer.transport.get_extra_info("socket")

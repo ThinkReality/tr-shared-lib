@@ -1,4 +1,3 @@
-import os
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -11,11 +10,6 @@ from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
 from tr_shared.cache.service import CacheService
 
 pytestmark = pytest.mark.integration
-
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
 
 
 class Fetch:
@@ -41,14 +35,14 @@ async def _service(url: str, *, reachable: bool = True) -> AsyncIterator[CacheSe
 
 
 @pytest.fixture
-async def service() -> AsyncIterator[CacheService]:
-    async for svc in _service(TEST_REDIS_URL):
+async def service(redis_url: str) -> AsyncIterator[CacheService]:
+    async for svc in _service(redis_url):
         yield svc
 
 
 @pytest.fixture
-async def read_only_service() -> AsyncIterator[CacheService]:
-    admin = Redis.from_url(TEST_REDIS_URL)
+async def read_only_service(redis_url: str) -> AsyncIterator[CacheService]:
+    admin = Redis.from_url(redis_url)
     user, password = f"itest-ro-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex
     await admin.acl_setuser(
         user,
@@ -57,7 +51,7 @@ async def read_only_service() -> AsyncIterator[CacheService]:
         keys=["*"],
         commands=["+@read", "+ping", "+select"],
     )
-    parts = urlsplit(TEST_REDIS_URL)
+    parts = urlsplit(redis_url)
     host = parts.netloc.rsplit("@", 1)[-1]
     url = urlunsplit(parts._replace(netloc=f"{user}:{password}@{host}"))
     try:

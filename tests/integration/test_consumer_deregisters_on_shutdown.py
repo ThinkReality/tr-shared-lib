@@ -24,7 +24,6 @@ ops reads to notice the backlog disappear with it.
 
 import asyncio
 import json
-import os
 import uuid
 
 import pytest
@@ -33,11 +32,6 @@ import redis.asyncio as redis
 from tr_shared.events.consumer import EventConsumer
 
 pytestmark = pytest.mark.integration
-
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
-
-if not TEST_REDIS_URL:
-    pytest.skip("TEST_REDIS_URL not set — real-Redis integration skipped", allow_module_level=True)
 
 GROUP = "g"
 
@@ -57,8 +51,8 @@ def _envelope(event_type: str = "user.created") -> dict:
 
 
 @pytest.fixture
-async def real_redis():
-    client = redis.from_url(TEST_REDIS_URL, decode_responses=True)
+async def real_redis(redis_url):
+    client = redis.from_url(redis_url, decode_responses=True)
     yield client
     await client.aclose()
 
@@ -70,9 +64,9 @@ async def stream(real_redis):
     await real_redis.delete(name)
 
 
-def _build(stream: str, name: str, **kwargs) -> EventConsumer:
+def _build(redis_url: str, stream: str, name: str, **kwargs) -> EventConsumer:
     return EventConsumer(
-        redis_url=TEST_REDIS_URL,
+        redis_url=redis_url,
         stream_name=stream,
         consumer_group=GROUP,
         consumer_name=name,
@@ -98,8 +92,8 @@ async def _run_briefly(consumer: EventConsumer, seconds: float = 0.4) -> None:
 
 
 @pytest.mark.asyncio
-async def test_clean_shutdown_deregisters_the_consumer(real_redis, stream):
-    consumer = _build(stream, "worker-clean")
+async def test_clean_shutdown_deregisters_the_consumer(redis_url, real_redis, stream):
+    consumer = _build(redis_url, stream, "worker-clean")
 
     await _run_briefly(consumer)
 
@@ -110,7 +104,7 @@ async def test_clean_shutdown_deregisters_the_consumer(real_redis, stream):
 
 
 @pytest.mark.asyncio
-async def test_a_consumer_holding_pending_entries_stays_registered(real_redis, stream):
+async def test_a_consumer_holding_pending_entries_stays_registered(redis_url, real_redis, stream):
     """Its PEL is what the claimer and ops both read; deleting it hides the backlog.
 
     The pending entry is planted with a raw XREADGROUP rather than by letting a handler
@@ -125,14 +119,16 @@ async def test_a_consumer_holding_pending_entries_stays_registered(real_redis, s
     )
     assert (await real_redis.xpending(stream, GROUP))["pending"] == 1
 
-    await _run_briefly(_build(stream, "worker-pending", claim_min_idle_ms=600_000))
+    await _run_briefly(_build(redis_url, stream, "worker-pending", claim_min_idle_ms=600_000))
 
     assert (await real_redis.xpending(stream, GROUP))["pending"] == 1
     assert "worker-pending" in await _names(real_redis, stream)
 
 
 @pytest.mark.asyncio
-async def test_no_pel_entry_is_lost_while_a_sibling_claims_concurrently(real_redis, stream):
+async def test_no_pel_entry_is_lost_while_a_sibling_claims_concurrently(
+    redis_url, real_redis, stream
+):
     """The failure mode this whole task exists to avoid is silent event loss, so the
     shutdown is run against a sibling actively reclaiming from the same group."""
     handled: list[str] = []
@@ -140,8 +136,8 @@ async def test_no_pel_entry_is_lost_while_a_sibling_claims_concurrently(real_red
     async def _ok(event):
         handled.append(event.event_id)
 
-    leaver = _build(stream, "worker-leaving", claim_min_idle_ms=0)
-    sibling = _build(stream, "worker-sibling", claim_min_idle_ms=0)
+    leaver = _build(redis_url, stream, "worker-leaving", claim_min_idle_ms=0)
+    sibling = _build(redis_url, stream, "worker-sibling", claim_min_idle_ms=0)
     for c in (leaver, sibling):
         c.register_handler("user.created", _ok)
 
@@ -171,9 +167,11 @@ async def test_no_pel_entry_is_lost_while_a_sibling_claims_concurrently(real_red
 
 
 @pytest.mark.asyncio
-async def test_deregistration_failure_never_blocks_shutdown(real_redis, stream, monkeypatch):
+async def test_deregistration_failure_never_blocks_shutdown(
+    redis_url, real_redis, stream, monkeypatch
+):
     """Shutdown must complete even if Redis rejects the DELCONSUMER."""
-    consumer = _build(stream, "worker-degraded")
+    consumer = _build(redis_url, stream, "worker-degraded")
 
     original = redis.Redis.xgroup_delconsumer
 
