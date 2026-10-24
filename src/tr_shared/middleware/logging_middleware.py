@@ -9,6 +9,8 @@ from tr_shared.contracts.headers import HttpHeader
 
 logger = structlog.get_logger(__name__)
 
+AUTHENTICATED_USER_ID = "authenticated_user_id"
+
 DEFAULT_EXCLUDED_PATHS: set[str] = {
     "/",
     "/health",
@@ -65,7 +67,7 @@ class LoggingMiddleware:
                 duration_ms=self._elapsed_ms(start),
                 error_type=type(exc).__name__,
                 error_summary=str(exc)[:200],
-                client_ip=client_ip(connection),
+                **self._outcome_fields(connection),
                 **fields,
             )
             raise
@@ -76,13 +78,21 @@ class LoggingMiddleware:
             service=self.service_name,
             status_code=status_code,
             duration_ms=self._elapsed_ms(start),
-            client_ip=client_ip(connection),
+            **self._outcome_fields(connection),
             **fields,
         )
 
     @staticmethod
     def _elapsed_ms(start: float) -> float:
         return round((time.perf_counter() - start) * 1000, 2)
+
+    @staticmethod
+    def _outcome_fields(connection: HTTPConnection) -> dict:
+        fields: dict = {"client_ip": client_ip(connection)}
+        user_id = getattr(connection.state, AUTHENTICATED_USER_ID, None)
+        if user_id:
+            fields["user_id"] = user_id
+        return fields
 
     @staticmethod
     def _request_fields(connection: HTTPConnection) -> dict:
