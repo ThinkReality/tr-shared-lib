@@ -5,10 +5,19 @@ from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
 from tests.unit.middleware.asgi_harness import http_scope
-from tr_shared.client_ip import GATEWAY_VERIFIED
+from tr_shared.client_ip import GATEWAY_VERIFIED, RESOLVED_CLIENT_IP
 from tr_shared.middleware import logging_middleware
 from tr_shared.middleware.correlation_id import CorrelationIDMiddleware
 from tr_shared.middleware.logging_middleware import DEFAULT_EXCLUDED_PATHS, LoggingMiddleware
+
+
+def _resolve_client_ip(app):
+    async def middleware(scope, receive, send):
+        if scope["type"] == "http":
+            scope.setdefault("state", {})[RESOLVED_CLIENT_IP] = "192.0.2.44"
+        await app(scope, receive, send)
+
+    return middleware
 
 
 def _build_app(excluded_paths=None) -> FastAPI:
@@ -112,6 +121,15 @@ class TestRequestCompleted:
         _client(_build_app()).get("/api/test", headers={"X-Forwarded-For": "100.64.0.3"})
 
         assert _event(entries, "request_completed")["client_ip"] == "testclient"
+
+    def test_an_ip_resolved_by_an_outer_middleware_is_logged_as_the_client(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        TestClient(_resolve_client_ip(_build_app())).get(
+            "/api/client-error", headers={"X-Real-IP": "100.64.0.2"}
+        )
+
+        assert _event(entries, "request_completed")["client_ip"] == "192.0.2.44"
 
     def test_client_ip_falls_back_to_the_socket_peer(self, log_capture):
         entries = log_capture(logging_middleware)
