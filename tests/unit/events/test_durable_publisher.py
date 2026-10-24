@@ -20,7 +20,6 @@ class TestDurableEventPublisher:
         publisher = DurableEventPublisher(
             session=session,
             schema="admin",
-            source_service="admin-panel",
         )
         rid = await publisher.publish(
             event_type="admin.integration.platform.created",
@@ -42,28 +41,24 @@ class TestDurableEventPublisher:
             "webhook_token": "wh_abc",
         }
 
-    async def test_source_service_injected_into_metadata(self):
+    async def test_metadata_defaults_to_empty(self):
         session = _make_session(in_txn=True)
-        publisher = DurableEventPublisher(
-            session=session,
-            schema="admin",
-            source_service="admin-panel",
-        )
-        await publisher.publish(
-            event_type="admin.x",
-            tenant_id="t",
-            data={},
-        )
+        publisher = DurableEventPublisher(session=session, schema="admin")
+        await publisher.publish(event_type="admin.x", tenant_id="t", data={})
         params = session.execute.call_args[0][1]
-        metadata = json.loads(params["metadata"])
-        assert metadata["source_service"] == "admin-panel"
+        assert json.loads(params["metadata"]) == {}
 
-    async def test_caller_metadata_merged(self):
+    def test_rejects_a_source_service_argument(self):
+        with pytest.raises(TypeError, match="source_service"):
+            DurableEventPublisher(
+                session=_make_session(), schema="admin", source_service="admin-panel"
+            )
+
+    async def test_metadata_is_the_callers_alone(self):
         session = _make_session(in_txn=True)
         publisher = DurableEventPublisher(
             session=session,
             schema="admin",
-            source_service="admin-panel",
         )
         await publisher.publish(
             event_type="admin.x",
@@ -73,15 +68,13 @@ class TestDurableEventPublisher:
         )
         params = session.execute.call_args[0][1]
         metadata = json.loads(params["metadata"])
-        assert metadata["correlation_id"] == "cid-1"
-        assert metadata["source_service"] == "admin-panel"
+        assert metadata == {"correlation_id": "cid-1"}
 
     async def test_raises_when_no_transaction(self):
         session = _make_session(in_txn=False)
         publisher = DurableEventPublisher(
             session=session,
             schema="admin",
-            source_service="admin-panel",
         )
         with pytest.raises(RuntimeError, match="open SQLAlchemy transaction"):
             await publisher.publish(
@@ -96,7 +89,6 @@ class TestDurableEventPublisher:
         publisher = DurableEventPublisher(
             session=session,
             schema="admin",
-            source_service="admin-panel",
             table_name="outbox_v2",
         )
         await publisher.publish(

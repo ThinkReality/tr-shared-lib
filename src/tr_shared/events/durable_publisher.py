@@ -13,11 +13,7 @@ Contract:
 
 Usage::
 
-    publisher = DurableEventPublisher(
-        session=self.db,
-        schema="admin",
-        source_service="admin-panel",
-    )
+    publisher = DurableEventPublisher(session=self.db, schema="admin")
     await publisher.publish(
         event_type=AdminEvents.INTEGRATION_PLATFORM_CREATED,
         tenant_id=str(tenant_id),
@@ -45,8 +41,6 @@ class DurableEventPublisher:
             transaction when ``publish`` is called.
         schema: Service schema owning the ``undelivered_events`` table
             (e.g. ``"admin"`` for admin-panel).
-        source_service: Logical service name, stored on the event row so
-            consumers can trace provenance.
         table_name: Override for the outbox table name. Defaults to
             ``"undelivered_events"``.
     """
@@ -56,12 +50,10 @@ class DurableEventPublisher:
         *,
         session: AsyncSession,
         schema: str,
-        source_service: str,
         table_name: str = "undelivered_events",
     ) -> None:
         self._session = session
         self._schema = schema
-        self._source_service = source_service
         self._table_name = table_name
 
     async def publish(
@@ -88,10 +80,6 @@ class DurableEventPublisher:
             )
 
         event_id = uuid4()
-        merged_metadata: dict[str, Any] = {"source_service": self._source_service}
-        if metadata:
-            merged_metadata.update(metadata)
-
         await self._session.execute(
             text(
                 f"INSERT INTO {self._schema}.{self._table_name} "
@@ -105,7 +93,7 @@ class DurableEventPublisher:
                 "tenant_id": tenant_id,
                 "actor_id": actor_id,
                 "data": json.dumps(data),
-                "metadata": json.dumps(merged_metadata),
+                "metadata": json.dumps(metadata or {}),
             },
         )
         return event_id

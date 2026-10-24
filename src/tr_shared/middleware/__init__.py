@@ -8,11 +8,12 @@ from tr_shared.middleware.exception_handlers import (
     register_exception_handlers,
     validation_exception_handler,
 )
-from tr_shared.middleware.logging_middleware import LoggingMiddleware
+from tr_shared.middleware.logging_middleware import AUTHENTICATED_USER_ID, LoggingMiddleware
 from tr_shared.middleware.unstorable_text import UnstorableTextMiddleware
 
 __all__ = [
     "APIIdempotencyMiddleware",
+    "AUTHENTICATED_USER_ID",
     "CorrelationIDMiddleware",
     "GlobalErrorHandlerMiddleware",
     "LoggingMiddleware",

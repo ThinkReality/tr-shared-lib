@@ -4,11 +4,16 @@ import pytest
 from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
-from tests.unit.middleware.asgi_harness import http_scope
+from tests.unit.middleware.asgi_harness import call, http_scope
+from tr_shared import middleware as middleware_package
 from tr_shared.client_ip import GATEWAY_VERIFIED, RESOLVED_CLIENT_IP
 from tr_shared.middleware import logging_middleware
 from tr_shared.middleware.correlation_id import CorrelationIDMiddleware
-from tr_shared.middleware.logging_middleware import DEFAULT_EXCLUDED_PATHS, LoggingMiddleware
+from tr_shared.middleware.logging_middleware import (
+    AUTHENTICATED_USER_ID,
+    DEFAULT_EXCLUDED_PATHS,
+    LoggingMiddleware,
+)
 
 
 def _resolve_client_ip(app):
@@ -162,6 +167,55 @@ class TestRequestCompleted:
         _client(_build_app()).get("/api/test")
 
         assert all("extra" not in entry for entry in entries)
+
+
+async def _ok(scope, receive, send):
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+
+async def _authenticate_then_respond(scope, receive, send):
+    scope.setdefault("state", {})[AUTHENTICATED_USER_ID] = "u-1"
+    await _ok(scope, receive, send)
+
+
+async def _authenticate_then_raise(scope, receive, send):
+    scope.setdefault("state", {})[AUTHENTICATED_USER_ID] = "u-1"
+    raise RuntimeError("kaboom")
+
+
+class TestAuthenticatedUserId:
+    async def test_completed_carries_the_user_id_the_inner_app_authenticated(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        await call(LoggingMiddleware(_authenticate_then_respond), http_scope("/api/test"))
+
+        assert _event(entries, "request_completed")["user_id"] == "u-1"
+
+    async def test_completed_has_no_user_id_when_nothing_authenticated(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        await call(LoggingMiddleware(_ok), http_scope("/api/test"))
+
+        assert "user_id" not in _event(entries, "request_completed")
+
+    async def test_failed_carries_the_user_id_set_before_the_raise(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        with pytest.raises(RuntimeError):
+            await call(LoggingMiddleware(_authenticate_then_raise), http_scope("/api/test"))
+
+        assert _event(entries, "request_failed")["user_id"] == "u-1"
+
+    async def test_the_start_line_carries_no_user_id(self, log_capture):
+        entries = log_capture(logging_middleware)
+
+        await call(LoggingMiddleware(_authenticate_then_respond), http_scope("/api/test"))
+
+        assert "user_id" not in _event(entries, "request_started")
+
+    def test_the_key_is_exported_with_the_middleware(self):
+        assert middleware_package.AUTHENTICATED_USER_ID == "authenticated_user_id"
 
 
 class TestLevels:
