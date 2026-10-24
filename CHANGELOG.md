@@ -11,7 +11,7 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - `AUTHENTICATED_USER_ID` (`tr_shared.middleware`): a request-state key `LoggingMiddleware` reads after the inner
-  app has run. When it holds a non-empty value, `request_completed` and `request_failed` carry it as `user_id`;
+  app has run. When it holds a non-empty `str`, `request_completed` and `request_failed` carry it as `user_id`;
   otherwise the field is absent. `request_started` is unchanged, since authentication has not run yet. This lets the
   gateway put `LoggingMiddleware` outside its JWT middleware, so 401s reach the request log, and still log the user.
 
@@ -20,6 +20,10 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drainer's `EventProducer` Feature). It was copied into the outbox row's `metadata` JSON, a second, unvalidated
   declaration of the source that nothing read. The row's `metadata` is now exactly the caller's `metadata` (or `{}`).
   Passing `source_service=` raises `TypeError` at construction.
+
+### Changed
+- `DurableEventPublisher` tests run against real Postgres (`tests/integration/test_durable_publisher.py`) and read the
+  stored row back; the mocked-session unit tests are gone.
 
 ## [0.106.0] - 2026-10-24
 
