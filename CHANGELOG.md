@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-10-24
+
+### Added
+- `RESOLVED_CLIENT_IP`: a request-state key `client_ip` returns before reading any header. The gateway is the one
+  process that resolves the browser IP itself (from the BFF-vouched `X-Original-IP`); setting this key lets the
+  shared `LoggingMiddleware` and webhook router log that IP instead of the edge-set `X-Real-IP`, which for frontend
+  traffic is the BFF server.
+- `tr_shared.testing.assert_no_local_client_ip_derivation`: fails when code outside an allowlist reads
+  `X-Forwarded-For`, `X-Real-IP` or `X-Original-IP`, or the socket peer. A third client-IP rule survived in
+  shared-auth-lib's `require_auth` because every existing guard scanned one repository; this one runs in each.
+
 ## [0.105.0] - 2026-10-21
 
 ### Added

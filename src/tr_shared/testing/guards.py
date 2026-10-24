@@ -38,6 +38,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
+from tr_shared.contracts.headers import HttpHeader
 from tr_shared.testing.db_reach import DbReach, own_nodes
 from tr_shared.testing.lanes import lane_for_path
 from tr_shared.testing.tenant_header_guard import Exemption
@@ -1066,4 +1067,47 @@ def assert_no_unpooled_redis_clients(
         allowlist or {},
         "A Redis client built with from_url outlives its block. Use LoopBoundRedis or "
         "build_connection_pool from tr_shared.redis, or open it in `async with ... as client`.",
+    )
+
+
+_CLIENT_IP_HEADER_NAMES = frozenset({"FORWARDED_FOR", "REAL_IP", "ORIGINAL_IP"})
+_CLIENT_IP_HEADER_LITERALS = frozenset(
+    HttpHeader[name].value.lower() for name in _CLIENT_IP_HEADER_NAMES
+)
+
+
+def _derives_client_ip(node: ast.expr) -> bool:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.lower() in _CLIENT_IP_HEADER_LITERALS
+    if isinstance(node, ast.Attribute):
+        if node.attr in _CLIENT_IP_HEADER_NAMES:
+            return True
+        return (
+            node.attr == "host"
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "client"
+        )
+    return False
+
+
+def detect_local_client_ip_derivation(source: str) -> list[int]:
+    return sorted(
+        {
+            node.lineno
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.expr) and _derives_client_ip(node)
+        }
+    )
+
+
+def assert_no_local_client_ip_derivation(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    _assert(
+        app_root,
+        detect_local_client_ip_derivation,
+        allowlist or {},
+        "Code derives the client IP from a header or the socket peer. The Railway edge "
+        "overwrites X-Forwarded-For and X-Original-IP is trustworthy only after the gateway "
+        "signature is verified, so use tr_shared.client_ip.client_ip(request).",
     )

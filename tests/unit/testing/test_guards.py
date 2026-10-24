@@ -20,6 +20,7 @@ from tr_shared.testing.guards import (
     assert_no_auth_chain_bypass,
     assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
+    assert_no_local_client_ip_derivation,
     assert_no_ryuk_disabled,
     assert_no_schema_construction,
     assert_no_sqlite_dsn,
@@ -28,6 +29,7 @@ from tr_shared.testing.guards import (
     detect_auth_chain_bypass,
     detect_env_mutation,
     detect_environment_vocabulary,
+    detect_local_client_ip_derivation,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
@@ -444,3 +446,34 @@ class TestUnpooledRedisClient:
         root = _tree(tmp_path, "app/core/redis.py", "client = aioredis.from_url(URL)")
         with pytest.raises(AssertionError, match="build_connection_pool"):
             assert_no_unpooled_redis_clients(root)
+
+
+class TestLocalClientIpDerivation:
+    def test_catches_every_form_that_shipped(self) -> None:
+        assert detect_local_client_ip_derivation(
+            'ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()'
+        )
+        assert detect_local_client_ip_derivation(
+            'forwarded = request.headers.get("X-Forwarded-For")'
+        )
+        assert detect_local_client_ip_derivation("ip = headers.get(HttpHeader.REAL_IP.value)")
+        assert detect_local_client_ip_derivation("headers[GatewayHeaders.ORIGINAL_IP] = ip")
+        assert detect_local_client_ip_derivation(
+            "return request.client.host if request.client else None"
+        )
+
+    def test_allows_the_fleet_rule_and_unrelated_headers(self) -> None:
+        assert not detect_local_client_ip_derivation("ip = client_ip(request)")
+        assert not detect_local_client_ip_derivation('headers["Sb-Forwarded-For"] = client_ip')
+        assert not detect_local_client_ip_derivation(
+            '"""The edge overwrites X-Forwarded-For with the gateway IP."""'
+        )
+
+    def test_assert_helper_fails(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/core/request_utils.py",
+            'def ip(request):\n    return request.headers.get("x-real-ip")\n',
+        )
+        with pytest.raises(AssertionError, match="tr_shared.client_ip"):
+            assert_no_local_client_ip_derivation(root)
