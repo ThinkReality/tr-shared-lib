@@ -26,8 +26,9 @@ one. It bounds a statement, not a request; the gateway's route budget bounds req
 Recycle at 300 s bounds a connection's age: measured alive after 310 s idle on the
 pooler, and under the ~350 s idle timeout of cloud NATs. Idle death sooner than that —
 the pooler, a NAT, a laptop network drop — is caught by validating a connection that
-sat unused for DB_IDLE_PING_AFTER_SECONDS, so a busy pool never pays the pgbouncer-mode
-ping (BEGIN + fetchrow(";") + ROLLBACK).
+sat unused for DB_IDLE_PING_AFTER_SECONDS, so a busy pool never pays even that one
+simple-protocol statement. SQLAlchemy's own asyncpg ping wraps it in BEGIN/ROLLBACK for
+pgbouncer mode: four round trips instead of one (~250 ms vs ~63 ms Singapore→Mumbai).
 """
 
 from collections.abc import Mapping

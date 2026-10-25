@@ -208,6 +208,7 @@ def _install_error_translation(
 
 
 _CHECKED_IN_AT = "tr_checked_in_at"
+IDLE_PING_SQL = "SELECT 1"
 
 
 def _install_idle_validation(
@@ -230,7 +231,7 @@ def _install_idle_validation(
         if idle_seconds < idle_ping_after_seconds:
             return
         try:
-            sync_engine.dialect.do_ping(dbapi_connection)
+            dbapi_connection.run_async(lambda driver: driver.execute(IDLE_PING_SQL))
         except Exception as exc:
             logger.warning(
                 "db_stale_connection_replaced",

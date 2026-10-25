@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-10-25
+
+### Changed
+- The idle-connection check (a pooled connection unused for `DB_IDLE_PING_AFTER_SECONDS`) now validates with one
+  simple-protocol statement, `IDLE_PING_SQL` (`tr_shared.db.session`), sent through SQLAlchemy's public
+  `AdaptedConnection.run_async`. SQLAlchemy's asyncpg `do_ping` wraps its ping in BEGIN/ROLLBACK for pgbouncer
+  transaction mode, which cost four round trips: measured on staging (Singapore compute, Mumbai pooler) 251 ms
+  against 63 ms. At low traffic almost every request found its connection idle, so content's public listing detail
+  took ~0.9 s instead of ~0.65 s. A simple-protocol statement carries no prepared statement, so the pgbouncer issue
+  the transaction guards against (SQLAlchemy #10226) does not apply. A dead connection is still replaced.
+
 ## [0.107.0] - 2026-10-25
 
 ### Added
