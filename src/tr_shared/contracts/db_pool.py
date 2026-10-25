@@ -17,8 +17,9 @@ parallel page fetches without queueing; the 11th waits up to pool_timeout. A pre
 child runs one task at a time and never approaches the ceiling.
 
 Every wait here is shorter than the caller waiting on it. A checkout waits at most
-DEFAULT_POOL_TIMEOUT_SECONDS and a new connection gets DB_CONNECT_TIMEOUT_SECONDS, DNS
-included; shared-auth-lib asserts that their sum stays under its auth-context budget.
+DEFAULT_POOL_TIMEOUT_SECONDS for a free connection, DB_IDLE_PING_TIMEOUT_SECONDS for an
+idle one's ping and DB_CONNECT_TIMEOUT_SECONDS, DNS included, for a new one;
+shared-auth-lib asserts that their sum stays under its auth-context budget.
 DB_STATEMENT_TIMEOUT_SECONDS caps one statement, per process profile: request
 processes get the short cap, background processes (workers, beat, consumers) the long
 one. It bounds a statement, not a request; the gateway's route budget bounds requests.
@@ -29,6 +30,8 @@ the pooler, a NAT, a laptop network drop — is caught by validating a connectio
 sat unused for DB_IDLE_PING_AFTER_SECONDS, so a busy pool never pays even that one
 simple-protocol statement. SQLAlchemy's own asyncpg ping wraps it in BEGIN/ROLLBACK for
 pgbouncer mode: four round trips instead of one (~250 ms vs ~63 ms Singapore→Mumbai).
+A ping that fails terminates its connection rather than closing it: after a timed-out
+statement asyncpg's close waits, without a bound, for the server to answer the cancel.
 """
 
 from collections.abc import Mapping
@@ -40,6 +43,7 @@ DEFAULT_MAX_OVERFLOW = 8
 DEFAULT_POOL_TIMEOUT_SECONDS = 2
 DB_CONNECT_TIMEOUT_SECONDS = 3
 DB_IDLE_PING_AFTER_SECONDS = 30
+DB_IDLE_PING_TIMEOUT_SECONDS = 0.5
 
 
 class StatementTimeoutProfile(StrEnum):

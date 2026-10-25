@@ -18,6 +18,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   took ~0.9 s instead of ~0.65 s. A simple-protocol statement carries no prepared statement, so the pgbouncer issue
   the transaction guards against (SQLAlchemy #10226) does not apply. A dead connection is still replaced.
 
+### Fixed
+- The idle-connection ping is bounded by `DB_IDLE_PING_TIMEOUT_SECONDS` (0.5 s), and a failed ping terminates its
+  connection instead of closing it gracefully. Before, the ping inherited the statement cap (20 s request, 60 s
+  background), and on a stalled network (a dropped NAT entry, a hung pooler) the checkout then never returned:
+  after a timed-out statement asyncpg's `close()` waits without a bound for the server to answer the cancel, and a
+  lost connection does not release it. A checkout's worst case is now `DEFAULT_POOL_TIMEOUT_SECONDS +
+  DB_IDLE_PING_TIMEOUT_SECONDS + DB_CONNECT_TIMEOUT_SECONDS` (5.5 s), inside shared-auth-lib's 6 s auth budget.
+
 ## [0.107.0] - 2026-10-25
 
 ### Added

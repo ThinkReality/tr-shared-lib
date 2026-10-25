@@ -52,6 +52,7 @@ from tr_shared.contracts.availability import DatabaseOutageCode
 from tr_shared.contracts.db_pool import (
     DB_CONNECT_TIMEOUT_SECONDS,
     DB_IDLE_PING_AFTER_SECONDS,
+    DB_IDLE_PING_TIMEOUT_SECONDS,
     DEFAULT_POOL_KWARGS,
 )
 from tr_shared.db.errors import DatabaseTimeoutError, DatabaseUnavailableError
@@ -231,8 +232,11 @@ def _install_idle_validation(
         if idle_seconds < idle_ping_after_seconds:
             return
         try:
-            dbapi_connection.run_async(lambda driver: driver.execute(IDLE_PING_SQL))
+            dbapi_connection.run_async(
+                lambda driver: driver.execute(IDLE_PING_SQL, timeout=DB_IDLE_PING_TIMEOUT_SECONDS)
+            )
         except Exception as exc:
+            dbapi_connection.driver_connection.terminate()
             logger.warning(
                 "db_stale_connection_replaced",
                 extra={
