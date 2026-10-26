@@ -5,6 +5,7 @@ from tr_shared.exceptions import (
     AuthorizationError,
     BaseAPIException,
     ConflictError,
+    ContentTooLargeError,
     DatabaseError,
     InternalServerError,
     NotFoundError,
@@ -67,6 +68,11 @@ class TestClientErrors:
         exc = ConflictError()
         assert exc.status_code == 409
 
+    def test_content_too_large_error(self):
+        exc = ContentTooLargeError()
+        assert exc.status_code == 413
+        assert exc.error_code == "CONTENT_TOO_LARGE_001"
+
     def test_rate_limit_error(self):
         exc = RateLimitError()
         assert exc.status_code == 429
@@ -103,6 +109,7 @@ _ALL_BUILTIN_EXC = (
     AuthorizationError,
     NotFoundError,
     ConflictError,
+    ContentTooLargeError,
     RateLimitError,
     DatabaseError,
     InternalServerError,
