@@ -12,6 +12,7 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+from tests.integration.network_faults import Relay, finish_within
 from tr_shared.contracts import UNAVAILABLE_RETRY_AFTER_SECONDS, DatabaseOutageCode
 from tr_shared.contracts.db_pool import (
     DB_CONNECT_TIMEOUT_SECONDS,
@@ -31,6 +32,7 @@ pytestmark = pytest.mark.integration
 _REQUEST_CAP = DB_STATEMENT_TIMEOUT_SECONDS[StatementTimeoutProfile.REQUEST]
 _SHORT_CAP = 1.0
 _SLACK_SECONDS = 2
+_SQLALCHEMY_CLOSE_TIMEOUT_SECONDS = 2
 
 
 def _raise_sqlstate(sqlstate: str) -> str:
@@ -91,6 +93,30 @@ async def test_a_statement_over_its_cap_is_typed_and_logged(postgres_dsn, caplog
     [record] = [r for r in caplog.records if r.getMessage() == "db_statement_timeout"]
     assert "pg_sleep" in record.statement
     assert record.statement_timeout_seconds == _SHORT_CAP
+
+
+async def _statement_on_a_frozen_connection(engine, relay: Relay) -> None:
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+        relay.freeze()
+        await conn.execute(text("SELECT 1"))
+
+
+async def test_a_statement_on_a_stalled_connection_times_out_and_frees_its_slot(postgres_dsn):
+    async with Relay(postgres_dsn) as relay:
+        engine = create_async_engine_factory(
+            relay.url, statement_timeout_seconds=_SHORT_CAP, pool_size=1, max_overflow=0
+        )
+        try:
+            stalled = await finish_within(
+                _SHORT_CAP + _SQLALCHEMY_CLOSE_TIMEOUT_SECONDS + _SLACK_SECONDS,
+                _statement_on_a_frozen_connection(engine, relay),
+            )
+            async with engine.connect() as conn:
+                assert await conn.scalar(text("SELECT 1")) == 1
+        finally:
+            await engine.dispose()
+    assert isinstance(stalled.exception(), DatabaseTimeoutError)
 
 
 async def test_a_connection_lost_mid_request_is_503_even_when_the_route_swallows_sqlalchemy_errors(

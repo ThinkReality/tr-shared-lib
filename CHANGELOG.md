@@ -21,10 +21,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - The idle-connection ping is bounded by `DB_IDLE_PING_TIMEOUT_SECONDS` (0.5 s), and a failed ping terminates its
   connection instead of closing it gracefully. Before, the ping inherited the statement cap (20 s request, 60 s
-  background), and on a stalled network (a dropped NAT entry, a hung pooler) the checkout then never returned:
-  after a timed-out statement asyncpg's `close()` waits without a bound for the server to answer the cancel, and a
-  lost connection does not release it. A checkout's worst case is now `DEFAULT_POOL_TIMEOUT_SECONDS +
-  DB_IDLE_PING_TIMEOUT_SECONDS + DB_CONNECT_TIMEOUT_SECONDS` (5.5 s), inside shared-auth-lib's 6 s auth budget.
+  background), and on a stalled network (a dropped NAT entry, a hung pooler) the checkout then never returned
+  (asyncpg 0.31's unbounded `close()`, next entry). Terminating skips SQLAlchemy's graceful close, which can take its
+  full 2 s even on asyncpg 0.32; a `SELECT 1` leaves nothing on the server to cancel. A checkout's worst case is now
+  `DEFAULT_POOL_TIMEOUT_SECONDS + DB_IDLE_PING_TIMEOUT_SECONDS + DB_CONNECT_TIMEOUT_SECONDS` (5.5 s), inside
+  shared-auth-lib's 6 s auth budget.
+- `asyncpg>=0.32.0` (was `>=0.29.0`). A statement that times out on a stalled connection no longer holds its
+  checkout forever: asyncpg 0.31's `close()` waited without a bound for the server to answer the cancel, so
+  SQLAlchemy's invalidation never returned and every stall leaked a pool slot until `POOL_EXHAUSTED`. 0.32.0 honors
+  `close(timeout=...)` while a cancellation is pending (asyncpg #1361), which bounds SQLAlchemy's graceful close at
+  2 s and still lets the server cancel the statement (SQLAlchemy #10717). Services move on their next relock.
 
 ## [0.107.0] - 2026-10-25
 
