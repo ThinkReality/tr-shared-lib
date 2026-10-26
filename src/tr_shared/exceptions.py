@@ -128,6 +128,15 @@ class ConflictError(BaseAPIException):
         super().__init__(status_code=409, error="Conflict", detail=detail, code=code)
 
 
+class ContentTooLargeError(BaseAPIException):
+    """Request content exceeds a size limit or the remaining storage quota (413)."""
+
+    def __init__(
+        self, detail: str = "Content too large", code: str = "CONTENT_TOO_LARGE_001"
+    ) -> None:
+        super().__init__(status_code=413, error="Content too large", detail=detail, code=code)
+
+
 class RateLimitError(BaseAPIException):
     """Rate limit exceeded (429). Handler must surface ``self.headers`` to emit ``Retry-After``."""
 
@@ -194,6 +203,7 @@ __all__ = [
     "AuthorizationError",
     "BaseAPIException",
     "ConflictError",
+    "ContentTooLargeError",
     "DatabaseError",
     "InternalServerError",
     "NotFoundError",

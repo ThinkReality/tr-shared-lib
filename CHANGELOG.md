@@ -7,6 +7,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-10-26
+
+### Added
+- `ContentTooLargeError` (413, `CONTENT_TOO_LARGE_001`) in `tr_shared.exceptions`: request content over a size limit
+  or over the remaining storage quota. Before, there was no shared 413 class, so tr-media-service raised a private
+  error and copied its operator-facing text into `HTTPException(detail=...)`; on quota exceeded that text carried
+  the tenant ID to anonymous career uploads. tr-realty-data-hub hand-builds its own 413 as well.
+
 ## [0.108.0] - 2026-10-25
 
 ### Changed
