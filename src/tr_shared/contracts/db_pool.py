@@ -30,8 +30,8 @@ the pooler, a NAT, a laptop network drop — is caught by validating a connectio
 sat unused for DB_IDLE_PING_AFTER_SECONDS, so a busy pool never pays even that one
 simple-protocol statement. SQLAlchemy's own asyncpg ping wraps it in BEGIN/ROLLBACK for
 pgbouncer mode: four round trips instead of one (~250 ms vs ~63 ms Singapore→Mumbai).
-A ping that fails terminates its connection rather than closing it: after a timed-out
-statement asyncpg's close waits, without a bound, for the server to answer the cancel.
+A ping that fails terminates its connection rather than closing it: a graceful close
+waits up to 2 s for the server to answer the cancel, and SELECT 1 leaves nothing to cancel.
 """
 
 from collections.abc import Mapping

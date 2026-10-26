@@ -4,7 +4,7 @@ Reproduces the staging failure: Railway's TCP proxy resets idle client legs,
 asyncio surfaces the reset as ``reader.set_exception`` (not EOF), redis-py's
 checkout check is blind to it, and the next write hits a closed transport.
 
-The relay below is test-owned scaffolding in front of the lane's real Redis
+The relay (``network_faults.Relay``) is test-owned scaffolding in front of the lane's real Redis
 (the ``redis_url`` fixture); it forwards bytes both ways and can reset every client
 leg with an RST (SO_LINGER 0 + abort), which is what a proxy idle-kill looks
 like from the client. Runs under both the default loop and uvloop — the
@@ -12,18 +12,16 @@ production error is uvloop's.
 """
 
 import asyncio
-import socket
-import struct
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 import uvloop
 from redis.asyncio import ConnectionPool
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from tests.integration.network_faults import Relay
 from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
 from tr_shared.cache.service import CacheService
 from tr_shared.redis.client import close_redis_client, get_redis_client
@@ -32,58 +30,6 @@ from tr_shared.redis.connection import ProxySafeConnection
 pytestmark = pytest.mark.integration
 
 RUNNERS = {"asyncio": asyncio.run, "uvloop": uvloop.run}
-
-
-class Relay:
-    """TCP relay to a real Redis whose client legs can be reset on demand."""
-
-    def __init__(self, target_url: str) -> None:
-        parts = urlsplit(target_url)
-        self._target = (parts.hostname, parts.port)
-        self._parts = parts
-        self._client_writers: set[asyncio.StreamWriter] = set()
-        self._server: asyncio.AbstractServer | None = None
-        self.url = ""
-
-    async def __aenter__(self) -> "Relay":
-        self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
-        port = self._server.sockets[0].getsockname()[1]
-        userinfo = self._parts.netloc.rsplit("@", 1)[0] + "@" if "@" in self._parts.netloc else ""
-        self.url = urlunsplit(self._parts._replace(netloc=f"{userinfo}127.0.0.1:{port}"))
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        for writer in list(self._client_writers):
-            writer.close()
-        assert self._server is not None
-        self._server.close()
-        await self._server.wait_closed()
-
-    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        self._client_writers.add(writer)
-        up_reader, up_writer = await asyncio.open_connection(*self._target)
-        try:
-            await asyncio.gather(self._pump(reader, up_writer), self._pump(up_reader, writer))
-        except (OSError, asyncio.IncompleteReadError):
-            pass
-        finally:
-            up_writer.close()
-            writer.close()
-            self._client_writers.discard(writer)
-
-    @staticmethod
-    async def _pump(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        while data := await reader.read(65536):
-            writer.write(data)
-            await writer.drain()
-
-    def reset_clients(self) -> None:
-        for writer in list(self._client_writers):
-            if writer.transport.is_closing():
-                continue
-            sock = writer.get_extra_info("socket")
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
-            writer.transport.abort()
 
 
 async def _reset_and_wait_until_client_sees_it(relay: Relay, pool: ConnectionPool) -> None:
