@@ -48,6 +48,7 @@ from tr_shared.testing.guards import (
     assert_no_sqlite_dsn,
     assert_no_testing_flag_in_production,
     assert_no_unpooled_redis_clients,
+    assert_not_found_names_a_resource,
 )
 from tr_shared.testing.isolation import (
     redis_index_for_worker,
@@ -104,6 +105,7 @@ __all__ = [
     "assert_no_stale_exemptions",
     "assert_no_undocumented_raw_tenant_header_reads",
     "assert_no_unpooled_redis_clients",
+    "assert_not_found_names_a_resource",
     "find_config",
     "find_raw_tenant_header_readers",
     "iter_app_modules",

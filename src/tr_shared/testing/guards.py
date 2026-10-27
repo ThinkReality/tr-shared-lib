@@ -58,6 +58,8 @@ __all__ = [
     "assert_no_swallowed_db_errors",
     "assert_no_testing_flag_in_production",
     "assert_no_unpooled_redis_clients",
+    "assert_not_found_names_a_resource",
+    "detect_not_found_sentence",
     "detect_unpooled_redis_client",
     "find_swallowed_db_errors",
     "find_violations",
@@ -1110,4 +1112,70 @@ def assert_no_local_client_ip_derivation(
         "Code derives the client IP from a header or the socket peer. The Railway edge "
         "overwrites X-Forwarded-For and X-Original-IP is trustworthy only after the gateway "
         "signature is verified, so use tr_shared.client_ip.client_ip(request).",
+    )
+
+
+_RESOURCE_NOT_FOUND = frozenset({"NotFoundError", "PortalNotFoundError"})
+
+
+def _tail_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _literal_text(node: ast.expr | None) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(_literal_text(part) for part in node.values)
+    return ""
+
+
+def detect_not_found_sentence(
+    source: str, classes: Collection[str] = _RESOURCE_NOT_FOUND
+) -> list[int]:
+    hits: set[int] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or _tail_name(node.func) not in classes:
+            continue
+        resource = (
+            node.args[0]
+            if node.args
+            else next((kw.value for kw in node.keywords if kw.arg == "resource"), None)
+        )
+        if "not found" in _literal_text(resource).lower():
+            hits.add(node.lineno)
+    return sorted(hits)
+
+
+def _not_found_classes(root: Path) -> frozenset[str]:
+    parents: dict[str, set[str]] = {}
+    for path in iter_python_files(root):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        except SyntaxError:  # pragma: no cover - not our file to fix
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                parents[node.name] = {_tail_name(base) for base in node.bases}
+    names = set(_RESOURCE_NOT_FOUND)
+    while grown := {cls for cls, bases in parents.items() if bases & names} - names:
+        names |= grown
+    return frozenset(names)
+
+
+def assert_not_found_names_a_resource(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    classes = _not_found_classes(app_root)
+    _assert(
+        app_root,
+        lambda source: detect_not_found_sentence(source, classes),
+        allowlist or {},
+        'A NotFoundError gets a sentence as its resource. It appends " not found" itself, '
+        'so the client reads "... not found not found". Pass the noun and put the id in '
+        'identifier: NotFoundError("Job posting", str(job_id)).',
     )
