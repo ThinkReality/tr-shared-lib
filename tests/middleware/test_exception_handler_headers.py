@@ -15,7 +15,7 @@ from tr_shared.middleware import register_exception_handlers
 
 def _client() -> TestClient:
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/rate-limited")
     async def rate_limited() -> None:
@@ -90,7 +90,7 @@ def test_exception_without_headers_still_responds() -> None:
     response = _client().get("/plain-403")
 
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "HTTP_403"
+    assert response.json()["error"]["code"] == "TEST_HTTP_403"
 
 
 def test_envelope_is_unchanged_by_the_header_fix() -> None:

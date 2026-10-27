@@ -16,6 +16,11 @@ from starlette.responses import Response
 from tr_shared.alerts.slack import SlackAlertBudget, alert_footer, alert_host, slack_message
 from tr_shared.contracts.availability import DatabaseOutageCode
 from tr_shared.contracts.headers import HttpHeader
+from tr_shared.schemas.error_envelope import (
+    INTERNAL_CODE,
+    build_error_envelope,
+    framework_error_code,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +138,11 @@ class GlobalErrorHandlerMiddleware(BaseHTTPMiddleware):
             logger.error("Unhandled exception", extra=ctx, exc_info=True)
             self._fire_alert(ctx)
 
-            from tr_shared.schemas.error_envelope import build_error_envelope
-
             return JSONResponse(
                 status_code=500,
                 content=build_error_envelope(
                     message="Internal server error",
-                    code="INTERNAL_ERROR",
+                    code=framework_error_code(request.app, INTERNAL_CODE),
                     correlation_id=ctx.get("correlation_id", "unknown"),
                 ),
             )

@@ -10,10 +10,12 @@ from tr_shared.middleware.error_handler import (
     GlobalErrorHandlerMiddleware,
     _hash_identifier,
 )
+from tr_shared.schemas.error_envelope import set_error_code_prefix
 
 
 def _build_app(raise_exc=None, status_code=200, **middleware_kwargs) -> FastAPI:
     app = FastAPI()
+    set_error_code_prefix(app, "TEST")
     app.add_middleware(GlobalErrorHandlerMiddleware, **middleware_kwargs)
 
     @app.get("/ok")
@@ -94,7 +96,7 @@ class TestUnhandledExceptions:
             raise_server_exceptions=False,
         )
         response = client.get("/fail")
-        assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+        assert response.json()["error"]["code"] == "TEST_INTERNAL_000"
 
     def test_500_body_has_correlation_id(self):
         client = TestClient(
@@ -143,6 +145,8 @@ class TestAlertOn5xx:
         from fastapi import Response
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=False)
 
         @app.get("/server-error")
@@ -160,6 +164,8 @@ class TestExtractIdentity:
         from starlette.testclient import TestClient
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware)
         extracted = {}
 
@@ -181,6 +187,8 @@ class TestQueryStringInContext:
         captured = {}
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=True)
 
         @app.get("/search")
@@ -201,6 +209,8 @@ class TestQueryStringInContext:
         captured = {}
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=True)
 
         @app.get("/search")
@@ -225,6 +235,8 @@ class TestTimestampInContext:
         captured = {}
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=True)
 
         @app.get("/ts")
@@ -248,6 +260,8 @@ class TestHostInContext:
         captured = {}
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=True)
 
         @app.get("/h")
@@ -269,6 +283,7 @@ class TestHostInContext:
 class TestUserTenantInSlackBlocks:
     def test_user_tenant_in_slack_fields(self):
         app = FastAPI()
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(
             GlobalErrorHandlerMiddleware,
             slack_webhook_url="https://hooks.slack.com/fake",
@@ -305,6 +320,7 @@ class TestTracebackTailTruncation:
     def test_2000_char_traceback_shows_tail(self):
         """A 2000-char traceback is truncated to the last 1500 chars."""
         app = FastAPI()
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(
             GlobalErrorHandlerMiddleware,
             slack_webhook_url="https://hooks.slack.com/fake",
@@ -377,6 +393,8 @@ class Test5xxResponseBodyTruncation:
         captured = {}
 
         app = FastAPI()
+
+        set_error_code_prefix(app, "TEST")
         app.add_middleware(GlobalErrorHandlerMiddleware, alert_on_5xx=True)
 
         long_message = "A" * 800

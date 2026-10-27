@@ -11,16 +11,30 @@ from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.redis.client import get_redis_client
+from tr_shared.schemas.error_envelope import (
+    CONFLICT_CODE,
+    build_error_envelope,
+    framework_error_code,
+)
 
 logger = logging.getLogger(__name__)
 
 _PROCESSING_SENTINEL = json.dumps({"s": "processing"})
 _PROCESSING_TTL_SECONDS = 300
 _UNCACHED_STATUSES = frozenset({401, 403, 429})
+
+
+def _conflict(request: Request, message: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content=build_error_envelope(
+            message=message, code=framework_error_code(request.app, CONFLICT_CODE)
+        ),
+    )
 
 
 class APIIdempotencyMiddleware(BaseHTTPMiddleware):
@@ -79,11 +93,11 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
 
         # SET NX returns True if newly set, None if key already existed
         if was_set is None:
-            return await self._handle_duplicate(redis, cache_key)
+            return await self._handle_duplicate(request, redis, cache_key)
 
         return await self._process_and_cache(request, call_next, redis, cache_key)
 
-    async def _handle_duplicate(self, redis: Any, cache_key: str) -> Response:
+    async def _handle_duplicate(self, request: Request, redis: Any, cache_key: str) -> Response:
         try:
             cached = await redis.get(cache_key)
             if cached:
@@ -95,33 +109,12 @@ class APIIdempotencyMiddleware(BaseHTTPMiddleware):
                         media_type=data.get("ct", "application/json"),
                         headers={HttpHeader.IDEMPOTENCY_REPLAYED.value: "true"},
                     )
-            # Key exists but status is "processing" — concurrent duplicate
-            return Response(
-                content=json.dumps(
-                    {
-                        "error": {
-                            "code": "IDEMPOTENCY_CONFLICT",
-                            "message": "A request with this idempotency key is currently being processed",
-                        }
-                    }
-                ),
-                status_code=409,
-                media_type="application/json",
+            return _conflict(
+                request, "A request with this idempotency key is currently being processed"
             )
         except Exception:
             logger.warning("Idempotency GET failed — returning conflict", exc_info=True)
-            return Response(
-                content=json.dumps(
-                    {
-                        "error": {
-                            "code": "IDEMPOTENCY_CONFLICT",
-                            "message": "Unable to verify idempotency status",
-                        }
-                    }
-                ),
-                status_code=409,
-                media_type="application/json",
-            )
+            return _conflict(request, "Unable to verify idempotency status")
 
     async def _process_and_cache(
         self,

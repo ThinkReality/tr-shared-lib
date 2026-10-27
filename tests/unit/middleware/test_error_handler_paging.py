@@ -32,7 +32,7 @@ async def slack_posts(monkeypatch):
 
 def _app(rate_limit: int = 5) -> FastAPI:
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/fail")
     async def fail(status: int, code: str | None = None, retry_after: int | None = None):

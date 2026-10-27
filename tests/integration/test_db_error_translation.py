@@ -124,7 +124,7 @@ async def test_a_connection_lost_mid_request_is_503_even_when_the_route_swallows
 ):
     engine = _engine(postgres_dsn)
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/permissions")
     async def permissions() -> list[str]:
@@ -220,7 +220,7 @@ async def test_an_exhausted_pool_is_503_even_when_the_route_swallows_sqlalchemy_
 ):
     engine = _one_slot_engine(postgres_dsn, pool_timeout=_SHORT_CAP)
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/permissions")
     async def permissions() -> list[str]:

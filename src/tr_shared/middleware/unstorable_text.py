@@ -7,7 +7,11 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from tr_shared.schemas.error_envelope import build_error_envelope
+from tr_shared.schemas.error_envelope import (
+    VALIDATION_CODE,
+    build_error_envelope,
+    framework_error_code,
+)
 from tr_shared.schemas.validators import unstorable_text_location
 
 Location = tuple[str | int, ...]
@@ -109,7 +113,7 @@ class UnstorableTextMiddleware:
             status_code=422,
             content=build_error_envelope(
                 message="Validation failed",
-                code="VALIDATION_ERROR",
+                code=framework_error_code(scope["app"], VALIDATION_CODE),
                 correlation_id=scope.get("state", {}).get("correlation_id"),
                 fields=[
                     {
