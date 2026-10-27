@@ -4,6 +4,7 @@ import httpx
 import pytest
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from tr_shared.middleware import register_exception_handlers
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.dependency import create_rate_limit_dependency
 
@@ -20,8 +21,14 @@ def _caller_id(caller: str = Depends(_caller)) -> str:
 
 def _app(limit: int = 1) -> FastAPI:
     app = FastAPI()
+    register_exception_handlers(app)
     check = create_rate_limit_dependency(
-        RateLimiter(), identifier=_caller_id, limit=limit, window=60, key_prefix="test"
+        RateLimiter(),
+        identifier=_caller_id,
+        code="TEST_RATE_LIMIT_001",
+        limit=limit,
+        window=60,
+        key_prefix="test",
     )
 
     @app.get("/items/{item_id}", dependencies=[Depends(check)])
@@ -77,3 +84,16 @@ class TestTheRefusal:
         assert response.headers["X-RateLimit-Limit"] == "1"
         assert response.headers["X-RateLimit-Remaining"] == "0"
         assert int(response.headers["Retry-After"]) >= 1
+
+    async def test_it_answers_the_canonical_envelope_with_the_callers_code(self, client):
+        await _get(client, "alice")
+
+        response = await _get(client, "alice")
+
+        assert response.json()["error"]["code"] == "TEST_RATE_LIMIT_001"
+        assert response.json()["error"]["message"] == "Rate limit exceeded"
+
+
+def test_a_dependency_without_a_code_is_refused():
+    with pytest.raises(TypeError, match="code"):
+        create_rate_limit_dependency(RateLimiter(), identifier=_caller_id)

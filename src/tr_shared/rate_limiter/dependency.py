@@ -2,9 +2,10 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request
 
 from tr_shared.contracts.headers import HttpHeader
+from tr_shared.exceptions import RateLimitError
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
@@ -20,6 +21,7 @@ def create_rate_limit_dependency(
     limiter: RateLimiter,
     *,
     identifier: Callable[..., Any],
+    code: str,
     limit: int = 100,
     window: int = 60,
     algorithm: Algorithm = Algorithm.FIXED_WINDOW,
@@ -56,14 +58,14 @@ def create_rate_limit_dependency(
                 },
             )
 
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            raise RateLimitError(
                 detail="Rate limit exceeded. Please try again later.",
+                code=code,
+                retry_after=retry_after,
                 headers={
                     HttpHeader.RATE_LIMIT_LIMIT.value: str(tightest.limit),
                     HttpHeader.RATE_LIMIT_REMAINING.value: "0",
                     HttpHeader.RATE_LIMIT_RESET.value: str(tightest.reset_at),
-                    HttpHeader.RETRY_AFTER.value: str(retry_after),
                 },
             )
 

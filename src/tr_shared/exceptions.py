@@ -145,15 +145,17 @@ class RateLimitError(BaseAPIException):
         detail: str = "Rate limit exceeded",
         code: str = "RATE_LIMIT_001",
         retry_after: int | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
+        merged = dict(headers or {})
+        if retry_after is not None:
+            merged[HttpHeader.RETRY_AFTER.value] = str(retry_after)
         super().__init__(
             status_code=429,
             error="Rate limit exceeded",
             detail=detail,
             code=code,
-            headers=None
-            if retry_after is None
-            else {HttpHeader.RETRY_AFTER.value: str(retry_after)},
+            headers=merged or None,
         )
 
 

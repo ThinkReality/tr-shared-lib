@@ -1151,20 +1151,32 @@ def detect_not_found_sentence(
     return sorted(hits)
 
 
-def _not_found_classes(root: Path) -> frozenset[str]:
+def _real_names(tree: ast.Module) -> dict[str, str]:
+    return {local: origin.rsplit(".", 1)[-1] for local, origin in _imports(tree).items()}
+
+
+def _class_family(
+    root: Path, roots: frozenset[str], exclude: frozenset[str] = frozenset()
+) -> frozenset[str]:
     parents: dict[str, set[str]] = {}
     for path in iter_python_files(root):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         except SyntaxError:  # pragma: no cover - not our file to fix
             continue
+        real = _real_names(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                parents[node.name] = {_tail_name(base) for base in node.bases}
-    names = set(_RESOURCE_NOT_FOUND)
-    while grown := {cls for cls, bases in parents.items() if bases & names} - names:
+                bases = (_tail_name(base) for base in node.bases)
+                parents[node.name] = {real.get(base, base) for base in bases}
+    names = set(roots)
+    while grown := {cls for cls, bases in parents.items() if bases & names} - names - exclude:
         names |= grown
     return frozenset(names)
+
+
+def _not_found_classes(root: Path) -> frozenset[str]:
+    return _class_family(root, _RESOURCE_NOT_FOUND)
 
 
 def assert_not_found_names_a_resource(
@@ -1178,4 +1190,36 @@ def assert_not_found_names_a_resource(
         'A NotFoundError gets a sentence as its resource. It appends " not found" itself, '
         'so the client reads "... not found not found". Pass the noun and put the id in '
         'identifier: NotFoundError("Job posting", str(job_id)).',
+    )
+
+
+_RAW_HTTP_EXCEPTION = frozenset({"HTTPException"})
+_ENVELOPED_HTTP_EXCEPTION = frozenset({"BaseAPIException"})
+
+
+def detect_raw_http_exception(
+    source: str, classes: Collection[str] = _RAW_HTTP_EXCEPTION
+) -> list[int]:
+    tree = ast.parse(source)
+    names = set(classes) | {local for local, real in _real_names(tree).items() if real in classes}
+    return sorted(
+        {
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and _tail_name(node.func) in names
+        }
+    )
+
+
+def assert_no_raw_http_exceptions(
+    app_root: Path, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    classes = _class_family(app_root, _RAW_HTTP_EXCEPTION, exclude=_ENVELOPED_HTTP_EXCEPTION)
+    _assert(
+        app_root,
+        lambda source: detect_raw_http_exception(source, classes),
+        allowlist or {},
+        "App code constructs a raw HTTPException. The shared handler renders its detail with "
+        "str(), so a dict detail reaches the client as a Python repr under code HTTP_<status>. "
+        "Raise a tr_shared.exceptions class with a prefixed code, or return a JSONResponse.",
     )

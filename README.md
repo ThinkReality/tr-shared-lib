@@ -152,7 +152,12 @@ def per_user(ctx: AuthContext = Depends(require_auth)) -> str:
 
 
 listing_writes = create_rate_limit_dependency(
-    limiter, identifier=per_user, limit=10, window=60, key_prefix="listings:write"
+    limiter,
+    identifier=per_user,
+    code="LISTING_RATE_LIMIT_001",
+    limit=10,
+    window=60,
+    key_prefix="listings:write",
 )
 
 
@@ -161,7 +166,8 @@ async def create_listing(): ...
 ```
 
 `identifier` is a FastAPI dependency that returns the bucket key, so whatever it depends on resolves
-before the limiter counts. There is no app-wide IP limiter: behind the gateway every caller arrives from
+before the limiter counts. `code` is the caller's own prefixed error code; a refusal is a `RateLimitError`
+under it, carrying `Retry-After` and the `X-RateLimit-*` headers. There is no app-wide IP limiter: behind the gateway every caller arrives from
 the same edge address, so key on the user, the site or the request body instead.
 
 ---
