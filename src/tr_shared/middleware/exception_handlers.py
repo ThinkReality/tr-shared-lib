@@ -3,14 +3,21 @@
 from importlib import import_module
 from importlib.util import find_spec
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from fastapi.utils import is_body_allowed_for_status_code
 from starlette import status
+from starlette.exceptions import HTTPException
 
 from tr_shared.exceptions import BaseAPIException
-from tr_shared.schemas.error_envelope import build_error_envelope
+from tr_shared.schemas.error_envelope import (
+    VALIDATION_CODE,
+    build_error_envelope,
+    framework_error_code,
+    set_error_code_prefix,
+)
 
 
 def _correlation_id(request: Request) -> str | None:
@@ -49,12 +56,14 @@ async def base_api_exception_handler(request: Request, exc: BaseAPIException) ->
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: HTTPException) -> Response:
+    if not is_body_allowed_for_status_code(exc.status_code):
+        return Response(status_code=exc.status_code, headers=_safe_headers(exc))
     return JSONResponse(
         status_code=exc.status_code,
         content=build_error_envelope(
             message=str(exc.detail),
-            code=f"HTTP_{exc.status_code}",
+            code=framework_error_code(request.app, f"HTTP_{exc.status_code}"),
             correlation_id=_correlation_id(request),
         ),
         headers=_safe_headers(exc),
@@ -68,7 +77,7 @@ async def validation_exception_handler(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=build_error_envelope(
             message="Validation failed",
-            code="VALIDATION_ERROR",
+            code=framework_error_code(request.app, VALIDATION_CODE),
             correlation_id=_correlation_id(request),
             # jsonable_encoder coerces non-JSON-serializable entries — notably a
             # field_validator's raised ValueError living in ctx.error — so the 422
@@ -78,7 +87,8 @@ async def validation_exception_handler(
     )
 
 
-def register_exception_handlers(app: FastAPI) -> None:
+def register_exception_handlers(app: FastAPI, *, code_prefix: str) -> None:
+    set_error_code_prefix(app, code_prefix)
     app.add_exception_handler(BaseAPIException, base_api_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)

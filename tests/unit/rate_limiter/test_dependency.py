@@ -21,7 +21,7 @@ def _caller_id(caller: str = Depends(_caller)) -> str:
 
 def _app(limit: int = 1) -> FastAPI:
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
     check = create_rate_limit_dependency(
         RateLimiter(),
         identifier=_caller_id,

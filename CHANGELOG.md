@@ -7,6 +7,31 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-10-28
+
+### Changed
+- **Breaking:** `register_exception_handlers(app, *, code_prefix)` requires the service's error-code prefix
+  (upper-case letters only) and stores it on `app.state`. Every code the library mints for itself now carries it,
+  with the reserved number `000` so it never collides with a service's own `001`+:
+  - request validation 422 and `UnstorableTextMiddleware` 422: `VALIDATION_ERROR` → `{P}_VALIDATION_000`
+  - `GlobalErrorHandlerMiddleware` unhandled 500: `INTERNAL_ERROR` → `{P}_INTERNAL_000`
+  - `APIIdempotencyMiddleware` 409: `IDEMPOTENCY_CONFLICT` → `{P}_CONFLICT_000`, now built with
+    `build_error_envelope`
+  - framework HTTP errors: `HTTP_<status>` → `{P}_HTTP_<status>`
+- `http_exception_handler` is registered for Starlette's `HTTPException`, the base FastAPI's subclasses. Starlette's
+  router raises its own for unknown routes and wrong methods, so those answered FastAPI's `{"detail": ...}` instead of
+  the canonical envelope. Statuses that allow no body (204, 304, 1xx) answer without one, as FastAPI's default did;
+  headers such as a 405's `Allow` pass through.
+
+### Added
+- `framework_error_code(app, suffix)` and `set_error_code_prefix(app, code_prefix)` in
+  `tr_shared.schemas.error_envelope`, plus the `VALIDATION_CODE`, `INTERNAL_CODE` and `CONFLICT_CODE` suffixes.
+  `framework_error_code` raises `RuntimeError` when the app never registered a prefix.
+
+**Consumer action:** pass `code_prefix=` to the one `register_exception_handlers` call in `main.py` (GATEWAY, CRM,
+CONTENT, LEAD, MEDIA, PEOPLE, REALTY, WAM), and to test apps that build the stack themselves. Update assertions on
+the old codes.
+
 ## [0.111.0] - 2026-10-27
 
 ### Added

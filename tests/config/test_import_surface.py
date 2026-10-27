@@ -48,7 +48,7 @@ from fastapi import FastAPI
 
 from tr_shared.middleware import register_exception_handlers
 
-register_exception_handlers(FastAPI())
+register_exception_handlers(FastAPI(), code_prefix="TEST")
 """
 
 

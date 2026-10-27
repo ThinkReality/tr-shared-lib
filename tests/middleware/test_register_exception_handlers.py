@@ -21,7 +21,7 @@ class _RaisingBody(BaseModel):
 
 def _make_app() -> FastAPI:
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/notfound")
     def _nf():
@@ -55,14 +55,14 @@ def test_plain_http_exception_nested_envelope():
     resp = client.get("/http")
     assert resp.status_code == 403
     assert resp.json()["error"]["message"] == "nope"
-    assert resp.json()["error"]["code"] == "HTTP_403"
+    assert resp.json()["error"]["code"] == "TEST_HTTP_403"
 
 
 def test_validation_error_nested_envelope():
     client = TestClient(_make_app(), raise_server_exceptions=False)
     resp = client.get("/validate/not-an-int")
     assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert resp.json()["error"]["code"] == "TEST_VALIDATION_000"
     assert isinstance(resp.json()["error"]["fields"], list)
 
 
@@ -74,13 +74,13 @@ def test_field_validator_valueerror_is_422_not_500():
     resp = client.post("/validate-body", json={"x": "anything"})
     assert resp.status_code == 422, resp.text
     body = resp.json()
-    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["code"] == "TEST_VALIDATION_000"
     json.dumps(body["error"]["fields"])  # must be JSON round-trippable
 
 
 def test_base_api_exception_injects_correlation_id():
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.middleware("http")
     async def _set_cid(request, call_next):

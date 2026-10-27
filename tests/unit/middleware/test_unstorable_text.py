@@ -5,8 +5,13 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel
+from starlette.applications import Starlette
 
 from tr_shared.middleware import UnstorableTextMiddleware
+from tr_shared.schemas.error_envelope import set_error_code_prefix
+
+_APP = Starlette()
+set_error_code_prefix(_APP, "TEST")
 
 JSON = "application/json"
 
@@ -30,6 +35,7 @@ def _scope(
         "query_string": query,
         "headers": headers,
         "state": {"correlation_id": "cid-1"},
+        "app": _APP,
     }
 
 
@@ -68,7 +74,7 @@ async def _run(scope: dict, *chunks: bytes) -> tuple[int, dict | None, list[byte
 
 def _rejected_loc(payload: dict) -> list:
     error = payload["error"]
-    assert error["code"] == "VALIDATION_ERROR"
+    assert error["code"] == "TEST_VALIDATION_000"
     assert error["correlation_id"] == "cid-1"
     [field] = error["fields"]
     assert field["type"] == "string_unstorable"
@@ -198,6 +204,7 @@ class _Role(BaseModel):
 
 def _fastapi_app() -> FastAPI:
     app = FastAPI()
+    set_error_code_prefix(app, "TEST")
     app.add_middleware(UnstorableTextMiddleware)
 
     @app.post("/roles")

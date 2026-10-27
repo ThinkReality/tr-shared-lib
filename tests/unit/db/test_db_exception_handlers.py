@@ -22,7 +22,7 @@ _OUTAGES = [
 
 def _app(exc: Exception) -> FastAPI:
     app = FastAPI()
-    register_exception_handlers(app)
+    register_exception_handlers(app, code_prefix="TEST")
 
     @app.get("/boom")
     async def boom():

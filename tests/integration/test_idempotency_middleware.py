@@ -14,6 +14,7 @@ from starlette.routing import Route
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.middleware.idempotency import APIIdempotencyMiddleware
 from tr_shared.redis.client import close_redis_client
+from tr_shared.schemas.error_envelope import set_error_code_prefix
 
 pytestmark = pytest.mark.integration
 
@@ -33,6 +34,7 @@ class App:
             Route("/slow", self._slow, methods=["POST"]),
         ]
         self.asgi = Starlette(routes=routes)
+        set_error_code_prefix(self.asgi, "TEST")
         self.asgi.add_middleware(
             APIIdempotencyMiddleware,
             redis_url=redis_url,
@@ -118,7 +120,7 @@ async def test_the_key_is_kept_only_for_answers_that_executed(redis_url):
             assert 0 < await inspector.ttl(stored(key)) <= 300
             duplicate = await post("/slow", key)
             assert duplicate.status_code == 409
-            assert duplicate.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+            assert duplicate.json()["error"]["code"] == "TEST_CONFLICT_000"
             in_flight.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await in_flight
