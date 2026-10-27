@@ -7,6 +7,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-10-27
+
+### Added
+- `assert_no_raw_http_exceptions` and `detect_raw_http_exception` in `tr_shared.testing.guards`: fail when app code
+  constructs a raw `HTTPException`, under any import alias or through a subclass defined anywhere in the scanned
+  tree. `BaseAPIException` and its subclasses are the sanctioned form. The shared handler renders a raw one's
+  `detail` with `str()`, so tr-api-gateway's readiness 503 sent a Python dict repr under code `HTTP_503`. Catching one
+  (`except HTTPException`) stays allowed. Replaces the per-service copies in tr-media-service and tr-content-platform,
+  the latter of which checked 7 hard-coded files.
+
+### Changed
+- **Breaking:** `create_rate_limit_dependency` requires `code=`, the caller's prefixed error code, and refuses with a
+  `RateLimitError` under it. It raised a raw `HTTPException`, so every refusal reached the client as `HTTP_429`.
+  `RateLimitError` takes optional `headers`, merged with `Retry-After`, so the `X-RateLimit-*` headers survive.
+  **Consumer action:** pass `code=` at every call site (tr-crm-core 9, tr-people-finance 2,
+  tr-whatsApp-marketing-agent 1).
+- The library runs `assert_no_raw_http_exceptions` on its own source.
+
 ## [0.110.0] - 2026-10-27
 
 ### Added

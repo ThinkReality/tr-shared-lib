@@ -77,6 +77,10 @@ class TestClientErrors:
         exc = RateLimitError()
         assert exc.status_code == 429
 
+    def test_rate_limit_error_keeps_extra_headers_beside_retry_after(self):
+        exc = RateLimitError(retry_after=7, headers={"X-RateLimit-Limit": "5"})
+        assert exc.headers == {"X-RateLimit-Limit": "5", "Retry-After": "7"}
+
 
 class TestServerErrors:
     def test_database_error(self):

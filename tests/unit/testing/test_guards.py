@@ -21,6 +21,7 @@ from tr_shared.testing.guards import (
     assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
     assert_no_local_client_ip_derivation,
+    assert_no_raw_http_exceptions,
     assert_no_ryuk_disabled,
     assert_no_schema_construction,
     assert_no_sqlite_dsn,
@@ -32,6 +33,7 @@ from tr_shared.testing.guards import (
     detect_environment_vocabulary,
     detect_local_client_ip_derivation,
     detect_not_found_sentence,
+    detect_raw_http_exception,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
@@ -527,3 +529,77 @@ class TestNotFoundNamesAResource:
         )
         with pytest.raises(AssertionError, match="appends"):
             assert_not_found_names_a_resource(root / "app")
+
+
+class TestNoRawHttpExceptions:
+    def test_catches_every_form_that_constructs_one(self) -> None:
+        assert detect_raw_http_exception(
+            "raise HTTPException(status_code=response_status, detail=result.model_dump())"
+        ) == [1]
+        assert detect_raw_http_exception('raise fastapi.HTTPException(404, "gone")') == [1]
+        assert detect_raw_http_exception("exc = HTTPException(status_code=503)\nraise exc") == [1]
+
+    def test_catches_an_aliased_import(self) -> None:
+        assert detect_raw_http_exception(
+            "from fastapi import HTTPException as E\nraise E(404)"
+        ) == [2]
+        assert detect_raw_http_exception(
+            "from starlette.exceptions import HTTPException as StarletteHTTPException\n"
+            "raise StarletteHTTPException(404)"
+        ) == [2]
+
+    def test_allows_catching_one(self) -> None:
+        assert not detect_raw_http_exception(
+            "try:\n    yield session\n"
+            "except (ValidationError, TypeError, HTTPException, BaseAPIException):\n    raise"
+        )
+        assert not detect_raw_http_exception(
+            "try:\n    verify()\nexcept HTTPException as e:\n    log(e)"
+        )
+        assert not detect_raw_http_exception("from fastapi import HTTPException")
+
+    def test_assert_helper_names_the_file(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/api/v1/endpoints/health.py",
+            "def ready():\n    raise HTTPException(status_code=503, detail={})\n",
+        )
+        with pytest.raises(AssertionError, match=r"api/v1/endpoints/health\.py"):
+            assert_no_raw_http_exceptions(root / "app")
+
+    def test_follows_a_subclass_into_the_module_that_raises_it(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/core/errors.py",
+            "from starlette.exceptions import HTTPException as Base\n\n\nclass Gone(Base):\n    pass\n",
+        )
+        _tree(tmp_path, "app/api/routes.py", "def get():\n    raise Gone(410)\n")
+        with pytest.raises(AssertionError, match=r"api/routes\.py"):
+            assert_no_raw_http_exceptions(root / "app")
+
+    def test_allows_the_shared_base_and_its_subclasses(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/exceptions.py",
+            "class BaseAPIException(HTTPException):\n    pass\n\n\n"
+            "class ValidationError(BaseAPIException):\n    pass\n",
+        )
+        _tree(tmp_path, "app/api/routes.py", 'def get():\n    raise ValidationError("bad")\n')
+        assert_no_raw_http_exceptions(root / "app")
+
+    def test_assert_helper_points_at_tr_shared_exceptions(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/api/routes.py",
+            "def get():\n    raise HTTPException(404)\n",
+        )
+        with pytest.raises(AssertionError, match="tr_shared.exceptions"):
+            assert_no_raw_http_exceptions(root / "app")
+
+    def test_assert_helper_passes_a_clean_tree(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/core/database.py",
+            "try:\n    pass\nexcept (TypeError, HTTPException):\n    raise\n",
+        )
+        assert_no_raw_http_exceptions(root / "app")
