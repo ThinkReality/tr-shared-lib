@@ -26,10 +26,12 @@ from tr_shared.testing.guards import (
     assert_no_sqlite_dsn,
     assert_no_testing_flag_in_production,
     assert_no_unpooled_redis_clients,
+    assert_not_found_names_a_resource,
     detect_auth_chain_bypass,
     detect_env_mutation,
     detect_environment_vocabulary,
     detect_local_client_ip_derivation,
+    detect_not_found_sentence,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
@@ -477,3 +479,51 @@ class TestLocalClientIpDerivation:
         )
         with pytest.raises(AssertionError, match="tr_shared.client_ip"):
             assert_no_local_client_ip_derivation(root)
+
+
+class TestNotFoundNamesAResource:
+    def test_catches_every_form_that_shipped(self) -> None:
+        assert detect_not_found_sentence(
+            'raise NotFoundError(f"Job posting with slug \'{slug}\' not found", code="X")'
+        )
+        assert detect_not_found_sentence(
+            'raise NotFoundError(resource=f"Note {note_id} not found")'
+        )
+        assert detect_not_found_sentence(
+            'raise NotFoundError(f"Card transaction {t} (not found after update)")'
+        )
+
+    def test_allows_a_noun_with_its_identifier(self) -> None:
+        assert not detect_not_found_sentence('NotFoundError("Job posting", str(job_id), code="X")')
+        assert not detect_not_found_sentence('NotFoundError(resource="Vendor")')
+        assert not detect_not_found_sentence("NotFoundError()")
+        assert not detect_not_found_sentence(
+            'NotFoundError(f"{PF_PLATFORM_NAME} integration", str(tenant_id))'
+        )
+
+    def test_ignores_classes_that_take_a_sentence(self) -> None:
+        assert not detect_not_found_sentence('BlogPostNotFoundError(f"Blog post {i} not found")')
+        assert not detect_not_found_sentence('FileNotFoundError(f"{path} not found")')
+
+    def test_follows_a_subclass_into_the_module_that_raises_it(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/clients/pf/exceptions.py",
+            "class PropertyFinderNotFoundError(PortalNotFoundError):\n    pass\n",
+        )
+        _tree(
+            tmp_path,
+            "app/clients/pf/client.py",
+            'def get(i):\n    raise PropertyFinderNotFoundError(f"Listing {i} not found")\n',
+        )
+        with pytest.raises(AssertionError, match=r"clients/pf/client\.py"):
+            assert_not_found_names_a_resource(root / "app")
+
+    def test_assert_helper_names_the_fix(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/services/jobs.py",
+            'def get(s):\n    raise NotFoundError(f"Job {s} not found")\n',
+        )
+        with pytest.raises(AssertionError, match="appends"):
+            assert_not_found_names_a_resource(root / "app")

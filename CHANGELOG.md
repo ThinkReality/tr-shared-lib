@@ -7,6 +7,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-10-27
+
+### Added
+- `assert_not_found_names_a_resource` and `detect_not_found_sentence` in `tr_shared.testing.guards`: fail when a
+  `NotFoundError` (or a subclass, including `PortalNotFoundError` and service subclasses defined anywhere in the
+  scanned tree) gets a sentence containing "not found" as its `resource`. `NotFoundError` appends " not found"
+  itself, so callers that passed a sentence sent "Job posting with slug 'x' not found not found" to clients.
+  tr-people-finance, tr-crm-core and tr-content-platform shipped 29 such sites.
+
 ## [0.109.0] - 2026-10-26
 
 ### Added
