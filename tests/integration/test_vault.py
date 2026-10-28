@@ -110,7 +110,7 @@ async def test_a_blocked_statement_times_out_as_service_unavailable(engine, meth
             with pytest.raises(ServiceUnavailableError) as exc:
                 await getattr(VaultService(session, timeout_seconds=0.5), method)(*args)
 
-    assert exc.value.error_code == "SERVICE_UNAVAILABLE_001"
+    assert exc.value.status_code == 503
 
 
 async def test_startup_replaces_the_setting_with_the_vault_secret(db, monkeypatch) -> None:

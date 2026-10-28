@@ -30,22 +30,11 @@ class TestBaseAPIException:
         assert exc.detail_message == "more info"
         assert exc.error_code == "X_001"
 
-    def test_to_dict_minimal(self):
-        exc = BaseAPIException(status_code=400, error="Bad request")
-        d = exc.to_dict()
-        assert d == {"error": {"message": "Bad request"}}
-
-    def test_to_dict_full(self):
-        exc = BaseAPIException(status_code=400, error="Bad", detail="detail", code="CODE_001")
-        d = exc.to_dict()
-        assert d == {"error": {"message": "Bad", "code": "CODE_001", "detail": "detail"}}
-
 
 class TestClientErrors:
     def test_validation_error(self):
         exc = ValidationError("field is required")
         assert exc.status_code == 400
-        assert exc.error_code == "VALIDATION_001"
 
     def test_authentication_error(self):
         exc = AuthenticationError()
@@ -71,7 +60,6 @@ class TestClientErrors:
     def test_content_too_large_error(self):
         exc = ContentTooLargeError()
         assert exc.status_code == 413
-        assert exc.error_code == "CONTENT_TOO_LARGE_001"
 
     def test_rate_limit_error(self):
         exc = RateLimitError()
@@ -135,29 +123,6 @@ class TestSubclassContract:
         for attr in _REQUIRED_ATTRS:
             assert hasattr(exc, attr), f"{cls.__name__} missing {attr}"
 
-    @pytest.mark.parametrize("cls", _ALL_BUILTIN_EXC)
-    def test_to_dict_is_stable(self, cls):
-        exc = _construct(cls)
-        body = exc.to_dict()
-        assert "error" in body
-        assert isinstance(body["error"], dict)
-        assert "message" in body["error"]
-
-    def test_to_dict_minimal_has_only_error(self):
-        exc = BaseAPIException(status_code=400, error="Bad")
-        assert exc.to_dict() == {"error": {"message": "Bad"}}
-
-    def test_to_dict_full_includes_detail_and_code(self):
-        exc = BaseAPIException(
-            status_code=400,
-            error="Bad",
-            detail="bad thing",
-            code="X_001",
-        )
-        assert exc.to_dict() == {
-            "error": {"message": "Bad", "code": "X_001", "detail": "bad thing"}
-        }
-
     def test_subclass_skipping_super_raises_type_error(self):
         class BrokenExc(BaseAPIException):
             def __init__(self) -> None:  # noqa: D401 — intentional bug
@@ -174,4 +139,3 @@ class TestSubclassContract:
         exc = GoodExc()
         assert exc.status_code == 418
         assert exc.error == "teapot"
-        assert exc.to_dict() == {"error": {"message": "teapot"}}

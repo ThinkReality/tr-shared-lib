@@ -1,11 +1,17 @@
 """Shared health router factory for all ThinkRealty services."""
 
+from __future__ import annotations
+
+import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from tr_shared.contracts.db_pool import DB_CONNECT_TIMEOUT_SECONDS
 from tr_shared.health.schemas import (
     ComponentCheck,
     HealthResponse,
@@ -13,15 +19,50 @@ from tr_shared.health.schemas import (
     ReadinessResponse,
 )
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+PROBE_TIMEOUT_SECONDS = DB_CONNECT_TIMEOUT_SECONDS + 1
+
+logger = logging.getLogger(__name__)
+
+
+async def _probe(name: str, check: Callable[[], Awaitable[None]]) -> ComponentCheck:
+    started = time.monotonic()
+    healthy = True
+    try:
+        async with asyncio.timeout(PROBE_TIMEOUT_SECONDS):
+            await check()
+    except Exception as exc:
+        healthy = False
+        logger.warning(
+            "health_check_failed",
+            extra={"check": name, "error_type": type(exc).__name__, "error": str(exc)},
+        )
+    latency_ms = round((time.monotonic() - started) * 1000, 2)
+    return ComponentCheck(name=name, healthy=healthy, latency_ms=latency_ms)
+
 
 def create_health_router(
     service_name: str,
     version: str = "1.0.0",
-    db_check: Callable[[], Awaitable[bool]] | None = None,
-    redis_check: Callable[[], Awaitable[bool]] | None = None,
+    *,
+    engine: Callable[[], AsyncEngine],
+    redis: Callable[[], Awaitable[Redis | None]],
 ) -> APIRouter:
     """Create a standard health router with liveness, readiness, and live endpoints."""
     router = APIRouter()
+
+    async def ping_database() -> None:
+        async with engine().connect() as connection:
+            await connection.exec_driver_sql("SELECT 1")
+
+    async def ping_redis() -> None:
+        client = await redis()
+        if client is None:
+            raise ConnectionError("Redis client unavailable")
+        await cast("Awaitable[bool]", client.ping())
 
     @router.get(
         "",
@@ -42,33 +83,17 @@ def create_health_router(
         },
     )
     async def readiness() -> JSONResponse:
-        checks: dict[str, bool] = {}
-        details: list[ComponentCheck] = []
-
-        for name, check_fn in [("database", db_check), ("redis", redis_check)]:
-            if check_fn is None:
-                continue
-            start = time.monotonic()
-            try:
-                healthy = await check_fn()
-                latency = round((time.monotonic() - start) * 1000, 2)
-                checks[name] = healthy
-                details.append(ComponentCheck(name=name, healthy=healthy, latency_ms=latency))
-            except Exception as exc:
-                latency = round((time.monotonic() - start) * 1000, 2)
-                checks[name] = False
-                details.append(
-                    ComponentCheck(name=name, healthy=False, latency_ms=latency, error=str(exc))
-                )
-
-        all_healthy = all(checks.values()) if checks else True
-        status_str = "ready" if all_healthy else "not_ready"
-        status_code = 200 if all_healthy else 503
-
-        body = ReadinessResponse(
-            status=status_str, service=service_name, checks=checks, details=details
+        details = await asyncio.gather(
+            _probe("database", ping_database), _probe("redis", ping_redis)
         )
-        return JSONResponse(content=body.model_dump(mode="json"), status_code=status_code)
+        ready = all(detail.healthy for detail in details)
+        body = ReadinessResponse(
+            status="ready" if ready else "not_ready",
+            service=service_name,
+            checks={detail.name: detail.healthy for detail in details},
+            details=list(details),
+        )
+        return JSONResponse(content=body.model_dump(mode="json"), status_code=200 if ready else 503)
 
     @router.get(
         "/live",

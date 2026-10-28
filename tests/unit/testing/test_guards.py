@@ -16,6 +16,7 @@ import pytest
 from tr_shared.testing.guards import (
     Exemption,
     assert_environment_vocabulary,
+    assert_error_codes_carry_prefix,
     assert_every_test_file_has_a_lane,
     assert_no_auth_chain_bypass,
     assert_no_env_mutation_in_conftest,
@@ -38,6 +39,7 @@ from tr_shared.testing.guards import (
     detect_sqlite_dsn,
     detect_testing_flag,
     detect_unpooled_redis_client,
+    detect_unprefixed_error_code,
 )
 
 
@@ -603,3 +605,85 @@ class TestNoRawHttpExceptions:
             "try:\n    pass\nexcept (TypeError, HTTPException):\n    raise\n",
         )
         assert_no_raw_http_exceptions(root / "app")
+
+
+class TestErrorCodesCarryPrefix:
+    def test_catches_a_code_with_another_prefix(self) -> None:
+        assert detect_unprefixed_error_code(
+            'raise ConflictError("Already accepted", code="USER_CONFLICT_001")', "CRM"
+        ) == [1]
+
+    def test_catches_a_code_without_category_or_number(self) -> None:
+        assert detect_unprefixed_error_code(
+            'raise NotFoundError(\n    "Approval policy",\n    code="POLICY_NOT_FOUND",\n)',
+            "FINANCE",
+        ) == [3]
+
+    def test_catches_a_subclass_passing_its_code_up(self) -> None:
+        assert detect_unprefixed_error_code(
+            "class PFAuthError(PropertyFinderError):\n"
+            "    def __init__(self, detail: str) -> None:\n"
+            '        super().__init__(detail, code="PF_AUTH_FAILED")\n',
+            "LISTING",
+        ) == [3]
+
+    def test_catches_a_code_held_in_a_constant_or_default(self) -> None:
+        assert detect_unprefixed_error_code(
+            'class Code(StrEnum):\n    TIMEOUT = "BAYUT_TIMEOUT_001"\n\n\n'
+            'def fail(code: str = "BAYUT_ERROR_001") -> None: ...\n',
+            "LISTING",
+        ) == [2, 5]
+
+    def test_allows_a_prefixed_code_and_an_error_without_one(self) -> None:
+        assert not detect_unprefixed_error_code(
+            'raise NotFoundError("Task", code="TASK_NOT_FOUND_001")\nraise ConflictError()',
+            "TASK",
+        )
+
+    def test_ignores_code_arguments_that_are_not_errors(self) -> None:
+        assert not detect_unprefixed_error_code(
+            'SITE_KEY_RESOLUTION_ERRORS.labels(code="http_error").inc()\n'
+            'cli_error(error="Database unavailable", code="DATABASE_ERROR")',
+            "GATEWAY",
+        )
+
+    def test_ignores_a_code_named_in_prose(self) -> None:
+        assert not detect_unprefixed_error_code(
+            '"""Answers USER_NOT_FOUND_001 when the user is gone."""', "CRM"
+        )
+
+    def test_assert_helper_holds_each_module_to_its_own_prefix(self, tmp_path: Path) -> None:
+        root = _tree(tmp_path, "app/core/errors.py", 'CODE = "PEOPLE_INTERNAL_001"\n')
+        _tree(
+            tmp_path,
+            "app/modules/hr/api.py",
+            'raise NotFoundError("Employee", code="HR_NOT_FOUND_001")\n',
+        )
+        _tree(
+            tmp_path,
+            "app/modules/finance/api.py",
+            'raise NotFoundError("Invoice", code="HR_NOT_FOUND_002")\n',
+        )
+        with pytest.raises(AssertionError, match=r"modules/finance/api\.py") as failure:
+            assert_error_codes_carry_prefix(
+                root / "app", "PEOPLE", {"modules/hr": "HR", "modules/finance": "FINANCE"}
+            )
+        assert "modules/hr" not in str(failure.value)
+        assert "core" not in str(failure.value)
+
+    def test_assert_helper_names_the_fix(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/services/tasks.py",
+            'raise ValidationError("x", code="TASK_STATUS_TRANSITION_INVALID")\n',
+        )
+        with pytest.raises(AssertionError, match="without code="):
+            assert_error_codes_carry_prefix(root / "app", "CRM", {"services": "TASK"})
+
+    def test_assert_helper_passes_a_clean_tree(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/utils/exceptions.py",
+            'super().__init__(detail, code="MEDIA_AUTHZ_001")\n',
+        )
+        assert_error_codes_carry_prefix(root / "app", "MEDIA")
