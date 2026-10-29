@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tr_shared.contracts import ErrorCategory
 from tr_shared.testing.guards import (
     Exemption,
     assert_environment_vocabulary,
@@ -33,13 +34,13 @@ from tr_shared.testing.guards import (
     detect_env_mutation,
     detect_environment_vocabulary,
     detect_local_client_ip_derivation,
+    detect_nonstandard_error_code,
     detect_not_found_sentence,
     detect_raw_http_exception,
     detect_schema_construction,
     detect_sqlite_dsn,
     detect_testing_flag,
     detect_unpooled_redis_client,
-    detect_unprefixed_error_code,
 )
 
 
@@ -609,18 +610,18 @@ class TestNoRawHttpExceptions:
 
 class TestErrorCodesCarryPrefix:
     def test_catches_a_code_with_another_prefix(self) -> None:
-        assert detect_unprefixed_error_code(
+        assert detect_nonstandard_error_code(
             'raise ConflictError("Already accepted", code="USER_CONFLICT_001")', "CRM"
         ) == [1]
 
     def test_catches_a_code_without_category_or_number(self) -> None:
-        assert detect_unprefixed_error_code(
+        assert detect_nonstandard_error_code(
             'raise NotFoundError(\n    "Approval policy",\n    code="POLICY_NOT_FOUND",\n)',
             "FINANCE",
         ) == [3]
 
     def test_catches_a_subclass_passing_its_code_up(self) -> None:
-        assert detect_unprefixed_error_code(
+        assert detect_nonstandard_error_code(
             "class PFAuthError(PropertyFinderError):\n"
             "    def __init__(self, detail: str) -> None:\n"
             '        super().__init__(detail, code="PF_AUTH_FAILED")\n',
@@ -628,27 +629,80 @@ class TestErrorCodesCarryPrefix:
         ) == [3]
 
     def test_catches_a_code_held_in_a_constant_or_default(self) -> None:
-        assert detect_unprefixed_error_code(
+        assert detect_nonstandard_error_code(
             'class Code(StrEnum):\n    TIMEOUT = "BAYUT_TIMEOUT_001"\n\n\n'
             'def fail(code: str = "BAYUT_ERROR_001") -> None: ...\n',
             "LISTING",
         ) == [2, 5]
 
+    def test_catches_a_category_outside_the_standard_list(self) -> None:
+        assert detect_nonstandard_error_code(
+            'super().__init__(detail=detail, code="MEDIA_AUTHZ_001")', "MEDIA"
+        ) == [1]
+        assert detect_nonstandard_error_code(
+            'raise NotFoundError("Job posting", code="HR_JOB_POSTING_NOT_FOUND_001")', "HR"
+        ) == [1]
+        assert detect_nonstandard_error_code('PUBLISH = "CMS_BUSINESS_001"', "CMS") == [1]
+
+    def test_allows_every_standard_category(self) -> None:
+        for category in ErrorCategory:
+            assert not detect_nonstandard_error_code(
+                f'raise PortalError("x", code="LISTING_{category}_001")', "LISTING"
+            ), category
+
+    def test_leaves_000_and_http_codes_to_the_handler(self) -> None:
+        assert detect_nonstandard_error_code(
+            'raise PortalError("x", code="LEAD_VALIDATION_000")', "LEAD"
+        ) == [1]
+        assert detect_nonstandard_error_code('NOT_FOUND = "LEAD_HTTP_404"', "LEAD") == [1]
+
+    def test_catches_a_code_built_at_runtime(self) -> None:
+        for code in (
+            'f"{prefix}_502_NONE"',
+            'f"LISTING_UNAVAILABLE_{status}"',
+            '"LISTING_" + suffix',
+            '"LISTING_{}_001".format(category)',
+            '"LISTING_%s_001" % category',
+        ):
+            assert detect_nonstandard_error_code(
+                f'raise PortalError("x", code={code})', "LISTING"
+            ) == [1], code
+
+    def test_allows_a_code_passed_through_or_named(self) -> None:
+        assert not detect_nonstandard_error_code(
+            "super().__init__(detail, code=code)\n"
+            'raise PortalError("x", code=ListingErrorCodes.PF_AUTH)\n'
+            'raise PortalError("x", code=WAMErrorCode.NOT_FOUND.value)\n',
+            "LISTING",
+        )
+
+    def test_holds_a_code_to_the_category_of_the_class_raising_it(self) -> None:
+        assert detect_nonstandard_error_code(
+            'raise AuthorizationError("No access", code="TASK_AUTH_001")', "TASK"
+        ) == [1]
+        assert detect_nonstandard_error_code(
+            'raise ServiceUnavailableError("LLM down", code="LMS_INTERNAL_001")', "LMS"
+        ) == [1]
+        assert not detect_nonstandard_error_code(
+            'raise AuthorizationError("No access", code="TASK_FORBIDDEN_001")', "TASK"
+        )
+
     def test_allows_a_prefixed_code_and_an_error_without_one(self) -> None:
-        assert not detect_unprefixed_error_code(
+        assert not detect_nonstandard_error_code(
             'raise NotFoundError("Task", code="TASK_NOT_FOUND_001")\nraise ConflictError()',
             "TASK",
         )
 
     def test_ignores_code_arguments_that_are_not_errors(self) -> None:
-        assert not detect_unprefixed_error_code(
+        assert not detect_nonstandard_error_code(
             'SITE_KEY_RESOLUTION_ERRORS.labels(code="http_error").inc()\n'
-            'cli_error(error="Database unavailable", code="DATABASE_ERROR")',
+            'cli_error(error="Database unavailable", code="DATABASE_ERROR")\n'
+            'GLAccount(name="Cash", code=f"GL-{number}")',
             "GATEWAY",
         )
 
     def test_ignores_a_code_named_in_prose(self) -> None:
-        assert not detect_unprefixed_error_code(
+        assert not detect_nonstandard_error_code(
             '"""Answers USER_NOT_FOUND_001 when the user is gone."""', "CRM"
         )
 
@@ -671,6 +725,88 @@ class TestErrorCodesCarryPrefix:
         assert "modules/hr" not in str(failure.value)
         assert "core" not in str(failure.value)
 
+    def test_assert_helper_follows_a_subclass_to_its_shared_category(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/utils/exceptions.py",
+            "from tr_shared.exceptions import AuthorizationError as _Shared\n"
+            "\n\n"
+            "class AuthorizationError(_Shared):\n"
+            '    def __init__(self, detail: str = "No", code: str = "GATEWAY_AUTH_002") -> None:\n'
+            "        super().__init__(detail=detail, code=code)\n"
+            "\n\n"
+            "class CircuitOpenError(ServiceUnavailableError):\n"
+            "    def __init__(self) -> None:\n"
+            '        super().__init__("Open", code="GATEWAY_UNAVAILABLE_002")\n',
+        )
+        _tree(
+            tmp_path,
+            "app/services/routing.py",
+            'raise CircuitOpenError()\nraise AuthorizationError("No", code="GATEWAY_AUTH_003")\n',
+        )
+        with pytest.raises(AssertionError) as failure:
+            assert_error_codes_carry_prefix(root / "app", "GATEWAY")
+        assert "'utils/exceptions.py': [5]" in str(failure.value)
+        assert "'services/routing.py': [2]" in str(failure.value)
+
+    def test_assert_helper_follows_a_lib_class_and_a_named_code(self, tmp_path: Path) -> None:
+        root = _tree(
+            tmp_path,
+            "app/core/error_codes.py",
+            'class Codes:\n    PORTAL = "LISTING_UNAVAILABLE_012"\n    AUTH = "LISTING_AUTH_002"\n',
+        )
+        _tree(
+            tmp_path,
+            "app/clients/bayut.py",
+            "from tr_shared.integrations.portal_errors import PortalAuthError, PortalError\n"
+            "\n\n"
+            "class BayutError(PortalError):\n"
+            "    def __init__(self, message: str, code: str = Codes.PORTAL) -> None:\n"
+            "        super().__init__(detail=message, code=code)\n"
+            "\n\n"
+            "class BayutAuthError(PortalAuthError):\n"
+            "    def __init__(self) -> None:\n"
+            '        super().__init__(detail="No", code=Codes.AUTH)\n',
+        )
+        with pytest.raises(AssertionError) as failure:
+            assert_error_codes_carry_prefix(root / "app", "LISTING")
+        assert "'clients/bayut.py': [5]" in str(failure.value)
+
+    def test_assert_helper_resolves_an_enum_value_and_a_module_constant(
+        self, tmp_path: Path
+    ) -> None:
+        root = _tree(
+            tmp_path,
+            "app/models/enums.py",
+            'class WAMErrorCode(StrEnum):\n    NOT_DRAFT = "WAM_CONFLICT_001"\n',
+        )
+        _tree(
+            tmp_path,
+            "app/services/campaign.py",
+            '_LIMIT = "WAM_VALIDATION_001"\n'
+            'raise NotFoundError("Campaign", code=WAMErrorCode.NOT_DRAFT.value)\n'
+            'raise RateLimitError("Slow down", code=_LIMIT)\n'
+            'raise ConflictError("Not a draft", code=WAMErrorCode.NOT_DRAFT.value)\n',
+        )
+        with pytest.raises(AssertionError) as failure:
+            assert_error_codes_carry_prefix(root / "app", "WAM")
+        assert "'services/campaign.py': [2, 3]" in str(failure.value)
+
+    def test_assert_helper_leaves_an_ambiguous_class_to_the_category_list(
+        self, tmp_path: Path
+    ) -> None:
+        root = _tree(
+            tmp_path,
+            "app/modules/cms/exceptions.py",
+            "class ValidationError(CMSBaseException):\n    pass\n",
+        )
+        _tree(
+            tmp_path,
+            "app/modules/cms/service.py",
+            'raise ValidationError("Taken", code="CMS_CONFLICT_001")\n',
+        )
+        assert_error_codes_carry_prefix(root / "app", "CONTENT", {"modules/cms": "CMS"})
+
     def test_assert_helper_names_the_fix(self, tmp_path: Path) -> None:
         root = _tree(
             tmp_path,
@@ -684,6 +820,6 @@ class TestErrorCodesCarryPrefix:
         root = _tree(
             tmp_path,
             "app/utils/exceptions.py",
-            'super().__init__(detail, code="MEDIA_AUTHZ_001")\n',
+            'super().__init__(detail, code="MEDIA_FORBIDDEN_001")\n',
         )
         assert_error_codes_carry_prefix(root / "app", "MEDIA")

@@ -16,6 +16,7 @@ from tr_shared.exceptions import (
     ValidationError,
 )
 from tr_shared.http import InternalServiceClient, ServiceHTTPClient
+from tr_shared.schemas.error_envelope import build_error_envelope
 
 
 def _make_http() -> ServiceHTTPClient:
@@ -30,7 +31,7 @@ def _make_http() -> ServiceHTTPClient:
 
 def _status_error(status: int, body: dict | None = None) -> httpx.HTTPStatusError:
     req = httpx.Request("GET", "http://svc/x")
-    content = body if body is not None else {"error": "err", "detail": "d", "code": "C_001"}
+    content = body if body is not None else build_error_envelope("err", code="C_001", detail="d")
     resp = httpx.Response(status, request=req, json=content)
     return httpx.HTTPStatusError("err", request=req, response=resp)
 
@@ -143,13 +144,36 @@ class TestErrorTranslation:
         http = _make_http()
         http.get.side_effect = _status_error(
             400,
-            body={"error": "Validation failed", "detail": "bad x", "code": "V_001"},
+            body=build_error_envelope(
+                "Validation failed", code="LEAD_VALIDATION_001", detail="bad x"
+            ),
         )
         client = _Client(http)
         with pytest.raises(ValidationError) as ei:
             await client._get("/foo")
         assert "bad x" in ei.value.detail_message
-        assert ei.value.error_code == "V_001"
+        assert ei.value.error_code == "LEAD_VALIDATION_001"
+
+    async def test_a_downstream_error_without_a_code_is_raised_without_one(self):
+        http = _make_http()
+        http.get.side_effect = _status_error(404, body=build_error_envelope("Lead not found"))
+        client = _Client(http)
+        with pytest.raises(NotFoundError) as ei:
+            await client._get("/foo")
+        assert ei.value.error_code is None
+        assert ei.value.error == "Lead not found"
+
+    async def test_a_downstream_not_found_keeps_its_resource_and_code(self):
+        http = _make_http()
+        http.get.side_effect = _status_error(
+            404,
+            body=build_error_envelope("Lead not found", code="LEAD_NOT_FOUND_001", detail="Lead 7"),
+        )
+        client = _Client(http)
+        with pytest.raises(NotFoundError) as ei:
+            await client._get("/foo")
+        assert ei.value.error == "Lead not found"
+        assert ei.value.error_code == "LEAD_NOT_FOUND_001"
 
 
 class TestBasePath:

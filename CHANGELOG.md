@@ -7,6 +7,51 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-10-29
+
+### Added
+- `ErrorCategory` in `tr_shared.contracts`: the CATEGORY segment of an error code. Each value is the `category` of
+  exactly one shared exception, and the exception classes reference it, so the list is defined once.
+- `BadGatewayError` (502, category `BAD_GATEWAY`). No category covered 502, so the gateway's own 502s could not be
+  standard. `PortalError` is now a `BadGatewayError`: a code-less portal error renders `{P}_BAD_GATEWAY_000`, and
+  the guard holds portal codes to `BAD_GATEWAY`.
+- `ServiceCache(redis_url, key_prefix, *, max_connections, socket_timeout=5, socket_connect_timeout=5)` in
+  `tr_shared.cache`: a service's one `CacheService` and the pooled client behind it. `max_connections` has no
+  default, so adopting it cannot resize a pool; `key_prefix` is public for code that builds raw keys. `service()` answers `None`
+  while Redis is unreachable and tries again on the next call; `client()` returns the raw client behind it, for
+  Lua, pipelines and readiness; `close()` releases the pool. Six services each wrote this singleton by hand.
+
+### Changed
+- **Breaking:** `assert_error_codes_carry_prefix` checks the whole code, not only its prefix. 243 literals in seven
+  services passed the old prefix-only check.
+  - CATEGORY must be an `ErrorCategory` (`AUTHZ`, `DB`, `SERVICE_UNAVAILABLE`, `BUSINESS` and entity names such as
+    `TEAM_NOT_FOUND` were in use).
+  - CATEGORY must be the raising class's category. Classes are followed through subclasses in the service and in
+    this library, and codes held in `Codes.NAME`, `Enum.NAME.value` or a module constant are followed to their
+    literal. A class name defined twice with different categories is skipped.
+  - NNN is `001` or higher: `000` and `HTTP_<status>` belong to the handler.
+  - `code=` may not be built at runtime (f-string, `+`, `%`, `.format()`): the guard cannot read it.
+  - `detect_unprefixed_error_code` is renamed `detect_nonstandard_error_code`.
+  - Still checked against the category list only: classes built directly on `BaseAPIException(status_code=...)`,
+    codes passed through a helper's own parameter, and a class name the service defines twice with different
+    categories (tr-content-platform's cms and listing modules both define `ValidationError`).
+- **Breaking:** the library's own codes follow the same rule, checked by a self-test:
+  - `PORTAL_ERROR_001` → `PORTAL_BAD_GATEWAY_001`, `PORTAL_DUPLICATE_001` → `PORTAL_CONFLICT_001`,
+    `PORTAL_SERVER_001` → `PORTAL_INTERNAL_001`
+  - `HIKCENTRAL_UNSAFE_URL_001`/`_002`/`_003`, `HIKCENTRAL_UPSTREAM_001`, `HIKCENTRAL_RESPONSE_001`,
+    `HIKCENTRAL_LICENSE_001` → `HIKCENTRAL_UNAVAILABLE_002` .. `_007`
+  - `INTERNAL_CLIENT_ENVELOPE_001`/`_002`, `INTERNAL_CLIENT_HTTP_001` → `INTERNAL_CLIENT_UNAVAILABLE_002` .. `_004`
+- `InternalServiceClient` reads the downstream error from the canonical envelope (`{"error": {"message", "code",
+  "detail"}}`). It read `code`, `detail` and `error` from the top level, which no service sends since the envelope
+  was standardised: the downstream code was always lost, `detail` held the whole error object, and a 404 became
+  `NotFoundError(resource=<dict>)`, a dict repr in the client-facing message. An error that carries no code is
+  re-raised without one, so the caller's handler renders `{P}_{CATEGORY}_000`; it answered `INTERNAL_CLIENT_001` for
+  seven different statuses.
+
+**Consumer action** (the relock and the renames land together, or the guard fails the relock):
+- Rename every code the guard reports.
+- Replace the cache singleton in `app/core/redis.py` with one `ServiceCache(...)`.
+
 ## [0.113.0] - 2026-10-28
 
 ### Changed
