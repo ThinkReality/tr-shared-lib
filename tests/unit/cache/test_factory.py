@@ -50,3 +50,22 @@ class TestCacheProviderEnum:
 
     def test_upstash_value(self):
         assert CacheProvider.UPSTASH == "upstash"
+
+
+async def test_a_failed_initialize_closes_the_adapter_it_built(monkeypatch) -> None:
+    from tr_shared.cache.adapters.standard_redis import StandardRedisAdapter
+    from tr_shared.cache.exceptions import CacheConnectionError
+
+    closed: list[StandardRedisAdapter] = []
+    original_close = StandardRedisAdapter.close
+
+    async def recording_close(self: StandardRedisAdapter) -> None:
+        closed.append(self)
+        await original_close(self)
+
+    monkeypatch.setattr(StandardRedisAdapter, "close", recording_close)
+
+    with pytest.raises(CacheConnectionError):
+        await CacheProviderFactory.create_and_initialize(redis_url="redis://127.0.0.1:1/0")
+
+    assert len(closed) == 1

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from tr_shared.exceptions import (
     AuthenticationError,
     AuthorizationError,
+    BadGatewayError,
     BaseAPIException,
     ConflictError,
     ContentTooLargeError,
@@ -34,6 +35,7 @@ UNCODED_ERRORS = [
     pytest.param(RateLimitError(), 429, "TEST_RATE_LIMIT_000", id="rate-limit"),
     pytest.param(DatabaseError(), 500, "TEST_DATABASE_000", id="database"),
     pytest.param(InternalServerError(), 500, "TEST_INTERNAL_000", id="internal"),
+    pytest.param(BadGatewayError(), 502, "TEST_BAD_GATEWAY_000", id="bad-gateway"),
     pytest.param(ServiceUnavailableError(), 503, "TEST_UNAVAILABLE_000", id="unavailable"),
     pytest.param(ServiceTimeoutError(), 504, "TEST_TIMEOUT_000", id="timeout"),
     pytest.param(

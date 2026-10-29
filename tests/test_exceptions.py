@@ -1,8 +1,10 @@
 import pytest
 
+from tr_shared.contracts import ErrorCategory
 from tr_shared.exceptions import (
     AuthenticationError,
     AuthorizationError,
+    BadGatewayError,
     BaseAPIException,
     ConflictError,
     ContentTooLargeError,
@@ -89,6 +91,10 @@ class TestServerErrors:
     def test_service_unavailable_without_retry_after_sets_no_header(self):
         assert ServiceUnavailableError().headers is None
 
+    def test_bad_gateway_error(self):
+        exc = BadGatewayError()
+        assert exc.status_code == 502
+
     def test_service_timeout_error(self):
         exc = ServiceTimeoutError()
         assert exc.status_code == 504
@@ -105,6 +111,7 @@ _ALL_BUILTIN_EXC = (
     RateLimitError,
     DatabaseError,
     InternalServerError,
+    BadGatewayError,
     ServiceUnavailableError,
     ServiceTimeoutError,
 )
@@ -139,3 +146,10 @@ class TestSubclassContract:
         exc = GoodExc()
         assert exc.status_code == 418
         assert exc.error == "teapot"
+
+
+def test_each_category_belongs_to_exactly_one_shared_exception():
+    shared = [
+        c for c in BaseAPIException.__subclasses__() if c.__module__ == "tr_shared.exceptions"
+    ]
+    assert sorted(c.category for c in shared) == sorted(ErrorCategory)

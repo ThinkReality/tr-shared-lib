@@ -35,9 +35,11 @@ from __future__ import annotations
 import ast
 import re
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
+from tr_shared.contracts.errors import ErrorCategory
 from tr_shared.contracts.headers import HttpHeader
 from tr_shared.testing.db_reach import DbReach, own_nodes
 from tr_shared.testing.lanes import lane_for_path
@@ -60,9 +62,9 @@ __all__ = [
     "assert_no_testing_flag_in_production",
     "assert_no_unpooled_redis_clients",
     "assert_not_found_names_a_resource",
+    "detect_nonstandard_error_code",
     "detect_not_found_sentence",
     "detect_unpooled_redis_client",
-    "detect_unprefixed_error_code",
     "find_swallowed_db_errors",
     "find_violations",
     "iter_shell_files",
@@ -1229,6 +1231,7 @@ def assert_no_raw_http_exceptions(
 
 _CODE_SHAPED = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_\d{3}")
 _ERROR_CLASS_SUFFIXES = ("Error", "Exception")
+_SHARED_EXCEPTIONS = Path(__file__).resolve().parents[1] / "exceptions.py"
 
 
 def _builds_error(call: ast.Call) -> bool:
@@ -1236,24 +1239,158 @@ def _builds_error(call: ast.Call) -> bool:
     return name.endswith(_ERROR_CLASS_SUFFIXES) or name == "__init__"
 
 
-def detect_unprefixed_error_code(source: str, prefix: str) -> list[int]:
-    carries_prefix = re.compile(rf"{prefix}(?:_[A-Z0-9]+)+_\d{{3}}")
+def _code_literal(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value if _CODE_SHAPED.fullmatch(node.value) else None
+    return None
+
+
+def _built_at_runtime(node: ast.expr) -> bool:
+    return isinstance(node, (ast.JoinedStr, ast.BinOp)) or (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+    )
+
+
+def _shared_error_categories() -> dict[str, str]:
+    """Read from source, not imported: tr_shared.exceptions needs FastAPI and this module must not."""
+    tree = ast.parse(_SHARED_EXCEPTIONS.read_text(encoding="utf-8"))
+    return {
+        node.name: statement.value.attr
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for statement in node.body
+        if isinstance(statement, ast.Assign)
+        and isinstance(statement.value, ast.Attribute)
+        and any(isinstance(t, ast.Name) and t.id == "category" for t in statement.targets)
+    }
+
+
+def _class_definitions(tree: ast.Module) -> list[tuple[str, set[str]]]:
+    real = _real_names(tree)
+    return [
+        (node.name, {real.get(_tail_name(b), _tail_name(b)) for b in node.bases})
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+    ]
+
+
+@lru_cache(maxsize=1)
+def _lib_class_definitions() -> tuple[tuple[str, frozenset[str]], ...]:
+    return tuple(
+        (name, frozenset(bases))
+        for path in iter_python_files(_SHARED_EXCEPTIONS.parent)
+        if path != _SHARED_EXCEPTIONS
+        for name, bases in _class_definitions(ast.parse(path.read_text(encoding="utf-8")))
+    )
+
+
+def _error_class_categories(definitions: Sequence[tuple[str, Collection[str]]]) -> dict[str, str]:
+    """Class name -> category, for every name that resolves to exactly one shared category."""
+    seed = {name: {category} for name, category in _shared_error_categories().items()}
+    resolved: dict[str, set[str | None]] = {name: set(c) for name, c in seed.items()}
+    for _ in range(len(definitions) + 1):
+        following: dict[str, set[str | None]] = {name: set(c) for name, c in seed.items()}
+        for name, bases in definitions:
+            inherited = [resolved.get(base, {None}) for base in bases] or [{None}]
+            following.setdefault(name, set()).update(*inherited)
+        if following == resolved:
+            break
+        resolved = following
+    return {
+        name: category
+        for name, (category, *rest) in ((n, sorted(c, key=str)) for n, c in resolved.items())
+        if not rest and category is not None
+    }
+
+
+def _string_assignments(body: Sequence[ast.stmt]) -> Iterator[tuple[str, str]]:
+    for statement in body:
+        target = statement.targets[0] if isinstance(statement, ast.Assign) else None
+        if isinstance(statement, ast.AnnAssign):
+            target = statement.target
+        code = _code_literal(getattr(statement, "value", None))
+        if isinstance(target, ast.Name) and code is not None:
+            yield target.id, code
+
+
+def _named_codes(trees: Sequence[ast.Module]) -> dict[str, str]:
+    """``Codes.NAME`` and module-level ``NAME`` code constants, where each name means one code."""
+    seen: dict[str, set[str]] = {}
+    for tree in trees:
+        for name, code in _string_assignments(tree.body):
+            seen.setdefault(name, set()).add(code)
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                for name, code in _string_assignments(node.body):
+                    seen.setdefault(f"{node.name}.{name}", set()).add(code)
+    return {name: codes.pop() for name, codes in seen.items() if len(codes) == 1}
+
+
+def _resolve_code(node: ast.expr, named: Mapping[str, str]) -> str | None:
+    if isinstance(node, ast.Attribute) and node.attr == "value":
+        node = node.value
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return named.get(f"{node.value.id}.{node.attr}")
+    if isinstance(node, ast.Name):
+        return named.get(node.id)
+    return None
+
+
+def detect_nonstandard_error_code(
+    source: str,
+    prefix: str,
+    class_categories: Mapping[str, str] | None = None,
+    named_codes: Mapping[str, str] | None = None,
+) -> list[int]:
+    categories = _shared_error_categories() if class_categories is None else class_categories
+    named = named_codes or {}
+    category_list = "|".join(ErrorCategory)
+    standard = re.compile(rf"{prefix}_(?P<category>{category_list})_(?!000)\d{{3}}")
+    trailing_category = re.compile(rf".+?_(?P<category>{category_list})_\d{{3}}")
+
+    def off_standard(code: str, expected: str | None) -> bool:
+        match = standard.fullmatch(code)
+        return match is None or expected not in (None, match["category"])
+
+    def wrong_category(node: ast.expr, expected: str | None) -> bool:
+        code = _resolve_code(node, named)
+        match = trailing_category.fullmatch(code) if code and expected else None
+        return match is not None and match["category"] != expected
+
     hits: set[int] = set()
     for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ClassDef) and (expected := categories.get(node.name)):
+            for inner in ast.walk(node):
+                if not isinstance(inner, ast.expr):
+                    continue
+                if (code := _code_literal(inner)) is not None and off_standard(code, expected):
+                    hits.add(inner.lineno)
+                elif isinstance(inner, (ast.Attribute, ast.Name)) and wrong_category(
+                    inner, expected
+                ):
+                    hits.add(inner.lineno)
         if isinstance(node, ast.Call) and _builds_error(node):
-            hits.update(
-                keyword.value.lineno
-                for keyword in node.keywords
-                if keyword.arg == "code"
-                and isinstance(keyword.value, ast.Constant)
-                and isinstance(keyword.value.value, str)
-                and not carries_prefix.fullmatch(keyword.value.value)
-            )
-        elif (
+            expected = categories.get(_tail_name(node.func))
+            for keyword in node.keywords:
+                if keyword.arg != "code":
+                    continue
+                value = keyword.value
+                if (
+                    _built_at_runtime(value)
+                    or (
+                        isinstance(value, ast.Constant)
+                        and isinstance(value.value, str)
+                        and off_standard(value.value, expected)
+                    )
+                    or wrong_category(value, expected)
+                ):
+                    hits.add(value.lineno)
+        if (
             isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and _CODE_SHAPED.fullmatch(node.value)
-            and not carries_prefix.fullmatch(node.value)
+            and (code := _code_literal(node)) is not None
+            and off_standard(code, None)
         ):
             hits.add(node.lineno)
     return sorted(hits)
@@ -1276,19 +1413,25 @@ def assert_error_codes_carry_prefix(
     module_prefixes: Mapping[str, str] | None = None,
     allowlist: Mapping[str, Exemption] | None = None,
 ) -> None:
+    sources = {path: path.read_text(encoding="utf-8-sig") for path in iter_python_files(app_root)}
+    trees = [ast.parse(source) for source in sources.values()]
+    app_definitions = [d for tree in trees for d in _class_definitions(tree)]
+    class_categories = _error_class_categories([*_lib_class_definitions(), *app_definitions])
+    named = _named_codes(trees)
     found: dict[str, list[int]] = {}
-    for path in iter_python_files(app_root):
+    for path, source in sources.items():
         relative = path.relative_to(app_root)
         owner = _prefix_for(relative, prefix, module_prefixes or {})
-        hits = detect_unprefixed_error_code(path.read_text(encoding="utf-8-sig"), owner)
+        hits = detect_nonstandard_error_code(source, owner, class_categories, named)
         if hits:
             found[str(relative)] = hits
     _check(
         app_root,
         found,
         allowlist or {},
-        "An error code lacks its module's prefix. Codes read {PREFIX}_{CATEGORY}_{NNN}, where "
-        "PREFIX is the service's code_prefix or the module's entry in module_prefixes. Rename "
-        "it, or raise the shared class without code= and the handler renders "
-        "{PREFIX}_{CATEGORY}_000.",
+        "An error code is off the standard. Codes read {PREFIX}_{CATEGORY}_{NNN}: PREFIX is the "
+        "service's code_prefix or the module's entry in module_prefixes; CATEGORY is a "
+        "tr_shared.contracts.ErrorCategory and the category of the class that raises it; NNN "
+        "is 001 or higher, written as a literal. Rename it, or raise the shared class without "
+        "code= and the handler renders {PREFIX}_{CATEGORY}_000.",
     )

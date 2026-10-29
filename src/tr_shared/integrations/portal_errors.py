@@ -14,7 +14,7 @@ routing + retry decisions. ``portal`` (a portal name string) is carried on every
 
 from tr_shared.exceptions import (
     AuthenticationError,
-    BaseAPIException,
+    BadGatewayError,
     ConflictError,
     InternalServerError,
     NotFoundError,
@@ -24,19 +24,17 @@ from tr_shared.exceptions import (
 )
 
 
-class PortalError(BaseAPIException):
+class PortalError(BadGatewayError):
     """Generic portal-integration failure (502)."""
 
     def __init__(
         self,
         detail: str = "Portal integration error",
-        code: str = "PORTAL_ERROR_001",
+        code: str = "PORTAL_BAD_GATEWAY_001",
         *,
         portal: str | None = None,
     ) -> None:
-        super().__init__(
-            status_code=502, error="Portal integration error", detail=detail, code=code
-        )
+        super().__init__(detail=detail, code=code)
         self.portal = portal
 
 
@@ -92,7 +90,7 @@ class PortalDuplicateError(ConflictError):
     def __init__(
         self,
         detail: str = "Listing already exists on portal",
-        code: str = "PORTAL_DUPLICATE_001",
+        code: str = "PORTAL_CONFLICT_001",
         *,
         portal: str | None = None,
         existing_listing_id: str | None = None,
@@ -139,7 +137,7 @@ class PortalServerError(InternalServerError):
     def __init__(
         self,
         detail: str = "Portal server error",
-        code: str = "PORTAL_SERVER_001",
+        code: str = "PORTAL_INTERNAL_001",
         *,
         portal: str | None = None,
     ) -> None:

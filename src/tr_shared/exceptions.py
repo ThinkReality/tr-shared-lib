@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 
 from fastapi import HTTPException
 
+from tr_shared.contracts.errors import ErrorCategory
 from tr_shared.contracts.headers import HttpHeader
 
 _REQUIRED_ATTRS: tuple[str, ...] = (
@@ -17,7 +18,7 @@ _REQUIRED_ATTRS: tuple[str, ...] = (
 
 
 class BaseAPIException(HTTPException):
-    category: ClassVar[str | None] = None
+    category: ClassVar[ErrorCategory | None] = None
 
     def __init__(
         self,
@@ -64,7 +65,7 @@ class BaseAPIException(HTTPException):
 class ValidationError(BaseAPIException):
     """Request validation failed (400)."""
 
-    category = "VALIDATION"
+    category = ErrorCategory.VALIDATION
 
     def __init__(self, detail: str, code: str | None = None) -> None:
         super().__init__(status_code=400, error="Validation failed", detail=detail, code=code)
@@ -77,7 +78,7 @@ class AuthenticationError(BaseAPIException):
     which RFC 9110 §11.6.1 requires of every 401 response.
     """
 
-    category = "AUTH"
+    category = ErrorCategory.AUTH
 
     def __init__(
         self,
@@ -97,7 +98,7 @@ class AuthenticationError(BaseAPIException):
 class AuthorizationError(BaseAPIException):
     """Permission denied (403)."""
 
-    category = "FORBIDDEN"
+    category = ErrorCategory.FORBIDDEN
 
     def __init__(self, detail: str = "Operation not permitted", code: str | None = None) -> None:
         super().__init__(status_code=403, error="Authorization failed", detail=detail, code=code)
@@ -106,7 +107,7 @@ class AuthorizationError(BaseAPIException):
 class NotFoundError(BaseAPIException):
     """Resource not found (404)."""
 
-    category = "NOT_FOUND"
+    category = ErrorCategory.NOT_FOUND
 
     def __init__(
         self,
@@ -121,7 +122,7 @@ class NotFoundError(BaseAPIException):
 class ConflictError(BaseAPIException):
     """Resource conflict (409)."""
 
-    category = "CONFLICT"
+    category = ErrorCategory.CONFLICT
 
     def __init__(self, detail: str = "Resource conflict", code: str | None = None) -> None:
         super().__init__(status_code=409, error="Conflict", detail=detail, code=code)
@@ -130,7 +131,7 @@ class ConflictError(BaseAPIException):
 class ContentTooLargeError(BaseAPIException):
     """Request content exceeds a size limit or the remaining storage quota (413)."""
 
-    category = "CONTENT_TOO_LARGE"
+    category = ErrorCategory.CONTENT_TOO_LARGE
 
     def __init__(self, detail: str = "Content too large", code: str | None = None) -> None:
         super().__init__(status_code=413, error="Content too large", detail=detail, code=code)
@@ -139,7 +140,7 @@ class ContentTooLargeError(BaseAPIException):
 class RateLimitError(BaseAPIException):
     """Rate limit exceeded (429). Handler must surface ``self.headers`` to emit ``Retry-After``."""
 
-    category = "RATE_LIMIT"
+    category = ErrorCategory.RATE_LIMIT
 
     def __init__(
         self,
@@ -163,7 +164,7 @@ class RateLimitError(BaseAPIException):
 class DatabaseError(BaseAPIException):
     """Database operation failed (500)."""
 
-    category = "DATABASE"
+    category = ErrorCategory.DATABASE
 
     def __init__(self, detail: str = "Database error", code: str | None = None) -> None:
         super().__init__(status_code=500, error="Database error", detail=detail, code=code)
@@ -172,16 +173,25 @@ class DatabaseError(BaseAPIException):
 class InternalServerError(BaseAPIException):
     """Unhandled internal error (500)."""
 
-    category = "INTERNAL"
+    category = ErrorCategory.INTERNAL
 
     def __init__(self, detail: str = "Internal server error", code: str | None = None) -> None:
         super().__init__(status_code=500, error="Internal server error", detail=detail, code=code)
 
 
+class BadGatewayError(BaseAPIException):
+    """Upstream answered with an error or could not be reached (502)."""
+
+    category = ErrorCategory.BAD_GATEWAY
+
+    def __init__(self, detail: str = "Bad gateway", code: str | None = None) -> None:
+        super().__init__(status_code=502, error="Bad gateway", detail=detail, code=code)
+
+
 class ServiceUnavailableError(BaseAPIException):
     """Downstream service unavailable (503)."""
 
-    category = "UNAVAILABLE"
+    category = ErrorCategory.UNAVAILABLE
 
     def __init__(
         self,
@@ -203,7 +213,7 @@ class ServiceUnavailableError(BaseAPIException):
 class ServiceTimeoutError(BaseAPIException):
     """Downstream service timeout (504)."""
 
-    category = "TIMEOUT"
+    category = ErrorCategory.TIMEOUT
 
     def __init__(self, detail: str = "Service timeout", code: str | None = None) -> None:
         super().__init__(status_code=504, error="Service timeout", detail=detail, code=code)
@@ -212,6 +222,7 @@ class ServiceTimeoutError(BaseAPIException):
 __all__ = [
     "AuthenticationError",
     "AuthorizationError",
+    "BadGatewayError",
     "BaseAPIException",
     "ConflictError",
     "ContentTooLargeError",

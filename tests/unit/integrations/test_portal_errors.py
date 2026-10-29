@@ -64,7 +64,7 @@ def test_carries_portal_and_extra_context():
 
 def test_error_code_and_detail_message_set():
     err = PortalServerError("upstream 502", portal="bayut")
-    assert err.error_code == "PORTAL_SERVER_001"
+    assert err.error_code == "PORTAL_INTERNAL_001"
     assert err.detail_message == "upstream 502"
 
 

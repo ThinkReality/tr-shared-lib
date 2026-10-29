@@ -9,6 +9,7 @@ from tr_shared.cache.exceptions import (
 from tr_shared.cache.factory import CacheProvider, CacheProviderFactory
 from tr_shared.cache.interface import CacheInterface, PipelineInterface
 from tr_shared.cache.service import CacheService
+from tr_shared.cache.service_cache import ServiceCache
 
 __all__ = [
     "CacheConnectionError",
@@ -20,4 +21,5 @@ __all__ = [
     "CacheService",
     "CacheTimeoutError",
     "PipelineInterface",
+    "ServiceCache",
 ]

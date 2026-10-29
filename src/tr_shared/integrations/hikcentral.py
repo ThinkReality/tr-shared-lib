@@ -69,13 +69,13 @@ def _assert_safe_hikcentral_host(base_url: str) -> None:
     if parsed.scheme not in ("http", "https"):
         raise ServiceUnavailableError(
             detail=f"HikCentral base_url must use http(s), got scheme {parsed.scheme!r}",
-            code="HIKCENTRAL_UNSAFE_URL_001",
+            code="HIKCENTRAL_UNAVAILABLE_002",
         )
     hostname = parsed.hostname
     if not hostname:
         raise ServiceUnavailableError(
             detail="HikCentral base_url has no hostname",
-            code="HIKCENTRAL_UNSAFE_URL_001",
+            code="HIKCENTRAL_UNAVAILABLE_002",
         )
 
     try:
@@ -83,7 +83,7 @@ def _assert_safe_hikcentral_host(base_url: str) -> None:
     except socket.gaierror as exc:
         raise ServiceUnavailableError(
             detail=f"HikCentral base_url host {hostname!r} could not be resolved: {exc}",
-            code="HIKCENTRAL_UNSAFE_URL_002",
+            code="HIKCENTRAL_UNAVAILABLE_003",
         ) from exc
 
     for family, _, _, _, sockaddr in addr_infos:
@@ -98,7 +98,7 @@ def _assert_safe_hikcentral_host(base_url: str) -> None:
         ):
             raise ServiceUnavailableError(
                 detail=f"HikCentral base_url host {hostname!r} resolves to a disallowed address ({raw_ip})",
-                code="HIKCENTRAL_UNSAFE_URL_003",
+                code="HIKCENTRAL_UNAVAILABLE_004",
             )
 
 
@@ -175,7 +175,7 @@ async def hikcentral_get_version(
     if response.status_code != 200:
         raise ServiceUnavailableError(
             detail=f"HikCentral version probe returned HTTP {response.status_code}",
-            code="HIKCENTRAL_UPSTREAM_001",
+            code="HIKCENTRAL_UNAVAILABLE_005",
         )
 
     try:
@@ -183,7 +183,7 @@ async def hikcentral_get_version(
     except ValueError as exc:
         raise ServiceUnavailableError(
             detail="Invalid JSON response from HikCentral version probe",
-            code="HIKCENTRAL_RESPONSE_001",
+            code="HIKCENTRAL_UNAVAILABLE_006",
         ) from exc
 
     if result.get("code") != "0":
@@ -251,7 +251,7 @@ async def hikcentral_probe_attendance(
     if response.status_code != 200:
         raise ServiceUnavailableError(
             detail=f"HikCentral attendance probe returned HTTP {response.status_code}",
-            code="HIKCENTRAL_UPSTREAM_001",
+            code="HIKCENTRAL_UNAVAILABLE_005",
         )
 
     try:
@@ -259,7 +259,7 @@ async def hikcentral_probe_attendance(
     except ValueError as exc:
         raise ServiceUnavailableError(
             detail="Invalid JSON response from HikCentral attendance probe",
-            code="HIKCENTRAL_RESPONSE_001",
+            code="HIKCENTRAL_UNAVAILABLE_006",
         ) from exc
 
     if result.get("code") != "0":
@@ -268,7 +268,7 @@ async def hikcentral_probe_attendance(
                 "HikCentral attendance module unreachable/unlicensed: "
                 f"{result.get('msg', 'Unknown error')}"
             ),
-            code="HIKCENTRAL_LICENSE_001",
+            code="HIKCENTRAL_UNAVAILABLE_007",
         )
 
     return result

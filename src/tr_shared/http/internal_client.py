@@ -24,26 +24,28 @@ def _envelope_data(envelope: Any) -> Any:
     if not isinstance(envelope, dict):
         raise ServiceUnavailableError(
             detail="Internal response was not a JSON object",
-            code="INTERNAL_CLIENT_ENVELOPE_001",
+            code="INTERNAL_CLIENT_UNAVAILABLE_002",
         )
     if "data" not in envelope:
         raise ServiceUnavailableError(
             detail="Internal response missing 'data' field",
-            code="INTERNAL_CLIENT_ENVELOPE_002",
+            code="INTERNAL_CLIENT_UNAVAILABLE_003",
         )
     return envelope["data"]
 
 
 def _translate_status_error(exc: httpx.HTTPStatusError) -> BaseAPIException:
     status = exc.response.status_code
-    body: dict[str, Any] = {}
     try:
         body = exc.response.json()
     except Exception:  # noqa: BLE001 — non-JSON error payloads end up 500-ish
         body = {}
+    error = body.get("error") if isinstance(body, dict) else None
+    error = error if isinstance(error, dict) else {}
 
-    detail = body.get("detail") or body.get("error") or exc.response.text or "Internal error"
-    code = body.get("code") or "INTERNAL_CLIENT_001"
+    message = error.get("message") or exc.response.text or "Internal error"
+    detail = error.get("detail") or message
+    code = error.get("code")
 
     if status == 400:
         return ValidationError(detail=detail, code=code)
@@ -52,11 +54,7 @@ def _translate_status_error(exc: httpx.HTTPStatusError) -> BaseAPIException:
     if status == 403:
         return AuthorizationError(detail=detail, code=code)
     if status == 404:
-        return NotFoundError(
-            resource=body.get("error", "Resource"),
-            identifier=None,
-            code=code,
-        )
+        return NotFoundError(resource=message.removesuffix(" not found"), code=code)
     if status == 409:
         return ConflictError(detail=detail, code=code)
     if status == 429:
@@ -154,7 +152,7 @@ class InternalServiceClient:
         except httpx.HTTPError as exc:
             raise ServiceUnavailableError(
                 detail=f"HTTP error calling {full_path}: {exc.__class__.__name__}",
-                code="INTERNAL_CLIENT_HTTP_001",
+                code="INTERNAL_CLIENT_UNAVAILABLE_004",
             ) from exc
 
         # 204 responses yield an empty envelope with no ``data`` to unpack.
