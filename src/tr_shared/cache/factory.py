@@ -98,6 +98,7 @@ class CacheProviderFactory:
         cache = CacheProviderFactory.create(**kwargs)
         success = await cache.initialize()
         if not success:
+            await cache.close()
             raise CacheConnectionError(
                 "Cache adapter failed to initialize — Redis may be unreachable"
             )

@@ -19,7 +19,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tr_shared.cache`: a service's one `CacheService` and the pooled client behind it. `max_connections` has no
   default, so adopting it cannot resize a pool; `key_prefix` is public for code that builds raw keys. `service()` answers `None`
   while Redis is unreachable and tries again on the next call; `client()` returns the raw client behind it, for
-  Lua, pipelines and readiness; `close()` releases the pool. Six services each wrote this singleton by hand.
+  Lua, pipelines and readiness; `close()` releases the pool. Concurrent first callers share one cache: a
+  late builder closes its own pool instead of leaking it. Six services each wrote this singleton by hand.
+
+### Fixed
+- `CacheProviderFactory.create_and_initialize` closes the adapter it built when `initialize()` fails. It
+  raised and left the pool behind, so every call during a Redis outage leaked one.
 
 ### Changed
 - **Breaking:** `assert_error_codes_carry_prefix` checks the whole code, not only its prefix. 243 literals in seven

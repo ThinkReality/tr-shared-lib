@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from tr_shared.cache import ServiceCache
@@ -30,5 +32,16 @@ async def test_close_releases_the_cache_and_the_next_call_builds_a_fresh_one(
 
         assert second is not None and second is not first
         assert client is not None and await client.ping()
+    finally:
+        await cache.close()
+
+
+async def test_concurrent_first_callers_share_one_cache(redis_url: str) -> None:
+    cache = ServiceCache(redis_url, key_prefix="itest:svc", max_connections=2)
+    try:
+        first, second = await asyncio.gather(cache.service(), cache.service())
+
+        assert first is not None
+        assert first is second is await cache.service()
     finally:
         await cache.close()

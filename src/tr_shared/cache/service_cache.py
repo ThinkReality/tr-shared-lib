@@ -45,6 +45,9 @@ class ServiceCache:
                     "Cache unavailable; caching is off until Redis answers", exc_info=True
                 )
                 return None
+            if self._service is not None:
+                await adapter.close()
+                return self._service
             self._service = CacheService(cache=adapter, key_prefix=self.key_prefix)
         return self._service
 
