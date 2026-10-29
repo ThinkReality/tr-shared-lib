@@ -42,12 +42,16 @@ def _safe_headers(exc: Exception) -> dict[str, str] | None:
     return {k: v for k, v in headers.items() if k.lower() not in _TRANSPORT_HEADERS}
 
 
+def _default_code_suffix(exc: BaseAPIException) -> str:
+    return f"{exc.category}_000" if exc.category else f"HTTP_{exc.status_code}"
+
+
 async def base_api_exception_handler(request: Request, exc: BaseAPIException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content=build_error_envelope(
             message=exc.error,
-            code=exc.error_code,
+            code=exc.error_code or framework_error_code(request.app, _default_code_suffix(exc)),
             correlation_id=_correlation_id(request),
             detail=exc.detail_message,
             **exc.extra,
@@ -74,7 +78,7 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=build_error_envelope(
             message="Validation failed",
             code=framework_error_code(request.app, VALIDATION_CODE),

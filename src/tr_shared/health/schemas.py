@@ -18,7 +18,6 @@ class ComponentCheck(BaseModel):
     name: str
     healthy: bool
     latency_ms: float | None = None
-    error: str | None = None
 
 
 class ReadinessResponse(BaseModel):

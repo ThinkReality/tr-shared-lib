@@ -3,12 +3,43 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+from tr_shared.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    BaseAPIException,
+    ConflictError,
+    ContentTooLargeError,
+    DatabaseError,
+    InternalServerError,
+    NotFoundError,
+    RateLimitError,
+    ServiceTimeoutError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from tr_shared.middleware import (
     GlobalErrorHandlerMiddleware,
     UnstorableTextMiddleware,
     register_exception_handlers,
 )
 from tr_shared.schemas.error_envelope import framework_error_code
+
+UNCODED_ERRORS = [
+    pytest.param(ValidationError("bad"), 400, "TEST_VALIDATION_000", id="validation"),
+    pytest.param(AuthenticationError(), 401, "TEST_AUTH_000", id="authentication"),
+    pytest.param(AuthorizationError(), 403, "TEST_FORBIDDEN_000", id="authorization"),
+    pytest.param(NotFoundError("Lead"), 404, "TEST_NOT_FOUND_000", id="not-found"),
+    pytest.param(ConflictError(), 409, "TEST_CONFLICT_000", id="conflict"),
+    pytest.param(ContentTooLargeError(), 413, "TEST_CONTENT_TOO_LARGE_000", id="too-large"),
+    pytest.param(RateLimitError(), 429, "TEST_RATE_LIMIT_000", id="rate-limit"),
+    pytest.param(DatabaseError(), 500, "TEST_DATABASE_000", id="database"),
+    pytest.param(InternalServerError(), 500, "TEST_INTERNAL_000", id="internal"),
+    pytest.param(ServiceUnavailableError(), 503, "TEST_UNAVAILABLE_000", id="unavailable"),
+    pytest.param(ServiceTimeoutError(), 504, "TEST_TIMEOUT_000", id="timeout"),
+    pytest.param(
+        BaseAPIException(status_code=418, error="teapot"), 418, "TEST_HTTP_418", id="base"
+    ),
+]
 
 
 class Item(BaseModel):
@@ -45,6 +76,7 @@ def client() -> TestClient:
     return TestClient(_app(), raise_server_exceptions=False)
 
 
+@pytest.mark.filterwarnings("error::DeprecationWarning")
 def test_a_body_that_fails_validation_carries_the_service_prefix(client: TestClient) -> None:
     response = client.post("/items", json={"count": "many"})
 
@@ -88,6 +120,21 @@ def test_an_unhandled_exception_carries_the_service_prefix(client: TestClient) -
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "TEST_INTERNAL_000"
+
+
+@pytest.mark.parametrize(("error", "status", "code"), UNCODED_ERRORS)
+def test_a_shared_error_raised_without_a_code_carries_the_service_prefix(
+    error: BaseAPIException, status: int, code: str
+) -> None:
+    app = _app()
+
+    @app.get("/raise")
+    async def raise_it() -> None:
+        raise error
+
+    response = TestClient(app, raise_server_exceptions=False).get("/raise")
+
+    assert (response.status_code, response.json()["error"]["code"]) == (status, code)
 
 
 def test_the_registrar_requires_a_prefix() -> None:

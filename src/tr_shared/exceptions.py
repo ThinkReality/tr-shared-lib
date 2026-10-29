@@ -1,7 +1,7 @@
 # Error code format: {SERVICE_PREFIX}_{CATEGORY}_{NUMBER}
 # e.g. LISTING_VALIDATION_001, CMS_NOT_FOUND_002
 
-from typing import Any
+from typing import Any, ClassVar
 
 from fastapi import HTTPException
 
@@ -17,6 +17,8 @@ _REQUIRED_ATTRS: tuple[str, ...] = (
 
 
 class BaseAPIException(HTTPException):
+    category: ClassVar[str | None] = None
+
     def __init__(
         self,
         status_code: int,
@@ -58,22 +60,13 @@ class BaseAPIException(HTTPException):
 
         cls.__init__ = _verified_init  # type: ignore[method-assign]
 
-    def to_dict(self) -> dict:
-        """Returns ``{"error": {"message", "code"?, "detail"?}}``."""
-        from tr_shared.schemas.error_envelope import build_error_envelope
-
-        return build_error_envelope(
-            message=self.error,
-            code=self.error_code,
-            detail=self.detail_message,
-            **self.extra,
-        )
-
 
 class ValidationError(BaseAPIException):
     """Request validation failed (400)."""
 
-    def __init__(self, detail: str, code: str = "VALIDATION_001") -> None:
+    category = "VALIDATION"
+
+    def __init__(self, detail: str, code: str | None = None) -> None:
         super().__init__(status_code=400, error="Validation failed", detail=detail, code=code)
 
 
@@ -84,10 +77,12 @@ class AuthenticationError(BaseAPIException):
     which RFC 9110 §11.6.1 requires of every 401 response.
     """
 
+    category = "AUTH"
+
     def __init__(
         self,
         detail: str = "Authentication required",
-        code: str = "AUTH_001",
+        code: str | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(
@@ -102,20 +97,22 @@ class AuthenticationError(BaseAPIException):
 class AuthorizationError(BaseAPIException):
     """Permission denied (403)."""
 
-    def __init__(
-        self, detail: str = "Operation not permitted", code: str = "FORBIDDEN_001"
-    ) -> None:
+    category = "FORBIDDEN"
+
+    def __init__(self, detail: str = "Operation not permitted", code: str | None = None) -> None:
         super().__init__(status_code=403, error="Authorization failed", detail=detail, code=code)
 
 
 class NotFoundError(BaseAPIException):
     """Resource not found (404)."""
 
+    category = "NOT_FOUND"
+
     def __init__(
         self,
         resource: str = "Resource",
         identifier: str | None = None,
-        code: str = "NOT_FOUND_001",
+        code: str | None = None,
     ) -> None:
         detail = f"{resource} not found" if not identifier else f"{resource} {identifier} not found"
         super().__init__(status_code=404, error=f"{resource} not found", detail=detail, code=code)
@@ -124,26 +121,30 @@ class NotFoundError(BaseAPIException):
 class ConflictError(BaseAPIException):
     """Resource conflict (409)."""
 
-    def __init__(self, detail: str = "Resource conflict", code: str = "CONFLICT_001") -> None:
+    category = "CONFLICT"
+
+    def __init__(self, detail: str = "Resource conflict", code: str | None = None) -> None:
         super().__init__(status_code=409, error="Conflict", detail=detail, code=code)
 
 
 class ContentTooLargeError(BaseAPIException):
     """Request content exceeds a size limit or the remaining storage quota (413)."""
 
-    def __init__(
-        self, detail: str = "Content too large", code: str = "CONTENT_TOO_LARGE_001"
-    ) -> None:
+    category = "CONTENT_TOO_LARGE"
+
+    def __init__(self, detail: str = "Content too large", code: str | None = None) -> None:
         super().__init__(status_code=413, error="Content too large", detail=detail, code=code)
 
 
 class RateLimitError(BaseAPIException):
     """Rate limit exceeded (429). Handler must surface ``self.headers`` to emit ``Retry-After``."""
 
+    category = "RATE_LIMIT"
+
     def __init__(
         self,
         detail: str = "Rate limit exceeded",
-        code: str = "RATE_LIMIT_001",
+        code: str | None = None,
         retry_after: int | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
@@ -162,24 +163,30 @@ class RateLimitError(BaseAPIException):
 class DatabaseError(BaseAPIException):
     """Database operation failed (500)."""
 
-    def __init__(self, detail: str = "Database error", code: str = "DATABASE_001") -> None:
+    category = "DATABASE"
+
+    def __init__(self, detail: str = "Database error", code: str | None = None) -> None:
         super().__init__(status_code=500, error="Database error", detail=detail, code=code)
 
 
 class InternalServerError(BaseAPIException):
     """Unhandled internal error (500)."""
 
-    def __init__(self, detail: str = "Internal server error", code: str = "INTERNAL_001") -> None:
+    category = "INTERNAL"
+
+    def __init__(self, detail: str = "Internal server error", code: str | None = None) -> None:
         super().__init__(status_code=500, error="Internal server error", detail=detail, code=code)
 
 
 class ServiceUnavailableError(BaseAPIException):
     """Downstream service unavailable (503)."""
 
+    category = "UNAVAILABLE"
+
     def __init__(
         self,
         detail: str = "Service unavailable",
-        code: str = "SERVICE_UNAVAILABLE_001",
+        code: str | None = None,
         retry_after: int | None = None,
     ) -> None:
         super().__init__(
@@ -196,7 +203,9 @@ class ServiceUnavailableError(BaseAPIException):
 class ServiceTimeoutError(BaseAPIException):
     """Downstream service timeout (504)."""
 
-    def __init__(self, detail: str = "Service timeout", code: str = "SERVICE_TIMEOUT_001") -> None:
+    category = "TIMEOUT"
+
+    def __init__(self, detail: str = "Service timeout", code: str | None = None) -> None:
         super().__init__(status_code=504, error="Service timeout", detail=detail, code=code)
 
 

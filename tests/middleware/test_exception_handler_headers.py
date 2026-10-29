@@ -98,7 +98,7 @@ def test_envelope_is_unchanged_by_the_header_fix() -> None:
     body = _client().get("/rate-limited").json()
 
     assert body["error"]["message"] == "Rate limit exceeded"
-    assert body["error"]["code"] == "RATE_LIMIT_001"
+    assert body["error"]["code"] == "TEST_RATE_LIMIT_000"
     assert body["error"]["detail"] == "slow down"
 
 

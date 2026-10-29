@@ -47,6 +47,7 @@ __all__ = [
     "Exemption",
     "SwallowedDbError",
     "assert_environment_vocabulary",
+    "assert_error_codes_carry_prefix",
     "assert_every_test_file_has_a_lane",
     "assert_no_auth_chain_bypass",
     "assert_no_env_mutation_in_conftest",
@@ -61,6 +62,7 @@ __all__ = [
     "assert_not_found_names_a_resource",
     "detect_not_found_sentence",
     "detect_unpooled_redis_client",
+    "detect_unprefixed_error_code",
     "find_swallowed_db_errors",
     "find_violations",
     "iter_shell_files",
@@ -1222,4 +1224,71 @@ def assert_no_raw_http_exceptions(
         "App code constructs a raw HTTPException. The shared handler renders its detail with "
         "str(), so a dict detail reaches the client as a Python repr under code HTTP_<status>. "
         "Raise a tr_shared.exceptions class with a prefixed code, or return a JSONResponse.",
+    )
+
+
+_CODE_SHAPED = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_\d{3}")
+_ERROR_CLASS_SUFFIXES = ("Error", "Exception")
+
+
+def _builds_error(call: ast.Call) -> bool:
+    name = _tail_name(call.func)
+    return name.endswith(_ERROR_CLASS_SUFFIXES) or name == "__init__"
+
+
+def detect_unprefixed_error_code(source: str, prefix: str) -> list[int]:
+    carries_prefix = re.compile(rf"{prefix}(?:_[A-Z0-9]+)+_\d{{3}}")
+    hits: set[int] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and _builds_error(node):
+            hits.update(
+                keyword.value.lineno
+                for keyword in node.keywords
+                if keyword.arg == "code"
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
+                and not carries_prefix.fullmatch(keyword.value.value)
+            )
+        elif (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _CODE_SHAPED.fullmatch(node.value)
+            and not carries_prefix.fullmatch(node.value)
+        ):
+            hits.add(node.lineno)
+    return sorted(hits)
+
+
+def _prefix_for(path: Path, prefix: str, module_prefixes: Mapping[str, str]) -> str:
+    return next(
+        (
+            module_prefix
+            for module, module_prefix in module_prefixes.items()
+            if path.parts[: len(Path(module).parts)] == Path(module).parts
+        ),
+        prefix,
+    )
+
+
+def assert_error_codes_carry_prefix(
+    app_root: Path,
+    prefix: str,
+    module_prefixes: Mapping[str, str] | None = None,
+    allowlist: Mapping[str, Exemption] | None = None,
+) -> None:
+    found: dict[str, list[int]] = {}
+    for path in iter_python_files(app_root):
+        relative = path.relative_to(app_root)
+        owner = _prefix_for(relative, prefix, module_prefixes or {})
+        hits = detect_unprefixed_error_code(path.read_text(encoding="utf-8-sig"), owner)
+        if hits:
+            found[str(relative)] = hits
+    _check(
+        app_root,
+        found,
+        allowlist or {},
+        "An error code lacks its module's prefix. Codes read {PREFIX}_{CATEGORY}_{NNN}, where "
+        "PREFIX is the service's code_prefix or the module's entry in module_prefixes. Rename "
+        "it, or raise the shared class without code= and the handler renders "
+        "{PREFIX}_{CATEGORY}_000.",
     )

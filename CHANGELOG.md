@@ -7,6 +7,42 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-10-28
+
+### Changed
+- **Breaking:** `create_health_router(service_name, version, *, engine, redis)` runs the readiness probes itself.
+  `engine` returns the service's `AsyncEngine`; `redis` is its zero-arg async Redis getter, and `None` reads as not
+  ready. `db_check`/`redis_check` are gone: seven services each wrote their own SELECT 1 and PING, with three
+  different timeouts, and two logged nothing. Both checks run concurrently, each bounded by `PROBE_TIMEOUT_SECONDS`
+  (`DB_CONNECT_TIMEOUT_SECONDS + 1`, 4 s: above a new connection's own budget, under the 5 s `scripts/dev.sh` waits).
+  A failure logs `health_check_failed` with `check`, `error_type` and `error`.
+- **Breaking:** `ComponentCheck.error` is removed. Readiness answered `str(exc)` to anyone, and tr-lead-management's
+  raising probe put the connection error in it.
+- **Breaking:** the shared exception classes default to no code. Each declares a `category`, and
+  `base_api_exception_handler` renders a code-less one as `{P}_{category}_000`: `VALIDATION`, `AUTH`, `FORBIDDEN`,
+  `NOT_FOUND`, `CONFLICT`, `CONTENT_TOO_LARGE`, `RATE_LIMIT`, `DATABASE`, `INTERNAL`, `UNAVAILABLE`, `TIMEOUT`. A
+  `BaseAPIException` subclass without a category renders `{P}_HTTP_<status>`. The old defaults (`NOT_FOUND_001`, ...)
+  carried no service prefix, and 265 raise sites in five services relied on them. A code-less `ValidationError`,
+  `ConflictError` or `InternalServerError` shares its code with the framework's 422, idempotency 409 and unhandled
+  500.
+- **Breaking:** `BaseAPIException.to_dict()` is removed. It has no app, so it cannot render a default code; the
+  registered handler is the one renderer.
+- The validation handler answers with `HTTP_422_UNPROCESSABLE_CONTENT`; Starlette 1.0 deprecates
+  `HTTP_422_UNPROCESSABLE_ENTITY`. The `middleware` extra requires `starlette>=0.48.0`, the release that added it.
+
+### Added
+- `assert_error_codes_carry_prefix(app_root, prefix, module_prefixes=None)` and `detect_unprefixed_error_code` in
+  `tr_shared.testing.guards`: fail on a code-shaped string literal (`..._NNN`), or a `code=` literal passed to an
+  `*Error`/`*Exception` constructor or `super().__init__`, that does not read `{PREFIX}_..._NNN` for its module.
+  Replaces the copies in tr-media-service and tr-realty-data-hub.
+
+**Consumer action** (the relock and the edits land together: the old `db_check=`/`redis_check=` call fails at
+import):
+- `create_health_router(..., engine=lambda: engine, redis=get_redis_client)`; tr-whatsApp-marketing-agent passes
+  `engine=get_engine`. Delete the service's own probes.
+- Call `assert_error_codes_carry_prefix` from `tests/architecture/` and rename the codes it reports.
+- Update assertions on the old bare default codes.
+
 ## [0.112.0] - 2026-10-28
 
 ### Changed
