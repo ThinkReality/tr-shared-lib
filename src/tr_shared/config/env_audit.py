@@ -49,7 +49,7 @@ def _aliases(alias: object) -> set[str]:
     return set()
 
 
-def _declared_env_keys_by_sensitivity(
+def declared_env_keys_by_sensitivity(
     *classes: type[BaseSettings],
 ) -> tuple[set[str], set[str]]:
     """Every env var name the given classes can consume, split by whether the
@@ -114,13 +114,13 @@ def _declared_env_keys(*classes: type[BaseSettings]) -> set[str]:
     names in their declared case, case-insensitive names upper-cased, unioned
     together. It is NOT safe to test a candidate key's membership in this set
     to decide ownership when case-sensitive and case-insensitive classes are
-    mixed (see ``_declared_env_keys_by_sensitivity``) — a public,
+    mixed (see ``declared_env_keys_by_sensitivity``) — a public,
     obvious-sounding name here is exactly what previously led an
     ownership-decision caller to re-derive this same false-negative-prone
     merge instead of using ``unclaimed_env_keys``, which keeps the split form
     internally for that reason. Kept for tests exercising the merge itself.
     """
-    case_sensitive_declared, case_insensitive_declared = _declared_env_keys_by_sensitivity(*classes)
+    case_sensitive_declared, case_insensitive_declared = declared_env_keys_by_sensitivity(*classes)
     return case_sensitive_declared | case_insensitive_declared
 
 
@@ -177,12 +177,12 @@ def unclaimed_env_keys(
     A key is claimed if ANY owning class would actually bind it: a
     case-sensitive class only via an exact match, a case-insensitive class via
     a case-insensitive match. The two checks are kept separate per class (see
-    ``_declared_env_keys_by_sensitivity``) so a case-insensitive match on one
+    ``declared_env_keys_by_sensitivity``) so a case-insensitive match on one
     class can never stand in for a case-sensitive class's exact-match
     requirement.
     """
     owners = classes if classes is not None else tuple(config_owner_classes())
-    case_sensitive_declared, case_insensitive_declared = _declared_env_keys_by_sensitivity(*owners)
+    case_sensitive_declared, case_insensitive_declared = declared_env_keys_by_sensitivity(*owners)
     parsed = parse_env_keys(env_file)
     return sorted(
         key

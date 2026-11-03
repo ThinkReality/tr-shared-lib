@@ -22,6 +22,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.config.env_audit import (
     _declared_env_keys,
+    declared_env_keys_by_sensitivity,
     log_unclaimed_env_keys,
     parse_env_keys,
     unclaimed_env_keys,
@@ -143,6 +144,18 @@ def test_declared_env_keys_applies_env_prefix() -> None:
     assert "PF_API_BASE_URL" in declared
     assert "AUTH_LIB_DEV_MODE_BYPASS" in declared
     assert "DEV_MODE_BYPASS" not in declared
+
+
+def test_declared_env_keys_by_sensitivity_keeps_exact_case_apart() -> None:
+    class _Exact(BaseSettings):
+        model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
+        Mixed_Case: str = "x"
+
+    assert declared_env_keys_by_sensitivity(_Exact, _Prefixed) == (
+        {"Mixed_Case"},
+        {"AUTH_LIB_DEV_MODE_BYPASS"},
+    )
 
 
 def test_a_renamed_key_is_reported_as_unclaimed(env_file) -> None:

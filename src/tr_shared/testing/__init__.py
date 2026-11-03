@@ -37,11 +37,15 @@ from tr_shared.testing.celery_topology import (
     unmatched_route_patterns,
 )
 from tr_shared.testing.config import TestingConfig, admin_database_url, find_config
-from tr_shared.testing.env_contract import assert_no_orphan_env_keys
+from tr_shared.testing.env_contract import (
+    assert_env_example_is_portable,
+    assert_no_orphan_env_keys,
+    assert_settings_are_env_safe,
+)
 from tr_shared.testing.guards import (
     assert_no_auth_chain_bypass,
     assert_no_dotenv_loading,
-    assert_no_env_mutation_in_conftest,
+    assert_no_env_mutation_in_tests,
     assert_no_infra_skips,
     assert_no_local_client_ip_derivation,
     assert_no_raw_http_exceptions,
@@ -64,6 +68,7 @@ from tr_shared.testing.lanes import (
     run_needs_infrastructure,
 )
 from tr_shared.testing.primary_keys import assert_no_server_default_primary_keys
+from tr_shared.testing.role_dispatch import assert_entry_points_require_database_url
 from tr_shared.testing.roundtrip import roundtrip_database
 from tr_shared.testing.session_scope import assert_session_dependencies_are_function_scoped
 from tr_shared.testing.statements import describe_statements, record_statements
@@ -94,11 +99,14 @@ __all__ = [
     "consumed_queues",
     "registered_task_names",
     "unmatched_route_patterns",
+    "assert_entry_points_require_database_url",
+    "assert_env_example_is_portable",
     "assert_no_orphan_env_keys",
+    "assert_settings_are_env_safe",
     "assert_exemptions_are_machine_verified",
     "assert_no_auth_chain_bypass",
     "assert_no_dotenv_loading",
-    "assert_no_env_mutation_in_conftest",
+    "assert_no_env_mutation_in_tests",
     "assert_no_infra_skips",
     "assert_no_local_client_ip_derivation",
     "assert_no_raw_http_exceptions",

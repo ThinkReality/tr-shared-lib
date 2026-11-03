@@ -51,7 +51,12 @@ def pytest_load_initial_conftests(early_config: Any, parser: Any, args: list[str
     _assert_venv_belongs_to_this_service(Path(early_config.rootdir))
 
     _STATE["config"] = config
-    needs_infra = run_needs_infrastructure(args, _markexpr(early_config))
+    needs_infra = run_needs_infrastructure(
+        args,
+        _markexpr(early_config),
+        root=Path(early_config.rootdir),
+        invocation_dir=early_config.invocation_params.dir,
+    )
     _STATE["lane"] = "integration" if needs_infra else "unit"
 
     _own_the_environment(config)
@@ -112,7 +117,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     if _STATE.get("config") is None:
         return
     for item in items:
-        lane = lane_for_path(str(item.fspath))
+        lane = lane_for_path(os.path.relpath(item.path, item.config.rootpath))
         if lane:
             item.add_marker(lane)
 

@@ -133,3 +133,58 @@ def test_custom_request_roles(tmp_path):
 
 def test_the_guarded_variable_is_the_settings_field():
     assert _PROFILE_VARIABLE in BaseServiceSettings.model_fields
+
+
+class TestEntryModules:
+    @pytest.mark.parametrize(
+        ("line", "module"),
+        [
+            ("exec uvicorn app.main:app --host 0.0.0.0", "app.main"),
+            ('exec "${VENV}/uvicorn" app.main:app --reload', "app.main"),
+            ("exec celery -A app.celery_app worker --loglevel=info", "app.celery_app"),
+            ('exec "${VENV}/celery" -A app.celery_app beat', "app.celery_app"),
+            ("exec celery -A app.celery_app:celery_app beat --loglevel=info", "app.celery_app"),
+            ("WORKER_ROLE=worker exec celery -A app.celery_app worker", "app.celery_app"),
+            ("exec python -m app.workers.event_consumer", "app.workers.event_consumer"),
+            ('exec "${VENV}/python" -m app.workers.event_consumer', "app.workers.event_consumer"),
+        ],
+    )
+    def test_each_start_command_form(self, tmp_path: Path, line: str, module: str) -> None:
+        from tr_shared.testing import role_dispatch
+
+        script = tmp_path / "deploy.sh"
+        script.write_text(f"#!/bin/sh\nset -e\nexec uvicorn app.main:app\n    {line}\n")
+        assert role_dispatch.entry_modules(script) == {"app.main", module}
+
+    def test_a_commented_out_command_is_ignored(self, tmp_path: Path) -> None:
+        from tr_shared.testing import role_dispatch
+
+        script = tmp_path / "deploy.sh"
+        script.write_text("exec uvicorn app.main:app\n  # exec python -m app.old_consumer\n")
+        assert role_dispatch.entry_modules(script) == {"app.main"}
+
+    def test_scripts_are_unioned(self, tmp_path: Path) -> None:
+        from tr_shared.testing import role_dispatch
+
+        (tmp_path / "deploy.sh").write_text("exec uvicorn app.main:app\n")
+        (tmp_path / "entry.sh").write_text("exec celery -A app.celery_app beat\n")
+        assert role_dispatch.entry_modules(tmp_path / "deploy.sh", tmp_path / "entry.sh") == {
+            "app.main",
+            "app.celery_app",
+        }
+
+    def test_a_script_with_no_start_command_raises(self, tmp_path: Path) -> None:
+        from tr_shared.testing import role_dispatch
+
+        script = tmp_path / "deploy.sh"
+        script.write_text("#!/bin/sh\necho hello\n")
+        with pytest.raises(ValueError, match="no start command"):
+            role_dispatch.entry_modules(script)
+
+    def test_a_set_without_app_main_raises(self, tmp_path: Path) -> None:
+        from tr_shared.testing import role_dispatch
+
+        script = tmp_path / "entry.sh"
+        script.write_text("exec celery -A app.celery_app worker\n")
+        with pytest.raises(ValueError, match="app.main"):
+            role_dispatch.entry_modules(script)

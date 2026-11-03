@@ -9,6 +9,7 @@ that the 28 files it existed to catch passed it.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,6 @@ from tr_shared.testing.guards import (
     assert_error_codes_carry_prefix,
     assert_every_test_file_has_a_lane,
     assert_no_auth_chain_bypass,
-    assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
     assert_no_local_client_ip_derivation,
     assert_no_raw_http_exceptions,
@@ -229,24 +229,142 @@ class TestG7SchemaConstruction:
 
 
 class TestG9EnvMutation:
-    def test_catches_assignment_and_setdefault(self) -> None:
-        assert detect_env_mutation('os.environ["DATABASE_URL"] = url')
-        assert detect_env_mutation('os.environ.setdefault("DATABASE_URL", url)')
+    @pytest.mark.parametrize(
+        ("source", "line"),
+        [
+            ('os.environ["DATABASE_URL"] = url', 1),
+            ('os.environ["SERVICE_NAME"] = "tr-demo"', 1),
+            ('os.environ["X"] += "1"', 1),
+            ('os.environ["X"]: str = "1"', 1),
+            ('os.environ.setdefault("X", "1")', 1),
+            ('os.environ.update({"X": "1"})', 1),
+            ('os.environ.update(X="1")', 1),
+            ('os.environ.pop("X")', 1),
+            ('os.environ.pop("X", None)', 1),
+            ("os.environ.popitem()", 1),
+            ("os.environ.clear()", 1),
+            ('del os.environ["X"]', 1),
+            ('os.putenv("X", "1")', 1),
+            ('os.unsetenv("X")', 1),
+            ('os.environ |= {"X": "1"}', 1),
+            ('from os import environ\nenviron["X"] = "1"', 2),
+        ],
+    )
+    def test_flags_every_write_form_for_any_key(self, source: str, line: int) -> None:
+        assert detect_env_mutation(source) == [line]
 
-    def test_ignores_unrelated_variables(self) -> None:
-        assert not detect_env_mutation('os.environ["SERVICE_NAME"] = "tr-demo"')
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'monkeypatch.setenv("X", "1")',
+            'monkeypatch.delenv("X", raising=False)',
+            'with pytest.MonkeyPatch.context() as mp:\n    mp.setenv("X", "1")',
+            'mp = pytest.MonkeyPatch()\nmp.setenv("X", "1")',
+            'with patch.dict(os.environ, {"X": "1"}):\n    pass',
+            "with patch.dict(os.environ, clear=True):\n    pass",
+            'env = {**os.environ, "X": "1"}',
+            'url = os.environ["DATABASE_URL"]',
+            'value = os.environ.get("X")',
+            "snapshot = os.environ.copy()",
+        ],
+    )
+    def test_passes_the_sanctioned_forms(self, source: str) -> None:
+        assert detect_env_mutation(source) == []
 
-    def test_ignores_reads(self) -> None:
-        assert not detect_env_mutation('url = os.environ["DATABASE_URL"]')
+    def test_scans_every_test_file_not_only_conftests(self, tmp_path: Path) -> None:
+        (tmp_path / "tests" / "unit").mkdir(parents=True)
+        (tmp_path / "tests" / "unit" / "test_x.py").write_text('os.environ["SERVICE_NAME"] = "x"\n')
+        with pytest.raises(AssertionError, match="tests/unit/test_x.py"):
+            guards_module.assert_no_env_mutation_in_tests(tmp_path)
 
-    def test_assert_helper_only_looks_at_conftests(self, tmp_path: Path) -> None:
-        (tmp_path / "unit").mkdir()
-        (tmp_path / "unit" / "test_x.py").write_text('os.environ["DATABASE_URL"] = "x"')
-        assert_no_env_mutation_in_conftest(tmp_path)  # not a conftest -> ignored
+    def test_only_the_tests_folder_is_scanned(self, tmp_path: Path) -> None:
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_ok.py").write_text("x = 1\n")
+        (tmp_path / "app").mkdir()
+        (tmp_path / "app" / "main.py").write_text('os.environ["X"] = "1"\n')
+        guards_module.assert_no_env_mutation_in_tests(tmp_path)
 
-        (tmp_path / "conftest.py").write_text('os.environ["DATABASE_URL"] = "x"')
-        with pytest.raises(AssertionError, match="infrastructure environment"):
-            assert_no_env_mutation_in_conftest(tmp_path)
+    def test_exemptions_go_through_the_shared_check(self, tmp_path: Path) -> None:
+        (tmp_path / "tests" / "unit").mkdir(parents=True)
+        (tmp_path / "tests" / "unit" / "test_x.py").write_text('os.environ["X"] = GATE\n')
+        guards_module.assert_no_env_mutation_in_tests(
+            tmp_path,
+            allowlist={"tests/unit/test_x.py": Exemption(reason="r", requires_symbols=("GATE",))},
+        )
+        with pytest.raises(AssertionError, match="prose alone"):
+            guards_module.assert_no_env_mutation_in_tests(
+                tmp_path, allowlist={"tests/unit/test_x.py": Exemption(reason="r")}
+            )
+
+    def test_an_empty_tests_folder_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "tests").mkdir()
+        with pytest.raises(AssertionError, match="zero"):
+            guards_module.assert_no_env_mutation_in_tests(tmp_path)
+
+    def test_a_root_under_worktrees_still_reports(self, tmp_path: Path) -> None:
+        repo = tmp_path / ".worktrees" / "branch"
+        (repo / "tests").mkdir(parents=True)
+        (repo / "tests" / "test_x.py").write_text('os.environ["X"] = "1"\n')
+        with pytest.raises(AssertionError, match="test_x.py"):
+            guards_module.assert_no_env_mutation_in_tests(repo)
+
+    def test_the_old_name_is_gone_and_the_new_one_is_exported(self) -> None:
+        import tr_shared.testing
+
+        assert not hasattr(guards_module, "assert_no_env_mutation_in_conftest")
+        assert tr_shared.testing.assert_no_env_mutation_in_tests is (
+            guards_module.assert_no_env_mutation_in_tests
+        )
+
+
+class TestEnvGuardSignatures:
+    @pytest.fixture(
+        params=[
+            "assert_no_env_mutation_in_tests",
+            "assert_no_orphan_env_keys",
+            "assert_no_dotenv_loading",
+            "assert_env_example_is_portable",
+            "assert_settings_are_env_safe",
+        ]
+    )
+    def guard(self, request: pytest.FixtureRequest) -> inspect.Signature:
+        import tr_shared.testing
+
+        return inspect.signature(getattr(tr_shared.testing, request.param))
+
+    def test_the_repo_root_comes_first_and_everything_else_is_keyword_only(
+        self, guard: inspect.Signature
+    ) -> None:
+        first, *rest = guard.parameters.values()
+        assert first.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        assert first.name == "repo_root"
+        assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in rest)
+
+    def test_an_allowlist_has_one_name_and_type(self, guard: inspect.Signature) -> None:
+        names = set(guard.parameters) & {"allowlist", "exemptions", "exempt"}
+        assert names <= {"allowlist"}
+        if names:
+            allowlist = guard.parameters["allowlist"]
+            assert allowlist.annotation == "Mapping[str, Exemption] | None"
+            assert allowlist.default is None
+
+
+class TestSharedWalk:
+    def test_a_shell_root_under_worktrees_still_reports(self, tmp_path: Path) -> None:
+        root = tmp_path / ".worktrees" / "branch"
+        root.mkdir(parents=True)
+        (root / "deploy.sh").write_text('if [ "$ENVIRONMENT" = "dev" ]; then echo; fi\n')
+        with pytest.raises(AssertionError):
+            assert_environment_vocabulary(root)
+
+    def test_ignored_dirs_inside_the_root_are_still_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "ok.sh").write_text("echo ok\n")
+        for ignored in (".venv", ".worktrees", ".git", "node_modules"):
+            (tmp_path / ignored).mkdir()
+            (tmp_path / ignored / "x.sh").write_text('[ "$ENVIRONMENT" = "dev" ]\n')
+            (tmp_path / ignored / "x.py").write_text("import sqlite3\n")
+        assert_environment_vocabulary(tmp_path)
+        assert list(guards_module.iter_python_files(tmp_path)) == []
 
 
 class TestG10Ryuk:

@@ -136,6 +136,38 @@ class TestActiveAfterOptIn:
         deselected = _run_pytest(project, "-m", "integration")
         assert "1 deselected" in deselected.stdout
 
+    def test_a_checkout_under_a_directory_named_api_is_still_unit(self, tmp_path: Path) -> None:
+        checkout = tmp_path / "api" / "svc"
+        checkout.mkdir(parents=True)
+        project = _project(checkout, opted_in=True)
+        selected = _run_pytest(project, "-m", "unit")
+        assert selected.returncode == 0, selected.stdout + selected.stderr
+        assert "1 passed" in selected.stdout
+
+    @pytest.mark.parametrize("absolute", [True, False])
+    def test_a_unit_path_under_a_directory_named_api_gets_the_unit_lane(
+        self, tmp_path: Path, absolute: bool
+    ) -> None:
+        from tr_shared.testing.lanes import POISON_DATABASE_URL
+
+        checkout = tmp_path / "api" / "svc"
+        checkout.mkdir(parents=True)
+        project = _project(checkout, opted_in=True)
+        target = str(project / "tests" / "unit") if absolute else "api/svc/tests/unit"
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", target, "-q", "-p", "no:cacheprovider"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(project),
+                "DOCKER_HOST": "unix:///nonexistent",
+            },
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _recorded(tmp_path)["DATABASE_URL"] == POISON_DATABASE_URL
+
 
 class TestRemoteDsnIsRefused:
     def test_non_local_test_database_url_aborts(self, tmp_path: Path) -> None:
