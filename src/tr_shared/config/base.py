@@ -49,20 +49,6 @@ class BaseServiceSettings(BaseSettings):
     CELERY_TASK_TIME_LIMIT: int = 600
     CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
 
-    AUTH_LIB_GATEWAY_SIGNING_SECRET: str = ""
-    AUTH_LIB_CRM_CORE_URL: str = "http://tr-crm-core:8000"
-    AUTH_LIB_SERVICE_TOKEN: str = ""
-
-    # ── Vault Secret Resolution (optional — empty = use plain env var) ──
-    # Set these to Vault secret UUIDs at deploy time; leave empty for local dev.
-    # ONLY these two resolve: vault.py's secret_map is an explicit dict, so a *_VAULT_UUID
-    # field with no entry there is inert. A third, SERVICE_TOKEN_VAULT_UUID, was declared
-    # here but absent from that map — it promised Vault resolution of the inbound
-    # SERVICE_TOKEN and silently delivered none. Removed 2026-08-10. If SERVICE_TOKEN
-    # should be vault-backed, add it to the map first; the field alone does nothing.
-    AUTH_LIB_GATEWAY_SIGNING_SECRET_VAULT_UUID: str = ""
-    AUTH_LIB_SERVICE_TOKEN_VAULT_UUID: str = ""
-
     EVENT_STREAM_NAME: str = "tr_event_bus"
     CONSUMER_GROUP_NAME: str = ""
     CONSUMER_NAME: str = "worker_1"
@@ -145,10 +131,6 @@ class BaseServiceSettings(BaseSettings):
                 )
             if not self.SERVICE_TOKEN:
                 raise ValueError("SERVICE_TOKEN required in production")
-            if not self.AUTH_LIB_GATEWAY_SIGNING_SECRET:
-                raise ValueError("AUTH_LIB_GATEWAY_SIGNING_SECRET required in production")
-            if not self.AUTH_LIB_SERVICE_TOKEN:
-                raise ValueError("AUTH_LIB_SERVICE_TOKEN required in production")
             for url_field in ("REDIS_URL", "CELERY_BROKER_URL", "DATABASE_URL"):
                 value = getattr(self, url_field)
                 if value and "localhost" in value:

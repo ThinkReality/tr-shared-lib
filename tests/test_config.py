@@ -39,8 +39,6 @@ _PROD_BASE = {
     "ENVIRONMENT": "production",
     "DATABASE_URL": "postgresql+asyncpg://prod-host:5432/db",
     "SERVICE_TOKEN": "tok",
-    "AUTH_LIB_GATEWAY_SIGNING_SECRET": "secret",
-    "AUTH_LIB_SERVICE_TOKEN": "s2s-token",
     "REDIS_URL": "redis://prod-redis:6379/0",
     "CELERY_BROKER_URL": "redis://prod-redis:6379/1",
     "CORS_ORIGINS": "https://app.thinkrealty.com",
@@ -95,13 +93,16 @@ class TestBaseServiceSettings:
         with pytest.raises(ValidationError, match="SERVICE_TOKEN"):
             BaseServiceSettings(**{**_PROD_BASE, "SERVICE_TOKEN": ""})
 
-    def test_production_requires_gateway_signing_secret(self):
-        with pytest.raises(ValidationError, match="AUTH_LIB_GATEWAY_SIGNING_SECRET"):
-            BaseServiceSettings(**{**_PROD_BASE, "AUTH_LIB_GATEWAY_SIGNING_SECRET": ""})
+    def test_shared_auth_lib_owns_the_auth_config(self):
+        owned_elsewhere = [
+            name
+            for name in BaseServiceSettings.model_fields
+            if name.startswith("AUTH_LIB_") or name.endswith("_VAULT_UUID")
+        ]
+        assert owned_elsewhere == []
 
-    def test_production_requires_auth_lib_service_token(self):
-        with pytest.raises(ValidationError, match="AUTH_LIB_SERVICE_TOKEN"):
-            BaseServiceSettings(**{**_PROD_BASE, "AUTH_LIB_SERVICE_TOKEN": ""})
+    def test_production_builds_without_auth_lib_settings(self):
+        assert BaseServiceSettings(**_PROD_BASE).is_production
 
     def test_production_rejects_cors_wildcard(self):
         with pytest.raises(ValidationError, match="CORS wildcard"):

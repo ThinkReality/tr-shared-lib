@@ -21,8 +21,6 @@ def _settings(env: str) -> BaseServiceSettings:
             "REDIS_URL": "redis://redis.internal:6379/0",
             "CELERY_BROKER_URL": "redis://redis.internal:6379/1",
             "SERVICE_TOKEN": "t",
-            "AUTH_LIB_GATEWAY_SIGNING_SECRET": "s",
-            "AUTH_LIB_SERVICE_TOKEN": "t",
         }
     return BaseServiceSettings(SERVICE_NAME="svc", ENVIRONMENT=env, **extra)
 

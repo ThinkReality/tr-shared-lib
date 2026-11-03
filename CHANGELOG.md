@@ -5,13 +5,61 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.115.0] - Unreleased
+
+Env-only config and hermetic tests (plan `2026-10-29-env-only-config-hermetic-tests.md`, tasks L1-L6). Breaking:
+services adopt it in their own relock PR.
+
+### Added
+- `tr_shared.testing.config`: `ENV_PASSTHROUGH` (entry -> reason), `INFRA_ENV`, `POLICY_ENV`, `CONTROL_ENV`,
+  `PLUGIN_OWNED_ENV` and `passes_scrub()`. `TestingConfig.env` holds `[tool.tr_testing.env]`.
+- The pytest plugin, once a service opts in, scrubs the environment to `ENV_PASSTHROUGH`, exports the service's
+  `[tool.tr_testing.env]` table and assigns `POLICY_ENV` (`ENVIRONMENT=test` and fake auth values) before the
+  unit-lane return, the `TEST_DATABASE_URL` branch and provisioning.
+- `LOOPBACK_HOSTS` in `tr_shared.db.utils`; `LOCAL_DB_HOSTS` is derived from it.
+- G18 `assert_no_dotenv_loading(repo_root, *, allowlist=None)`.
+- G19 `assert_env_example_is_portable(repo_root)` and G21 `assert_settings_are_env_safe(repo_root, *, package="app")` in
+  `tr_shared.testing.env_contract`, with `settings_classes(root)` and `unclaimed_env_keys(path, classes)`. G19 reads
+  `# ` after a space as an inline comment, as uv, compose and python-dotenv all do; a `#` after anything else,
+  a tab included, is part of the value; a tab before `#` fails with "use a space before #".
+- `declared_env_keys_by_sensitivity` in `tr_shared.config.env_audit` (was private).
+- `entry_modules(*scripts)` in `tr_shared.testing.role_dispatch`, and `assert_entry_points_require_database_url(repo_root)`:
+  every module `deploy.sh` or `docker-entrypoint.sh` launches, and alembic per tracked `alembic.ini`, run with
+  `DATABASE_URL=""` and must exit non-zero with a validation error for a settings class under `app/` naming
+  `DATABASE_URL` (10 s per case). `settings_class_names(root)` in `env_contract` finds those names by AST.
+- `CsvList` in `tr_shared.config`: a comma-separated list setting; a value starting with `[` or `{` fails.
+- Extra `uvicorn = ["uvicorn[standard]==0.54.0"]`.
+
+### Changed
+- `[tool.tr_testing]` is parsed strictly: an unknown key, a wrong-typed or empty known key, a table without
+  `service`, a non-table `env`, a non-string table value or a plugin-owned table key is a `pytest.UsageError`.
+- G1: `TEST_DATABASE_URL` and `TEST_REDIS_URL` must name `localhost`, `127.0.0.1` or `::1`, else
+  `pytest.UsageError` (was `SystemExit`, database URL only, compose hosts accepted).
+- The controller mints a fresh `TR_TESTING_RUN_ID`; only xdist workers reuse one.
+- G9 is `assert_no_env_mutation_in_tests(repo_root, *, allowlist=None)` (no alias): every file under
+  `repo_root/tests`, any key, every direct write form. G9, G15, G18, G19 and G21 take `repo_root` first and
+  everything else keyword-only; each finds its own `tests/`, `app/` or `.env.example`.
+- G15 takes its owners from `settings_classes(repo_root / "app")` plus `extra_classes` and checks
+  `[tool.tr_testing.env]` keys.
+- File walks, the consumer scan and the plugin's lane marker match paths relative to their root
+  (`IGNORED_DIRS`), so a repo under `.worktrees/` or a directory named `api` is handled.
+- `BaseServiceSettings` reads no `.env` file. `DATABASE_URL` is required and non-blank in every environment.
+- `parse_env_keys` raises on a missing, unreadable or non-UTF-8 file.
+
+### Removed
+- `log_unclaimed_env_keys`, `config_owner_classes` and the `tr_shared.config` exports of the env audit.
+- `BaseServiceSettings.AUTH_LIB_GATEWAY_SIGNING_SECRET`, `AUTH_LIB_CRM_CORE_URL`, `AUTH_LIB_SERVICE_TOKEN`, their
+  `*_VAULT_UUID` fields and production checks: shared-auth-lib's settings own them.
+- `tr_shared.vault.resolve_vault_secrets`. `VaultService` stays for per-tenant secrets.
 
 ### Fixed
 - Webhook rate limiting now applies. `create_webhook_router` read `allowed`, `limit`, `remaining` and `reset_at` from
   the `RateLimitInfo` that `RateLimiter.check` returns, which has none of them; the `AttributeError` was swallowed and
   every webhook was allowed. A blocked check answers 429 `WEBHOOK_RATE_LIMIT_001` with the blocked window's headers.
   Only a Redis or connection error (`RedisError`, `OSError`) still allows the request, logged; any other error raises.
+- `run_needs_infrastructure` classifies each path relative to the pytest rootdir (`root=`), resolving it from the
+  invocation directory (`invocation_dir=`), so an absolute path to a unit dir in a checkout under `api/` no longer
+  provisions a container. A path outside the root provisions.
 
 ## [0.114.0] - 2026-10-29
 
