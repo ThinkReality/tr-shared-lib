@@ -7,6 +7,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Webhook rate limiting now applies. `create_webhook_router` read `allowed`, `limit`, `remaining` and `reset_at` from
+  the `RateLimitInfo` that `RateLimiter.check` returns, which has none of them; the `AttributeError` was swallowed and
+  every webhook was allowed. A blocked check answers 429 `WEBHOOK_RATE_LIMIT_001` with the blocked window's headers.
+  Only a Redis or connection error (`RedisError`, `OSError`) still allows the request, logged; any other error raises.
+
 ## [0.114.0] - 2026-10-29
 
 ### Added

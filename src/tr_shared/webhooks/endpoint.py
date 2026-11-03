@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from redis.exceptions import RedisError
 
 from tr_shared.client_ip import client_ip
 from tr_shared.contracts.headers import HttpHeader
@@ -110,8 +111,12 @@ def _register_provider_endpoints(
                     endpoint=f"webhook_{pn}",
                     scope="webhook",
                 )
-                result = await rate_limiter.check(key, rate_limit_config)
-                if not result.allowed:
+                info = await rate_limiter.check(key, rate_limit_config)
+            except (RedisError, OSError):
+                logger.warning("Rate limit check failed — allowing request", exc_info=True)
+            else:
+                if info.is_blocked:
+                    blocked = next(r for r in info.results if not r.allowed)
                     return JSONResponse(
                         status_code=429,
                         content=build_error_envelope(
@@ -120,13 +125,11 @@ def _register_provider_endpoints(
                             correlation_id=_correlation_id(request),
                         ),
                         headers={
-                            HttpHeader.RATE_LIMIT_LIMIT.value: str(result.limit),
-                            HttpHeader.RATE_LIMIT_REMAINING.value: str(result.remaining),
-                            HttpHeader.RATE_LIMIT_RESET.value: str(result.reset_at),
+                            HttpHeader.RATE_LIMIT_LIMIT.value: str(blocked.limit),
+                            HttpHeader.RATE_LIMIT_REMAINING.value: str(blocked.remaining),
+                            HttpHeader.RATE_LIMIT_RESET.value: str(blocked.reset_at),
                         },
                     )
-            except Exception:
-                logger.warning("Rate limit check failed — allowing request", exc_info=True)
 
         raw_body = await request.body()
 

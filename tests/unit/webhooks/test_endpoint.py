@@ -3,10 +3,15 @@
 import hashlib
 import hmac
 import json
+import logging
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from redis.exceptions import ConnectionError as RedisConnectionError
 
+from tr_shared.contracts.headers import HttpHeader
+from tr_shared.rate_limiter import RateLimitConfig, RateLimiter, WindowConfig
 from tr_shared.webhooks.endpoint import create_webhook_router
 from tr_shared.webhooks.idempotency import WebhookIdempotencyGuard
 from tr_shared.webhooks.providers.meta import MetaWebhookVerifier
@@ -30,6 +35,8 @@ def _build_app(
     webhook_router: WebhookRouter | None = None,
     response_status_code: int = 202,
     tenant_resolver=None,
+    rate_limiter: RateLimiter | None = None,
+    rate_limit_config: RateLimitConfig | None = None,
 ) -> FastAPI:
     app = FastAPI()
     configs = configs or [ProviderConfig(name="propertyfinder", secret=SECRET)]
@@ -41,6 +48,8 @@ def _build_app(
         webhook_router=webhook_router,
         tenant_resolver=tenant_resolver,
         response_status_code=response_status_code,
+        rate_limiter=rate_limiter,
+        rate_limit_config=rate_limit_config,
     )
     app.include_router(router, prefix="/webhooks")
     return app
@@ -501,3 +510,68 @@ class TestDynamicSecretFlag:
         assert resp.status_code == 202
         assert len(vrf.calls) == 1
         assert vrf.calls[0][2] == SECRET
+
+
+ONE_PER_MINUTE = RateLimitConfig(windows=[WindowConfig(limit=1, window_seconds=60)])
+RATE_LIMIT_FAILED = "Rate limit check failed"
+
+
+def _raising_provider(exc: Exception):
+    async def provider():
+        raise exc
+
+    return provider
+
+
+def _post_signed(client: TestClient):
+    return client.post(
+        "/webhooks/propertyfinder",
+        content=BODY,
+        headers={"X-Signature": _sign(BODY, SECRET), "Content-Type": "application/json"},
+    )
+
+
+class TestWebhookRateLimit:
+    def test_a_blocked_check_answers_429(self):
+        client = TestClient(
+            _build_app(rate_limiter=RateLimiter(), rate_limit_config=ONE_PER_MINUTE)
+        )
+
+        _post_signed(client)
+        resp = _post_signed(client)
+
+        assert resp.status_code == 429
+        assert resp.json()["error"]["code"] == "WEBHOOK_RATE_LIMIT_001"
+        assert resp.headers[HttpHeader.RATE_LIMIT_LIMIT.value] == "1"
+        assert resp.headers[HttpHeader.RATE_LIMIT_REMAINING.value] == "0"
+        assert int(resp.headers[HttpHeader.RATE_LIMIT_RESET.value]) > 0
+
+    def test_an_allowed_check_passes_without_a_failed_check(self, caplog):
+        client = TestClient(
+            _build_app(rate_limiter=RateLimiter(), rate_limit_config=ONE_PER_MINUTE)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="tr_shared.webhooks.endpoint"):
+            resp = _post_signed(client)
+
+        assert resp.status_code == 202
+        assert not [r for r in caplog.records if RATE_LIMIT_FAILED in r.getMessage()]
+
+    def test_redis_unreachable_allows_the_request_and_logs_the_error(self, caplog):
+        limiter = RateLimiter(redis_provider=_raising_provider(RedisConnectionError("refused")))
+        client = TestClient(_build_app(rate_limiter=limiter, rate_limit_config=ONE_PER_MINUTE))
+
+        with caplog.at_level(logging.WARNING, logger="tr_shared.webhooks.endpoint"):
+            resp = _post_signed(client)
+
+        assert resp.status_code == 202
+        failed = [r for r in caplog.records if RATE_LIMIT_FAILED in r.getMessage()]
+        assert len(failed) == 1
+        assert isinstance(failed[0].exc_info[1], RedisConnectionError)
+
+    def test_a_non_redis_error_is_not_swallowed(self):
+        limiter = RateLimiter(redis_provider=_raising_provider(AttributeError("bug")))
+        client = TestClient(_build_app(rate_limiter=limiter, rate_limit_config=ONE_PER_MINUTE))
+
+        with pytest.raises(AttributeError, match="bug"):
+            _post_signed(client)
