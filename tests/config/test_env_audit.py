@@ -16,28 +16,26 @@ import sys
 from pathlib import Path
 
 import pytest
-import structlog.testing
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.config.env_audit import (
     _declared_env_keys,
     declared_env_keys_by_sensitivity,
-    log_unclaimed_env_keys,
     parse_env_keys,
-    unclaimed_env_keys,
 )
+from tr_shared.testing.env_contract import unclaimed_env_keys
 
 
 class _Primary(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
     SERVICE_NAME: str = "x"
     PF_API_BASE_URL: str = "https://example.test"
 
 
 class _Prefixed(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, env_prefix="AUTH_LIB_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="AUTH_LIB_", extra="ignore")
 
     DEV_MODE_BYPASS: bool = False
 
@@ -46,29 +44,27 @@ class _AliasedPrefixed(BaseSettings):
     """Shape of shared-auth-lib's AuthLibSettings.ENVIRONMENT: a prefixed class
     with one field carrying an explicit bare-string alias."""
 
-    model_config = SettingsConfigDict(env_file=None, env_prefix="AUTH_LIB_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="AUTH_LIB_", extra="ignore")
 
     environment: str = Field(default="development", validation_alias="ENVIRONMENT")
 
 
 class _AliasedPrefixedTargetAll(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=None, env_prefix="AUTH_LIB_", env_prefix_target="all", extra="ignore"
+        env_prefix="AUTH_LIB_", env_prefix_target="all", extra="ignore"
     )
 
     environment: str = Field(default="development", validation_alias="ENVIRONMENT")
 
 
 class _AliasChoicesPrefixed(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, env_prefix="AUTH_LIB_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="AUTH_LIB_", extra="ignore")
 
     token: str = Field(default="unset", validation_alias=AliasChoices("SERVICE_TOKEN", "TOKEN"))
 
 
 class _CaseSensitivePrefixed(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=None, env_prefix="AUTH_LIB_", case_sensitive=True, extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="AUTH_LIB_", case_sensitive=True, extra="ignore")
 
     Mixed_Case: str = "unset"
 
@@ -81,19 +77,19 @@ class _CaseSensitiveScreamingSnake(BaseSettings):
     candidate key look identical as bare strings even though this class would
     never actually bind a lowercase env var."""
 
-    model_config = SettingsConfigDict(env_file=None, case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     SERVICE_NAME: str = "default-unbound"
 
 
 class _MixedRunCaseSensitive(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     ONLY_EXACT: str = "unset"
 
 
 class _MixedRunCaseInsensitive(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
     ONLY_LOOSE: str = "unset"
 
@@ -173,19 +169,6 @@ def test_a_key_owned_by_a_prefixed_class_is_not_reported(env_file) -> None:
     assert unclaimed_env_keys(path, classes=(_Primary, _Prefixed)) == []
 
 
-def test_missing_env_file_reports_nothing() -> None:
-    assert unclaimed_env_keys(Path("/nonexistent/.env"), classes=(_Primary,)) == []
-
-
-# --- CRITICAL 1: env_prefix must not be applied to an explicit alias -------
-# pydantic-settings' default env_prefix_target is "variable": the prefix
-# applies only to the un-aliased field-name path. A field with an explicit
-# alias is populated by the BARE alias unless the class opts into
-# env_prefix_target="alias"/"all". Verified against pydantic-settings 2.13.1
-# by reading PydanticBaseEnvSettingsSource._extract_field_info in
-# pydantic_settings/sources/base.py and confirming empirically.
-
-
 def test_aliased_field_on_prefixed_class_yields_bare_alias_only() -> None:
     """shared-auth-lib's AuthLibSettings.ENVIRONMENT shape: AUTH_LIB_ prefix,
     field aliased to the bare "ENVIRONMENT" var. Every service's .env sets
@@ -222,67 +205,6 @@ def test_environment_alias_is_not_reported_unclaimed(env_file) -> None:
 
 
 # --- CRITICAL 2: a missing/unreadable/non-UTF-8 .env must never raise ------
-
-
-def test_parse_env_keys_returns_empty_for_unreadable_file(tmp_path: Path) -> None:
-    if sys.platform == "win32" or os.geteuid() == 0:
-        pytest.skip("permission bits are not enforced for root or on Windows")
-
-    path = tmp_path / ".env"
-    path.write_text("SERVICE_NAME=crm-core\n", encoding="utf-8")
-    path.chmod(0o000)
-    try:
-        assert parse_env_keys(path) == set()
-    finally:
-        path.chmod(0o644)
-
-
-def test_parse_env_keys_returns_empty_for_non_utf8_file(tmp_path: Path) -> None:
-    path = tmp_path / ".env"
-    path.write_bytes(b"SERVICE_NAME=\xff\xfe invalid utf-8\n")
-
-    assert parse_env_keys(path) == set()
-
-
-def test_log_unclaimed_env_keys_never_raises_for_missing_file() -> None:
-    assert log_unclaimed_env_keys(Path("/nonexistent/.env")) == []
-
-
-def test_log_unclaimed_env_keys_is_silent_for_missing_file() -> None:
-    """A missing .env is normal in staging/prod (config comes from OS env
-    vars) — it must not warn."""
-    with structlog.testing.capture_logs() as cap:
-        log_unclaimed_env_keys(Path("/nonexistent/.env"))
-
-    assert cap == []
-
-
-def test_log_unclaimed_env_keys_never_raises_for_unreadable_file(tmp_path: Path) -> None:
-    if sys.platform == "win32" or os.geteuid() == 0:
-        pytest.skip("permission bits are not enforced for root or on Windows")
-
-    path = tmp_path / ".env"
-    path.write_text("SERVICE_NAME=crm-core\n", encoding="utf-8")
-    path.chmod(0o000)
-    try:
-        with structlog.testing.capture_logs() as cap:
-            assert log_unclaimed_env_keys(path) == []
-    finally:
-        path.chmod(0o644)
-
-    assert any(entry["event"] == "env_file_unreadable" for entry in cap), (
-        "an unreadable (but present) .env should warn, not fail silently"
-    )
-
-
-def test_log_unclaimed_env_keys_never_raises_for_non_utf8_file(tmp_path: Path) -> None:
-    path = tmp_path / ".env"
-    path.write_bytes(b"SERVICE_NAME=\xff\xfe invalid utf-8\n")
-
-    with structlog.testing.capture_logs() as cap:
-        assert log_unclaimed_env_keys(path) == []
-
-    assert any(entry["event"] == "env_file_unreadable" for entry in cap)
 
 
 # --- CRITICAL 3: case-sensitive classes must not be merged with the
@@ -371,23 +293,9 @@ class _SettingsDefinedInATestModule(BaseSettings):
     """A fixture class, not service config. Its module is part of the test tree,
     which is exactly what makes it ineligible to own a key."""
 
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
     A_KEY_NO_SERVICE_DECLARES: str = "x"
-
-
-def test_a_test_defined_settings_class_never_claims_a_key(tmp_path: Path) -> None:
-    """M4: auto-discovery must not treat test fixture classes as config owners.
-
-    Without this, a fixture that happens to declare a key turns a real orphan
-    into a clean result — a false negative in the guard whose entire job is finding
-    keys nothing owns.
-    """
-    env = tmp_path / ".env.example"
-    env.write_text("A_KEY_NO_SERVICE_DECLARES=1\n", encoding="utf-8")
-
-    assert _SettingsDefinedInATestModule.model_fields  # the class is live and reachable
-    assert unclaimed_env_keys(env) == ["A_KEY_NO_SERVICE_DECLARES"]
 
 
 def test_explicitly_passed_classes_are_still_honoured(tmp_path: Path) -> None:
@@ -401,3 +309,46 @@ def test_explicitly_passed_classes_are_still_honoured(tmp_path: Path) -> None:
     env.write_text("A_KEY_NO_SERVICE_DECLARES=1\n", encoding="utf-8")
 
     assert unclaimed_env_keys(env, classes=(_SettingsDefinedInATestModule,)) == []
+
+
+def test_parse_env_keys_raises_on_a_missing_file() -> None:
+    with pytest.raises(FileNotFoundError):
+        parse_env_keys(Path("/nonexistent/.env"))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_parse_env_keys_raises_on_an_unreadable_file(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text("A=1\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        if os.access(path, os.R_OK):
+            pytest.skip("running with privileges that ignore permission bits")
+        with pytest.raises(PermissionError):
+            parse_env_keys(path)
+    finally:
+        path.chmod(0o644)
+
+
+def test_parse_env_keys_raises_on_a_non_utf8_file(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_bytes(b"A=\xff\xfe\n")
+    with pytest.raises(UnicodeDecodeError):
+        parse_env_keys(path)
+
+
+def test_unclaimed_env_keys_requires_its_classes(tmp_path: Path) -> None:
+    path = tmp_path / ".env.example"
+    path.write_text("A=1\n", encoding="utf-8")
+    with pytest.raises(TypeError):
+        unclaimed_env_keys(path)  # type: ignore[call-arg]
+
+
+def test_the_runtime_audit_is_gone() -> None:
+    import tr_shared.config
+    from tr_shared.config import env_audit
+
+    for name in ("log_unclaimed_env_keys", "unclaimed_env_keys", "config_owner_classes", "logger"):
+        assert not hasattr(env_audit, name), name
+    assert not hasattr(tr_shared.config, "log_unclaimed_env_keys")
+    assert not hasattr(tr_shared.config, "unclaimed_env_keys")

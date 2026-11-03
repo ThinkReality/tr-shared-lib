@@ -7,6 +7,11 @@ from tr_shared.config.base import BaseServiceSettings
 from tr_shared.contracts import Environment
 
 
+@pytest.fixture(autouse=True)
+def _database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test")
+
+
 def _settings(env: str) -> BaseServiceSettings:
     """Build settings for `env`, supplying only what the production validator demands."""
     extra: dict[str, str] = {}

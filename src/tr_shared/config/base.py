@@ -1,6 +1,8 @@
 """Base settings class for all ThinkRealty services."""
 
-from pydantic import model_validator
+from typing import Annotated
+
+from pydantic import StringConstraints, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.contracts.db_pool import (
@@ -14,8 +16,6 @@ from tr_shared.contracts.environment import Environment
 
 class BaseServiceSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
     )
@@ -26,7 +26,7 @@ class BaseServiceSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"  # "json" in production
 
-    DATABASE_URL: str = ""
+    DATABASE_URL: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     # Env-tunable per service; the numbers themselves live with the pool policy in
     # ``tr_shared.db.session`` so a service that forwards these and one that passes
     # nothing to the engine factory get the same pool.
@@ -119,8 +119,6 @@ class BaseServiceSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_config(self) -> "BaseServiceSettings":
         if self.is_production:
-            if not self.DATABASE_URL:
-                raise ValueError("DATABASE_URL required in production")
             # Supabase fields are only required when SUPABASE_URL is set
             # (i.e. services that talk to Supabase directly: crm-backend,
             # tr-api-gateway). Downstream services using shared-auth-lib

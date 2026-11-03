@@ -21,7 +21,7 @@ from tr_shared.testing.env_contract import assert_no_orphan_env_keys
 
 
 class _Svc(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
     SERVICE_NAME: str = "x"
 
@@ -30,7 +30,7 @@ class _CaseSensitiveExample(BaseSettings):
     """A distinctively-named field so this test can't accidentally be
     satisfied by some other reachable BaseSettings subclass in the process."""
 
-    model_config = SettingsConfigDict(env_file=None, case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     ENV_CONTRACT_CASE_PIN: str = "unset"
 

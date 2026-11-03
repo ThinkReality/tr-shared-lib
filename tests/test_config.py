@@ -55,6 +55,11 @@ _PROD_SUPABASE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test")
+
+
 class TestBaseServiceSettings:
     def test_defaults(self):
         s = BaseServiceSettings(SERVICE_NAME="test-svc")
@@ -63,9 +68,19 @@ class TestBaseServiceSettings:
         assert s.DATABASE_POOL_SIZE == 2
         assert s.SUPABASE_JWT_AUDIENCE == "authenticated"
 
-    def test_production_requires_database_url(self):
-        with pytest.raises(ValidationError, match="DATABASE_URL"):
-            BaseServiceSettings(**{**_PROD_BASE, "DATABASE_URL": ""})
+    @pytest.mark.parametrize("environment", ["development", "production"])
+    @pytest.mark.parametrize("value", [None, "", "  "], ids=["unset", "empty", "blank"])
+    def test_database_url_is_required_and_non_blank(
+        self, monkeypatch: pytest.MonkeyPatch, environment: str, value: str | None
+    ):
+        monkeypatch.delenv("DATABASE_URL")
+        base = _PROD_BASE if environment == "production" else {"SERVICE_NAME": "svc"}
+        kwargs = {k: v for k, v in base.items() if k != "DATABASE_URL"}
+        if value is not None:
+            kwargs["DATABASE_URL"] = value
+        with pytest.raises(ValidationError) as excinfo:
+            BaseServiceSettings(**kwargs)
+        assert [error["loc"] for error in excinfo.value.errors()] == [("DATABASE_URL",)]
 
     def test_production_requires_jwks_url_when_supabase_set(self):
         with pytest.raises(ValidationError, match="JWKS_URL"):

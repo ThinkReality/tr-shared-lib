@@ -1,8 +1,4 @@
-"""Assert every .env.example key has an owner — a settings field, a shell script, or another language's source.
-
-Runs on .env.example, not .env: .env is gitignored and per-developer, so gating
-on it fails on machines instead of in CI. Task 7's startup warning covers .env.
-"""
+"""Assert every .env.example key has an owner — a settings field, a shell script, or another language's source."""
 
 from __future__ import annotations
 
@@ -18,7 +14,7 @@ from pydantic import Json
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, EnvSettingsSource, NoDecode
 
-from tr_shared.config.env_audit import declared_env_keys_by_sensitivity, unclaimed_env_keys
+from tr_shared.config.env_audit import declared_env_keys_by_sensitivity, parse_env_keys
 from tr_shared.testing.config import ENV_PASSTHROUGH, find_config
 from tr_shared.testing.guards import IGNORED_DIRS
 
@@ -134,6 +130,16 @@ def settings_classes(root: Path) -> list[type[BaseSettings]]:
 def _unclaimed(keys: set[str], owners: tuple[type[BaseSettings], ...]) -> list[str]:
     case_sensitive, case_insensitive = declared_env_keys_by_sensitivity(*owners)
     return sorted(k for k in keys if k not in case_sensitive and k.upper() not in case_insensitive)
+
+
+def unclaimed_env_keys(path: Path | str, classes: tuple[type[BaseSettings], ...]) -> list[str]:
+    """Keys in the dotenv file at ``path`` that none of ``classes`` would bind.
+
+    A case-sensitive class claims a key only by exact match, a case-insensitive one
+    by a case-insensitive match; the two are kept apart so one never stands in for
+    the other.
+    """
+    return _unclaimed(parse_env_keys(path), classes)
 
 
 def assert_no_orphan_env_keys(
