@@ -30,7 +30,7 @@ from typing import Any
 
 import pytest
 
-from tr_shared.testing.config import TestingConfig, find_config
+from tr_shared.testing.config import POLICY_ENV, TestingConfig, find_config, passes_scrub
 from tr_shared.testing.lanes import (
     POISON_DATABASE_URL,
     POISON_REDIS_URL,
@@ -54,7 +54,9 @@ def pytest_load_initial_conftests(early_config: Any, parser: Any, args: list[str
     needs_infra = run_needs_infrastructure(args, _markexpr(early_config))
     _STATE["lane"] = "integration" if needs_infra else "unit"
 
-    os.environ.setdefault("ENVIRONMENT", "test")
+    _own_the_environment(config)
+    _assert_local("TEST_DATABASE_URL")
+    _assert_local("TEST_REDIS_URL")
     if not needs_infra:
         _export(
             database_url=POISON_DATABASE_URL,
@@ -69,7 +71,6 @@ def pytest_load_initial_conftests(early_config: Any, parser: Any, args: list[str
 
     override = os.environ.get("TEST_DATABASE_URL")
     if override:
-        _assert_local(override)
         _use_override(config, override, worker_id)
         return
 
@@ -189,6 +190,16 @@ def _use_override(config: TestingConfig, dsn: str, worker_id: str) -> None:
     )
 
 
+def _own_the_environment(config: TestingConfig) -> None:
+    """AD3 steps 2-4: scrub to the allowlist, export the service's table, assign the policy."""
+    for key in [k for k in os.environ if not passes_scrub(k)]:
+        del os.environ[key]
+    for key, value in config.env:
+        os.environ[key] = value
+    for key, value in POLICY_ENV.items():
+        os.environ[key] = value
+
+
 def _export(*, database_url: str, redis_url: str, broker_url: str, result_backend: str) -> None:
     # Assignment, not setdefault. The plugin is the single owner of these values;
     # a stale export in the developer's shell is exactly the leak path that makes
@@ -209,12 +220,13 @@ def _markexpr(early_config: Any) -> str:
 def _run_id() -> str:
     """One id for the whole run, shared by every xdist worker.
 
-    The controller sets it before workers are spawned; execnet passes the parent
+    The controller mints it before workers are spawned; execnet passes the parent
     environment through, so every worker reads the same value and derives a
-    database name that is unique per (run, worker).
+    database name that is unique per (run, worker). An id inherited by the
+    controller belongs to another run and is never reused.
     """
     existing = os.environ.get("TR_TESTING_RUN_ID")
-    if existing:
+    if existing and os.environ.get("PYTEST_XDIST_WORKER"):
         return existing
     run_id = str(os.getpid())
     os.environ["TR_TESTING_RUN_ID"] = run_id
@@ -258,24 +270,28 @@ def _assert_venv_belongs_to_this_service(rootdir: Path) -> None:
     )
 
 
-def _assert_local(dsn: str) -> None:
-    """G1: a test DSN that is not local is a hard failure, never a skip.
+def _assert_local(variable: str) -> None:
+    """G1: a test URL that is not loopback is a usage error, never a skip.
 
-    The realistic leak is not a hardcoded cloud DSN — root conftests already
-    refuse to load ``.env`` into the environment. It is a developer with
-    ``DATABASE_URL`` exported in their shell, which defeats every
-    ``os.environ.setdefault`` in the fleet. Test fixtures ``TRUNCATE`` and
-    ``DROP DATABASE``; the cloud database is the only live environment there is.
+    Test fixtures ``TRUNCATE`` and ``DROP DATABASE``; the cloud database is the
+    only live environment there is.
     """
     from urllib.parse import urlsplit
 
-    from tr_shared.db.utils import is_local_dsn
+    from tr_shared.db.utils import LOOPBACK_HOSTS
 
-    if is_local_dsn(dsn):
+    url = os.environ.get(variable)
+    if not url:
         return
-    host = (urlsplit(dsn).hostname or "").lower()
-    raise SystemExit(
-        f"TEST_DATABASE_URL points at a non-local host ({host!r}). Refusing to run: "
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    if host in LOOPBACK_HOSTS:
+        return
+    raise pytest.UsageError(
+        f"{variable} points at a non-local host ({host!r}). Refusing to run: "
         "test fixtures TRUNCATE and DROP DATABASE, and the remote database is the "
-        "only live environment we have. Unset it to use a container."
+        "only live environment we have. Use localhost, 127.0.0.1 or ::1, or unset it "
+        "to use a container."
     )

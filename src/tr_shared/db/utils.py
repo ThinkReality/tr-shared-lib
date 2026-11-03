@@ -4,7 +4,10 @@ from urllib.parse import urlparse, urlsplit, urlunparse
 
 LIKE_ESCAPE_CHAR = "\\"
 
-LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "postgres-test", "db"})
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+"""Loopback names: the only hosts the testing plugin accepts in ``TEST_DATABASE_URL``/``TEST_REDIS_URL``."""
+
+LOCAL_DB_HOSTS = LOOPBACK_HOSTS | frozenset({"postgres", "postgres-test", "db"})
 """Hosts that count as a database on this machine.
 
 SSOT for a question two guards ask: the testing plugin's G1 check (a non-local

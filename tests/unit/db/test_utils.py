@@ -90,3 +90,17 @@ def test_an_unparseable_port_does_not_change_the_host_verdict():
     """Only `.port` raises on a non-numeric port, and this never reads `.port`.
     The host is still localhost, so the honest answer is local."""
     assert is_local_dsn("postgresql+asyncpg://u:p@localhost:notaport/db") is True
+
+
+def test_loopback_hosts_are_the_three_loopback_names():
+    from tr_shared.db import utils
+
+    assert utils.LOOPBACK_HOSTS == frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def test_local_hosts_still_hold_the_compose_hosts_for_the_merge_gate():
+    from tr_shared.db import utils
+
+    assert utils.LOOPBACK_HOSTS <= utils.LOCAL_DB_HOSTS
+    assert {"postgres", "postgres-test", "db"} <= utils.LOCAL_DB_HOSTS
+    assert utils.LOCAL_DB_HOST_PREFIX == "tr-test-"

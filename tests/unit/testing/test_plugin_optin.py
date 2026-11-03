@@ -34,6 +34,7 @@ pathlib.Path("env_at_conftest_import.json").write_text(json.dumps({
     "DATABASE_URL": os.environ.get("DATABASE_URL"),
     "REDIS_URL": os.environ.get("REDIS_URL"),
     "ENVIRONMENT": os.environ.get("ENVIRONMENT"),
+    "SERVICE_TOKEN": os.environ.get("SERVICE_TOKEN"),
 }))
 """
 
@@ -57,13 +58,13 @@ def _project(tmp_path: Path, *, opted_in: bool) -> Path:
     return tmp_path
 
 
-def _run_pytest(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run_pytest(project: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "pytest", "tests/unit/", "-q", "-p", "no:cacheprovider", *args],
         cwd=project,
         capture_output=True,
         text=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(project)},
+        env={"PATH": "/usr/bin:/bin", "HOME": str(project), **env},
     )
 
 
@@ -103,12 +104,15 @@ class TestActiveAfterOptIn:
         get_settings(), inside tests/conftest.py. pytest_configure runs after
         that, and a pytest_plugins-declared plugin imports after it too.
         """
+        from tr_shared.testing.config import POLICY_ENV
+
         project = _project(tmp_path, opted_in=True)
-        result = _run_pytest(project)
+        result = _run_pytest(project, ENVIRONMENT="development", SERVICE_TOKEN="x")
         assert result.returncode == 0, result.stdout + result.stderr
 
         env = _recorded(project)
         assert env["ENVIRONMENT"] == "test"
+        assert env["SERVICE_TOKEN"] == POLICY_ENV["SERVICE_TOKEN"]
         assert env["DATABASE_URL"] is not None
 
     def test_unit_lane_gets_the_poison_dsn_and_never_calls_docker(self, tmp_path: Path) -> None:
@@ -116,7 +120,7 @@ class TestActiveAfterOptIn:
         from tr_shared.testing.lanes import POISON_DATABASE_URL, POISON_REDIS_URL
 
         project = _project(tmp_path, opted_in=True)
-        result = _run_pytest(project)
+        result = _run_pytest(project, DOCKER_HOST="unix:///nonexistent")
         assert result.returncode == 0, result.stdout + result.stderr
 
         env = _recorded(project)
@@ -159,12 +163,12 @@ class TestRemoteDsnIsRefused:
                 ),
             },
         )
-        assert result.returncode != 0
+        assert result.returncode == pytest.ExitCode.USAGE_ERROR, result.stdout + result.stderr
         combined = result.stdout + result.stderr
         assert "non-local host" in combined
         assert "supabase.com" in combined
 
-    @pytest.mark.parametrize("host", ["localhost", "127.0.0.1"])
+    @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
     def test_local_test_database_url_is_accepted(self, tmp_path: Path, host: str) -> None:
         project = _project(tmp_path, opted_in=True)
         result = subprocess.run(
@@ -182,6 +186,38 @@ class TestRemoteDsnIsRefused:
         assert _recorded(project)["DATABASE_URL"] == (f"postgresql+asyncpg://u:p@{host}:5432/db")
 
 
+_LOCAL_DSN = "postgresql+asyncpg://u:p@127.0.0.1:5432/db"
+
+
+class TestG1LoopbackOnly:
+    @pytest.mark.parametrize("host", ["db.example.com", "postgres", "tr-test-pg-abc"])
+    def test_a_remote_test_database_url_is_a_usage_error(self, tmp_path: Path, host: str) -> None:
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project, TEST_DATABASE_URL=f"postgresql+asyncpg://u:p@{host}:5432/db"
+        )
+        assert result.returncode == pytest.ExitCode.USAGE_ERROR, result.stdout + result.stderr
+        assert host in result.stdout + result.stderr
+
+    @pytest.mark.parametrize("host", ["db.example.com", "redis"])
+    def test_a_remote_test_redis_url_is_a_usage_error(self, tmp_path: Path, host: str) -> None:
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project, TEST_DATABASE_URL=_LOCAL_DSN, TEST_REDIS_URL=f"redis://{host}:6379"
+        )
+        assert result.returncode == pytest.ExitCode.USAGE_ERROR, result.stdout + result.stderr
+        assert host in result.stdout + result.stderr
+
+    @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
+    def test_a_loopback_test_redis_url_is_accepted(self, tmp_path: Path, host: str) -> None:
+        project = _override_project(tmp_path)
+        result = _run_override(
+            project, TEST_DATABASE_URL=_LOCAL_DSN, TEST_REDIS_URL=f"redis://{host}:6379"
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _recorded(project)["REDIS_URL"] == f"redis://{host}:6379/0"
+
+
 # --------------------------------------------------------------------------- #
 # The TEST_DATABASE_URL override branch (L-A / D13)
 # --------------------------------------------------------------------------- #
@@ -193,11 +229,12 @@ pathlib.Path("env_at_conftest_import.json").write_text(json.dumps({
     "REDIS_URL": os.environ.get("REDIS_URL"),
     "CELERY_BROKER_URL": os.environ.get("CELERY_BROKER_URL"),
     "CELERY_RESULT_BACKEND": os.environ.get("CELERY_RESULT_BACKEND"),
+    "TR_TESTING_RUN_ID": os.environ.get("TR_TESTING_RUN_ID"),
 }))
 """
 
 
-def _override_project(tmp_path: Path, *, migrate_ok: bool = True) -> Path:
+def _override_project(tmp_path: Path, *, migrate_ok: bool = True, extra_toml: str = "") -> Path:
     """A project whose migrate_command is observable and can be made to fail.
 
     `migrate_command = ["true"]` in `_project` above cannot distinguish "migrations
@@ -206,7 +243,10 @@ def _override_project(tmp_path: Path, *, migrate_ok: bool = True) -> Path:
     rather than an invisible no-op.
     """
     script = tmp_path / "fake_migrate.sh"
-    body = 'printf "%s" "$DATABASE_URL" > "$(dirname "$0")/migrated.txt"\n'
+    body = (
+        'printf "%s" "$DATABASE_URL" > "$(dirname "$0")/migrated.txt"\n'
+        'env > "$(dirname "$0")/migrate_env.txt"\n'
+    )
     script.write_text(
         "#!/bin/sh\n" + body + ("exit 0\n" if migrate_ok else "echo 'boom' >&2\nexit 1\n")
     )
@@ -217,7 +257,7 @@ def _override_project(tmp_path: Path, *, migrate_ok: bool = True) -> Path:
         "[tool.tr_testing]\n"
         'service = "tr-demo"\n'
         f'migrate_command = ["{script}"]\n'
-        'migration_globs = ["migrations/*.py"]\n'
+        'migration_globs = ["migrations/*.py"]\n' + extra_toml
     )
     integration = tmp_path / "tests" / "integration"
     integration.mkdir(parents=True)
@@ -315,3 +355,112 @@ class TestOverrideBranchRedisIsolation:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert _recorded(project)["REDIS_URL"] == POISON_REDIS_URL
+
+
+_HOSTILE = {
+    "database_url": "postgresql://leak@db.example.com/x",
+    "LANGSMITH_TRACING": "true",
+    "GOOGLE_API_KEY": "leak",
+    "ENVIRONMENT": "development",
+    "AUTH_LIB_DEV_MODE_BYPASS": "true",
+    "UV_ENV_FILE": ".env",
+}
+
+_TABLE = '\n[tool.tr_testing.env]\nDEMO_TABLE_KEY = "from-table"\n'
+
+
+class TestMigrateSubprocessEnv:
+    def test_table_and_policy_reach_the_migrate_subprocess(self, tmp_path: Path) -> None:
+        project = _override_project(tmp_path, extra_toml=_TABLE)
+        result = _run_override(project, TEST_DATABASE_URL=_LOCAL_DSN, **_HOSTILE)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        lines = (project / "migrate_env.txt").read_text().splitlines()
+        env = dict(line.split("=", 1) for line in lines if "=" in line)
+        assert env["DEMO_TABLE_KEY"] == "from-table"
+        assert env["ENVIRONMENT"] == "test"
+        assert env["DATABASE_URL"] == _LOCAL_DSN
+        assert not set(_HOSTILE) - {"ENVIRONMENT"} & set(env)
+
+    def test_an_inherited_run_id_is_not_reused_by_the_controller(self, tmp_path: Path) -> None:
+        project = _override_project(tmp_path)
+        result = _run_override(project, TEST_DATABASE_URL=_LOCAL_DSN, TR_TESTING_RUN_ID="stale")
+        assert result.returncode == 0, result.stdout + result.stderr
+        run_id = _recorded(project)["TR_TESTING_RUN_ID"]
+        assert run_id and run_id != "stale"
+
+
+_SCRUB_CONFTEST = """
+import json, os, pathlib
+role = os.environ.get("PYTEST_XDIST_WORKER", "controller")
+pathlib.Path(f"env_conftest_{role}.json").write_text(json.dumps(dict(os.environ)))
+"""
+
+_SCRUB_TEST = """
+import json, os, pathlib, subprocess, sys
+
+from pkg.mod import answer
+
+
+def _record():
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    pathlib.Path(f"env_test_{worker}.json").write_text(json.dumps(dict(os.environ)))
+    child = subprocess.run(
+        [sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ)))"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    pathlib.Path(f"env_child_{worker}.json").write_text(child)
+
+
+def test_one():
+    _record()
+    assert answer() == 42
+
+
+def test_two():
+    _record()
+    assert answer() == 42
+"""
+
+
+def _scrub_project(tmp_path: Path) -> Path:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0"\n'
+        '[tool.pytest.ini_options]\npythonpath = ["."]\n' + _OPT_IN + _TABLE
+    )
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "mod.py").write_text("def answer():\n    return 42\n")
+    tests = tmp_path / "tests" / "unit"
+    tests.mkdir(parents=True)
+    (tmp_path / "tests" / "conftest.py").write_text(textwrap.dedent(_SCRUB_CONFTEST))
+    (tests / "test_scrub.py").write_text(textwrap.dedent(_SCRUB_TEST))
+    (tmp_path / "migrations").mkdir()
+    return tmp_path
+
+
+class TestScrub:
+    def test_xdist_workers_controller_and_subprocesses_see_only_the_owned_env(
+        self, tmp_path: Path
+    ) -> None:
+        import json
+
+        from tr_shared.testing.config import POLICY_ENV
+
+        project = _scrub_project(tmp_path)
+        result = _run_pytest(project, "-n", "2", "--cov=pkg", "--cov-report=term", **_HOSTILE)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        recorded = {p.name: json.loads(p.read_text()) for p in project.glob("env_*.json")}
+        workers = [n for n in recorded if n.startswith("env_test_gw")]
+        assert "env_conftest_controller.json" in recorded
+        assert workers, sorted(recorded)
+        assert any(n.startswith("env_child_gw") for n in recorded)
+        for name, env in recorded.items():
+            assert not (set(_HOSTILE) - {"ENVIRONMENT"}) & set(env), name
+            assert env["DEMO_TABLE_KEY"] == "from-table", name
+            for key, value in POLICY_ENV.items():
+                assert env[key] == value, (name, key)
+
+        cov_line = next(line for line in result.stdout.splitlines() if "pkg/mod.py" in line)
+        assert cov_line.rstrip().endswith("100%"), result.stdout

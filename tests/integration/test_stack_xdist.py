@@ -113,6 +113,11 @@ def test_b(): _snapshot()
 """
 
 
+def _pin_container(project: Path, pg_container: str) -> None:
+    with (project / "pyproject.toml").open("a") as pyproject:
+        pyproject.write(f'\n[tool.tr_testing.env]\nTR_PG_CONTAINER = "{pg_container}"\n')
+
+
 def _project(tmp_path: Path, token: str) -> Path:
     """A project whose fingerprint is unique to `token`.
 
@@ -174,6 +179,7 @@ class TestOneContainerServesEveryWorker:
         key = _key(project)
         cleanup_containers.append(key)
         pg_container = f"tr-test-pg-{key}"
+        _pin_container(project, pg_container)
 
         result = subprocess.run(
             [
@@ -193,7 +199,6 @@ class TestOneContainerServesEveryWorker:
             env={
                 "PATH": f"/usr/local/bin:/usr/bin:/bin:{Path(sys.executable).parent}",
                 "HOME": str(project),
-                "TR_PG_CONTAINER": pg_container,
             },
         )
         assert result.returncode == 0, result.stdout + result.stderr
@@ -244,10 +249,10 @@ class TestOneContainerServesEveryWorker:
         key = _key(project)
         cleanup_containers.append(key)
         pg_container = f"tr-test-pg-{key}"
+        _pin_container(project, pg_container)
         env = {
             "PATH": f"/usr/local/bin:/usr/bin:/bin:{Path(sys.executable).parent}",
             "HOME": str(project),
-            "TR_PG_CONTAINER": pg_container,
         }
         cmd = [sys.executable, "-m", "pytest", "tests/integration/", "-q", "-p", "no:cacheprovider"]
 
@@ -298,6 +303,7 @@ class TestOnlyProcessesThatRunTestsGetADatabase:
         key = _key(project)
         cleanup_containers.append(key)
         pg_container = f"tr-test-pg-{key}"
+        _pin_container(project, pg_container)
 
         result = subprocess.run(
             [
@@ -316,7 +322,6 @@ class TestOnlyProcessesThatRunTestsGetADatabase:
             env={
                 "PATH": f"/usr/local/bin:/usr/bin:/bin:{Path(sys.executable).parent}",
                 "HOME": str(project),
-                "TR_PG_CONTAINER": pg_container,
                 **extra_env,
             },
         )
