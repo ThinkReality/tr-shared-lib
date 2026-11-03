@@ -26,7 +26,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-__all__ = ["TestingConfig", "admin_database_url", "find_config"]
+import pytest
+
+__all__ = [
+    "CONTROL_ENV",
+    "ENV_PASSTHROUGH",
+    "INFRA_ENV",
+    "PLUGIN_OWNED_ENV",
+    "POLICY_ENV",
+    "TestingConfig",
+    "admin_database_url",
+    "find_config",
+    "passes_scrub",
+]
 
 _DEFAULT_POSTGRES_IMAGE = "supabase/postgres:17.6.1.178"
 _DEFAULT_REDIS_IMAGE = "redis:7-alpine"
@@ -42,6 +54,77 @@ DATABASE_LAYOUT = (
     "CREATE EXTENSION supabase_vault",
 )
 
+ENV_PASSTHROUGH: dict[str, str] = {
+    "PATH": "executable lookup for subprocesses (git for G18, the migrate command) and shutil.which",
+    "HOME": "~ expansion: the Docker client's ~/.docker config, git config, coverage",
+    "USER": "getpass.getuser(), which names pytest's tmp_path base directory",
+    "LOGNAME": "getpass.getuser(), which names pytest's tmp_path base directory",
+    "TMPDIR": "tempfile (pytest tmp_path, coverage data files)",
+    "TMP": "tempfile (pytest tmp_path, coverage data files)",
+    "TEMP": "tempfile (pytest tmp_path, coverage data files)",
+    "LANG": "locale and text encoding (locale, gettext, subprocess I/O)",
+    "LC_*": "locale and text encoding (locale, gettext, subprocess I/O)",
+    "TZ": "local-time conversion (libc, tzlocal, dateutil)",
+    "TERM": "pytest's terminal writer (colour, width)",
+    "CI": "pytest prints full assertion diffs on CI",
+    "SSL_CERT_FILE": "TLS trust for httpx, requests and the Docker client",
+    "SSL_CERT_DIR": "TLS trust for httpx, requests and the Docker client",
+    "REQUESTS_CA_BUNDLE": "TLS trust for httpx, requests and the Docker client",
+    "HTTP_PROXY": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "HTTPS_PROXY": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "NO_PROXY": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "ALL_PROXY": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "http_proxy": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "https_proxy": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "no_proxy": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "all_proxy": "stdlib proxy discovery (httpx trust_env) and the Docker client",
+    "TEST_DATABASE_URL": "the plugin's CI override (CONTROL_ENV)",
+    "TEST_REDIS_URL": "the plugin's CI override (CONTROL_ENV)",
+    "PYTHON*": "interpreter settings (PYTHONPATH, PYTHONHASHSEED, PYTHONDONTWRITEBYTECODE)",
+    "PYTEST_*": "pytest itself (PYTEST_ADDOPTS, PYTEST_XDIST_WORKER, PYTEST_CURRENT_TEST)",
+    "COVERAGE_*": "coverage in xdist workers and subprocesses (COVERAGE_PROCESS_CONFIG, COVERAGE_FILE)",
+    "DOCKER_*": "the plugin's Docker client, docker.from_env() (DOCKER_HOST, DOCKER_CONFIG, ...)",
+    "XDG_*": "config and cache directories for git (G18) and platformdirs",
+    "TR_TESTING_*": "the plugin's own controls (TR_TESTING_RUN_ID, TR_TESTING_FRESH)",
+    "GITHUB_ACTIONS": "CI detection (asyncpg, greenlet, google-auth)",
+}
+
+INFRA_ENV: tuple[str, ...] = (
+    "DATABASE_URL",
+    "REDIS_URL",
+    "CELERY_BROKER_URL",
+    "CELERY_RESULT_BACKEND",
+)
+
+POLICY_ENV: dict[str, str] = {
+    "ENVIRONMENT": "test",
+    "AUTH_LIB_GATEWAY_SIGNING_SECRET": "test-gateway-signing-secret",
+    "AUTH_LIB_SERVICE_TOKEN": "test-outbound-service-token",
+    "SERVICE_TOKEN": "test-inbound-service-token",
+}
+
+CONTROL_ENV: tuple[str, ...] = (
+    "TEST_DATABASE_URL",
+    "TEST_REDIS_URL",
+    "TR_TESTING_RUN_ID",
+    "TR_TESTING_FRESH",
+    "PYTEST_XDIST_WORKER",
+)
+
+PLUGIN_OWNED_ENV: frozenset[str] = frozenset({*INFRA_ENV, *POLICY_ENV, *CONTROL_ENV})
+
+_PASSTHROUGH_NAMES = frozenset(k for k in ENV_PASSTHROUGH if not k.endswith("*"))
+_PASSTHROUGH_PREFIXES = tuple(k[:-1] for k in ENV_PASSTHROUGH if k.endswith("*"))
+
+_STRING_KEYS = ("service", "postgres_image", "redis_image", "database_name")
+_LIST_KEYS = ("migrate_command", "migration_globs")
+_KNOWN_KEYS = frozenset({*_STRING_KEYS, *_LIST_KEYS, "env"})
+
+
+def passes_scrub(key: str) -> bool:
+    """Whether an inherited environment variable survives the plugin's scrub (case-sensitive)."""
+    return key in _PASSTHROUGH_NAMES or key.startswith(_PASSTHROUGH_PREFIXES)
+
 
 @dataclass(frozen=True)
 class TestingConfig:
@@ -54,6 +137,7 @@ class TestingConfig:
     postgres_image: str = _DEFAULT_POSTGRES_IMAGE
     redis_image: str = _DEFAULT_REDIS_IMAGE
     database_name: str = "test"
+    env: tuple[tuple[str, str], ...] = ()
     _fingerprint: list[str] = field(default_factory=list, compare=False, repr=False)
 
     def fingerprint(self) -> str:
@@ -125,29 +209,54 @@ def find_config(start: Path) -> TestingConfig | None:
     return None
 
 
-def _build(table: dict[str, object], root: Path) -> TestingConfig | None:
-    service = table.get("service")
-    if not isinstance(service, str) or not service:
-        return None
+def _build(table: dict[str, object], root: Path) -> TestingConfig:
+    unknown = sorted(set(table) - _KNOWN_KEYS)
+    if unknown:
+        raise pytest.UsageError(f"[tool.tr_testing] has unknown keys: {unknown}")
+    if "service" not in table:
+        raise pytest.UsageError("[tool.tr_testing] must set service")
+    for key in _STRING_KEYS:
+        value = table.get(key)
+        if key in table and not (isinstance(value, str) and value):
+            raise pytest.UsageError(f"[tool.tr_testing] {key} must be a non-empty string")
+    for key in _LIST_KEYS:
+        value = table.get(key)
+        if key in table and not (
+            isinstance(value, list) and value and all(isinstance(v, str) and v for v in value)
+        ):
+            raise pytest.UsageError(
+                f"[tool.tr_testing] {key} must be a non-empty list of non-empty strings"
+            )
 
     def _strings(key: str, default: tuple[str, ...]) -> tuple[str, ...]:
         value = table.get(key)
-        if value is None:
-            return default
-        if isinstance(value, list) and all(isinstance(v, str) for v in value):
-            return tuple(str(v) for v in value)
-        return default
+        return tuple(value) if isinstance(value, list) else default
 
     def _string(key: str, default: str) -> str:
         value = table.get(key)
-        return value if isinstance(value, str) and value else default
+        return value if isinstance(value, str) else default
 
     return TestingConfig(
-        service=service,
+        service=_string("service", ""),
         root=root,
         migrate_command=_strings("migrate_command", ("alembic", "upgrade", "head")),
         migration_globs=_strings("migration_globs", ("**/alembic/versions/*.py",)),
         postgres_image=_string("postgres_image", _DEFAULT_POSTGRES_IMAGE),
         redis_image=_string("redis_image", _DEFAULT_REDIS_IMAGE),
         database_name=_string("database_name", "test"),
+        env=_env_table(table.get("env", {})),
     )
+
+
+def _env_table(value: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, dict):
+        raise pytest.UsageError("[tool.tr_testing] env must be a table, [tool.tr_testing.env]")
+    owned = {k.upper() for k in PLUGIN_OWNED_ENV}
+    for key, item in value.items():
+        if not isinstance(item, str):
+            raise pytest.UsageError(f"[tool.tr_testing.env] {key} must be a string")
+        if key.upper() in owned:
+            raise pytest.UsageError(
+                f"[tool.tr_testing.env] {key} is owned by the plugin and cannot be set here"
+            )
+    return tuple(value.items())
