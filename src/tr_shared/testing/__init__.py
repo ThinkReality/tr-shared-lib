@@ -40,6 +40,7 @@ from tr_shared.testing.config import TestingConfig, admin_database_url, find_con
 from tr_shared.testing.env_contract import assert_no_orphan_env_keys
 from tr_shared.testing.guards import (
     assert_no_auth_chain_bypass,
+    assert_no_dotenv_loading,
     assert_no_env_mutation_in_conftest,
     assert_no_infra_skips,
     assert_no_local_client_ip_derivation,
@@ -96,6 +97,7 @@ __all__ = [
     "assert_no_orphan_env_keys",
     "assert_exemptions_are_machine_verified",
     "assert_no_auth_chain_bypass",
+    "assert_no_dotenv_loading",
     "assert_no_env_mutation_in_conftest",
     "assert_no_infra_skips",
     "assert_no_local_client_ip_derivation",

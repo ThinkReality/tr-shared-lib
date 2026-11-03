@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from tr_shared.contracts import ErrorCategory
+from tr_shared.testing import guards as guards_module
 from tr_shared.testing.guards import (
     Exemption,
     assert_environment_vocabulary,
@@ -823,3 +824,125 @@ class TestErrorCodesCarryPrefix:
             'super().__init__(detail, code="MEDIA_FORBIDDEN_001")\n',
         )
         assert_error_codes_carry_prefix(root / "app", "MEDIA")
+
+
+def _git_repo(
+    tmp_path: Path, files: dict[str, str], *, untracked: dict[str, str] | None = None
+) -> Path:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for name, source in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    for name, source in (untracked or {}).items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+    return tmp_path
+
+
+class TestG18DotenvLoading:
+    @pytest.mark.parametrize(
+        ("source", "line"),
+        [
+            ("import dotenv\n", 1),
+            ("import dotenv as de\n", 1),
+            ("import dotenv.main\n", 1),
+            ("from dotenv import *\n", 1),
+            ("from dotenv import load_dotenv\n", 1),
+            ("from dotenv.main import dotenv_values\n", 1),
+            ("from pydantic_settings import DotEnvSettingsSource\n", 1),
+            ("from pydantic_settings.sources import DotEnvSettingsSource as D\n", 1),
+            ("Settings(_env_file=None)\n", 1),
+            ("x = 1\nSettings(_env_file='.env')\n", 2),
+            ("model_config = SettingsConfigDict(env_file='.env')\n", 1),
+            ("model_config = pydantic_settings.SettingsConfigDict(env_file=None)\n", 1),
+            ("model_config = ConfigDict(env_file='.env')\n", 1),
+            ("model_config = dict(env_file='.env')\n", 1),
+            ("kwargs = {'_env_file': None}\n", 1),
+            ("cfg.update({'env_file': '.env'})\n", 1),
+            ("Settings(**{'_env_file': '.env'})\n", 1),
+            ("model_config['env_file'] = '.env'\n", 1),
+            ("env_file: str = '.env'\n", 1),
+            ("_env_file = None\n", 1),
+            ("class S:\n    env_file = '.env'\n", 2),
+        ],
+    )
+    def test_each_dotenv_form_is_flagged(self, source: str, line: int) -> None:
+        assert guards_module.detect_dotenv_loading(source) == [line]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "NAMES = {'env_file', '_env_file'}\n",
+            "NAMES = ('env_file', '_env_file')\n",
+            "hint = 'set env_file in the launcher'\n",
+            "logger.warning('env_file_unreadable', env_file=str(path))\n",
+            "def env_file(tmp_path):\n    return tmp_path\n",
+            "def audit(env_file):\n    return parse(env_file)\n",
+            "import os\nfrom pydantic_settings import BaseSettings\n",
+        ],
+    )
+    def test_correct_forms_are_not_flagged(self, source: str) -> None:
+        assert guards_module.detect_dotenv_loading(source) == []
+
+    def test_a_violation_is_reported_with_its_path(self, tmp_path: Path) -> None:
+        root = _git_repo(
+            tmp_path, {"app/config.py": "from dotenv import load_dotenv\n", "app/ok.py": "x = 1\n"}
+        )
+        with pytest.raises(AssertionError, match="app/config.py"):
+            guards_module.assert_no_dotenv_loading(root)
+
+    def test_a_clean_repo_passes(self, tmp_path: Path) -> None:
+        guards_module.assert_no_dotenv_loading(_git_repo(tmp_path, {"app/ok.py": "x = 1\n"}))
+
+    def test_an_untracked_file_is_scanned(self, tmp_path: Path) -> None:
+        root = _git_repo(
+            tmp_path, {"app/ok.py": "x = 1\n"}, untracked={"app/new.py": "import dotenv\n"}
+        )
+        with pytest.raises(AssertionError, match="app/new.py"):
+            guards_module.assert_no_dotenv_loading(root)
+
+    def test_an_ignored_file_is_not_scanned(self, tmp_path: Path) -> None:
+        root = _git_repo(
+            tmp_path,
+            {".gitignore": ".venv/\n", "app/ok.py": "x = 1\n"},
+            untracked={".venv/lib/site.py": "import dotenv\n"},
+        )
+        guards_module.assert_no_dotenv_loading(root)
+
+    def test_a_deleted_but_indexed_file_is_skipped(self, tmp_path: Path) -> None:
+        root = _git_repo(tmp_path, {"app/ok.py": "x = 1\n", "app/gone.py": "import dotenv\n"})
+        (root / "app" / "gone.py").unlink()
+        guards_module.assert_no_dotenv_loading(root)
+
+    def test_a_git_error_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "ok.py").write_text("x = 1\n")
+        with pytest.raises(AssertionError, match="git"):
+            guards_module.assert_no_dotenv_loading(tmp_path)
+
+    def test_an_empty_file_list_fails(self, tmp_path: Path) -> None:
+        root = _git_repo(tmp_path, {"README.md": "docs\n"})
+        with pytest.raises(AssertionError, match="zero"):
+            guards_module.assert_no_dotenv_loading(root)
+
+    def test_an_exemption_needs_its_symbol(self, tmp_path: Path) -> None:
+        root = _git_repo(tmp_path, {"tests/test_example.py": "Settings(_env_file=EXAMPLE)\n"})
+        exempt = {"tests/test_example.py": Exemption(reason="r", requires_symbols=("EXAMPLE",))}
+        guards_module.assert_no_dotenv_loading(root, allowlist=exempt)
+        stale = {"tests/test_example.py": Exemption(reason="r", requires_symbols=("GONE",))}
+        with pytest.raises(AssertionError, match="GONE"):
+            guards_module.assert_no_dotenv_loading(root, allowlist=stale)
+
+    def test_the_allowlist_is_keyword_only(self, tmp_path: Path) -> None:
+        root = _git_repo(tmp_path, {"app/ok.py": "x = 1\n"})
+        with pytest.raises(TypeError):
+            guards_module.assert_no_dotenv_loading(root, {})
+
+    def test_it_is_exported_from_the_testing_package(self) -> None:
+        import tr_shared.testing
+
+        assert tr_shared.testing.assert_no_dotenv_loading is guards_module.assert_no_dotenv_loading

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -52,6 +53,7 @@ __all__ = [
     "assert_error_codes_carry_prefix",
     "assert_every_test_file_has_a_lane",
     "assert_no_auth_chain_bypass",
+    "assert_no_dotenv_loading",
     "assert_no_env_mutation_in_conftest",
     "assert_no_flattened_errors",
     "assert_no_infra_skips",
@@ -62,6 +64,7 @@ __all__ = [
     "assert_no_testing_flag_in_production",
     "assert_no_unpooled_redis_clients",
     "assert_not_found_names_a_resource",
+    "detect_dotenv_loading",
     "detect_nonstandard_error_code",
     "detect_not_found_sentence",
     "detect_unpooled_redis_client",
@@ -1434,4 +1437,111 @@ def assert_error_codes_carry_prefix(
         "tr_shared.contracts.ErrorCategory and the category of the class that raises it; NNN "
         "is 001 or higher, written as a literal. Rename it, or raise the shared class without "
         "code= and the handler renders {PREFIX}_{CATEGORY}_000.",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# G18 — nothing reads a dotenv file
+# --------------------------------------------------------------------------- #
+
+_DOTENV_NAMES = frozenset({"env_file", "_env_file"})
+_CONFIG_DICT_CALLS = frozenset({"SettingsConfigDict", "ConfigDict", "dict"})
+
+
+def _is_dotenv_module(name: str | None) -> bool:
+    return name is not None and (name == "dotenv" or name.startswith("dotenv."))
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _target_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def detect_dotenv_loading(source: str) -> list[int]:
+    """Lines that import dotenv or configure pydantic-settings to read a dotenv file."""
+    hits: list[int] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            if any(_is_dotenv_module(alias.name) for alias in node.names):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            if _is_dotenv_module(node.module) or any(
+                alias.name == "DotEnvSettingsSource" for alias in node.names
+            ):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg == "_env_file" or (
+                    keyword.arg == "env_file" and _call_name(node) in _CONFIG_DICT_CALLS
+                ):
+                    hits.append(node.lineno)
+        elif isinstance(node, ast.Dict):
+            if any(
+                isinstance(key, ast.Constant) and key.value in _DOTENV_NAMES for key in node.keys
+            ):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.Subscript):
+            if isinstance(node.slice, ast.Constant) and node.slice.value in _DOTENV_NAMES:
+                hits.append(node.lineno)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            if any(_target_name(t) in _DOTENV_NAMES for t in _assignment_targets(node)):
+                hits.append(node.lineno)
+    return sorted(set(hits))
+
+
+def _git_python_files(repo_root: Path) -> list[Path]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ]
+        + ["--", "*.py"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"G18: git ls-files failed in {repo_root}: {result.stderr}"
+    names = sorted({name for name in result.stdout.split("\0") if name})
+    return [repo_root / name for name in names if (repo_root / name).is_file()]
+
+
+def assert_no_dotenv_loading(
+    repo_root: Path, *, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """G18. Code reads only the process environment; launchers own ``.env``.
+
+    Scans every Python file git tracks or would track under ``repo_root``. Flags any
+    ``dotenv`` import, a ``DotEnvSettingsSource`` import, ``_env_file=`` on any call,
+    ``env_file=`` on ``SettingsConfigDict``/``ConfigDict``/``dict``, either name as a
+    dict-literal key or subscript, and any assignment target with either name.
+    """
+    files = _git_python_files(repo_root)
+    assert files, (
+        f"G18 scanned zero Python files under {repo_root}; the guard would pass vacuously."
+    )
+    found = find_violations(
+        repo_root, detect_dotenv_loading, iterator=lambda root, skip=(): iter(files)
+    )
+    _check(
+        repo_root,
+        found,
+        allowlist or {},
+        "Code reads a dotenv file. Settings read only the process environment; the "
+        "launcher (compose env_file, Railway variables, `uv run --env-file .env`) owns .env.",
     )
