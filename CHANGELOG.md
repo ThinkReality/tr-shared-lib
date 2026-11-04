@@ -5,7 +5,7 @@ All notable changes to tr-shared-lib will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.115.0] - Unreleased
+## [0.115.0] - 2026-11-04
 
 Env-only config and hermetic tests (plan `2026-10-29-env-only-config-hermetic-tests.md`, tasks L1-L6). Breaking:
 services adopt it in their own relock PR.
