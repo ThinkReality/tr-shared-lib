@@ -63,7 +63,11 @@ def lane_for_path(path: str) -> str | None:
 
 
 def run_needs_infrastructure(
-    args: list[str], markexpr: str = "", *, root: Path | None = None
+    args: list[str],
+    markexpr: str = "",
+    *,
+    root: Path | None = None,
+    invocation_dir: Path | None = None,
 ) -> bool:
     """Whether this invocation must provision Postgres and Redis.
 
@@ -92,16 +96,28 @@ def run_needs_infrastructure(
     The parameter stays in the signature because the plugin passes it and it keeps
     the regression explicit in the tests. A bare ``pytest -m integration`` still
     provisions — not because of the marker, but because it names no paths.
+
+    An argument is resolved against ``invocation_dir`` (default ``root``) and
+    classified by its path relative to ``root`` (default the working directory),
+    as the lane marker is. Directories above the root never decide the lane: a
+    checkout under ``api/`` is still unit. A path outside the root is unclassified.
     """
-    base = root or Path.cwd()
+    base = (root or Path.cwd()).resolve()
+    invoked_from = invocation_dir or base
     paths = []
     for arg in args:
         if arg.startswith("-"):
             continue
         # Strip ::TestClass::test_name selectors before classifying.
         candidate = arg.split("::", 1)[0]
-        if candidate and (base / candidate).exists():
-            paths.append(candidate)
+        if not candidate:
+            continue
+        path = (invoked_from / candidate).resolve()
+        if not path.exists():
+            continue
+        if not path.is_relative_to(base):
+            return True
+        paths.append(path.relative_to(base).as_posix())
 
     # Every path positively identified as unit — nothing else can be selected,
     # whatever the marker expression says.

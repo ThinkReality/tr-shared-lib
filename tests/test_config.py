@@ -39,8 +39,6 @@ _PROD_BASE = {
     "ENVIRONMENT": "production",
     "DATABASE_URL": "postgresql+asyncpg://prod-host:5432/db",
     "SERVICE_TOKEN": "tok",
-    "AUTH_LIB_GATEWAY_SIGNING_SECRET": "secret",
-    "AUTH_LIB_SERVICE_TOKEN": "s2s-token",
     "REDIS_URL": "redis://prod-redis:6379/0",
     "CELERY_BROKER_URL": "redis://prod-redis:6379/1",
     "CORS_ORIGINS": "https://app.thinkrealty.com",
@@ -55,6 +53,11 @@ _PROD_SUPABASE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test")
+
+
 class TestBaseServiceSettings:
     def test_defaults(self):
         s = BaseServiceSettings(SERVICE_NAME="test-svc")
@@ -63,9 +66,19 @@ class TestBaseServiceSettings:
         assert s.DATABASE_POOL_SIZE == 2
         assert s.SUPABASE_JWT_AUDIENCE == "authenticated"
 
-    def test_production_requires_database_url(self):
-        with pytest.raises(ValidationError, match="DATABASE_URL"):
-            BaseServiceSettings(**{**_PROD_BASE, "DATABASE_URL": ""})
+    @pytest.mark.parametrize("environment", ["development", "production"])
+    @pytest.mark.parametrize("value", [None, "", "  "], ids=["unset", "empty", "blank"])
+    def test_database_url_is_required_and_non_blank(
+        self, monkeypatch: pytest.MonkeyPatch, environment: str, value: str | None
+    ):
+        monkeypatch.delenv("DATABASE_URL")
+        base = _PROD_BASE if environment == "production" else {"SERVICE_NAME": "svc"}
+        kwargs = {k: v for k, v in base.items() if k != "DATABASE_URL"}
+        if value is not None:
+            kwargs["DATABASE_URL"] = value
+        with pytest.raises(ValidationError) as excinfo:
+            BaseServiceSettings(**kwargs)
+        assert [error["loc"] for error in excinfo.value.errors()] == [("DATABASE_URL",)]
 
     def test_production_requires_jwks_url_when_supabase_set(self):
         with pytest.raises(ValidationError, match="JWKS_URL"):
@@ -80,13 +93,16 @@ class TestBaseServiceSettings:
         with pytest.raises(ValidationError, match="SERVICE_TOKEN"):
             BaseServiceSettings(**{**_PROD_BASE, "SERVICE_TOKEN": ""})
 
-    def test_production_requires_gateway_signing_secret(self):
-        with pytest.raises(ValidationError, match="AUTH_LIB_GATEWAY_SIGNING_SECRET"):
-            BaseServiceSettings(**{**_PROD_BASE, "AUTH_LIB_GATEWAY_SIGNING_SECRET": ""})
+    def test_shared_auth_lib_owns_the_auth_config(self):
+        owned_elsewhere = [
+            name
+            for name in BaseServiceSettings.model_fields
+            if name.startswith("AUTH_LIB_") or name.endswith("_VAULT_UUID")
+        ]
+        assert owned_elsewhere == []
 
-    def test_production_requires_auth_lib_service_token(self):
-        with pytest.raises(ValidationError, match="AUTH_LIB_SERVICE_TOKEN"):
-            BaseServiceSettings(**{**_PROD_BASE, "AUTH_LIB_SERVICE_TOKEN": ""})
+    def test_production_builds_without_auth_lib_settings(self):
+        assert BaseServiceSettings(**_PROD_BASE).is_production
 
     def test_production_rejects_cors_wildcard(self):
         with pytest.raises(ValidationError, match="CORS wildcard"):

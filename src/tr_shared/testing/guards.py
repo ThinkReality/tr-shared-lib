@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -46,13 +47,15 @@ from tr_shared.testing.lanes import lane_for_path
 from tr_shared.testing.tenant_header_guard import Exemption
 
 __all__ = [
+    "IGNORED_DIRS",
     "Exemption",
     "SwallowedDbError",
     "assert_environment_vocabulary",
     "assert_error_codes_carry_prefix",
     "assert_every_test_file_has_a_lane",
     "assert_no_auth_chain_bypass",
-    "assert_no_env_mutation_in_conftest",
+    "assert_no_dotenv_loading",
+    "assert_no_env_mutation_in_tests",
     "assert_no_flattened_errors",
     "assert_no_infra_skips",
     "assert_no_ryuk_disabled",
@@ -62,6 +65,7 @@ __all__ = [
     "assert_no_testing_flag_in_production",
     "assert_no_unpooled_redis_clients",
     "assert_not_found_names_a_resource",
+    "detect_dotenv_loading",
     "detect_nonstandard_error_code",
     "detect_not_found_sentence",
     "detect_unpooled_redis_client",
@@ -78,27 +82,31 @@ Detector = Callable[[str], list[int]]
 # --------------------------------------------------------------------------- #
 
 
+IGNORED_DIRS = frozenset({".venv", ".worktrees", ".git", "node_modules"})
+"""Directories no guard scans: vendored code, and copies of the repo at other revisions.
+
+Matched against each path relative to the scanned root, so a root that itself lives
+under ``.worktrees/`` is still scanned.
+"""
+
+
+def _skipped(path: Path, root: Path, skip: tuple[str, ...]) -> bool:
+    return any(part in skip or part in IGNORED_DIRS for part in path.relative_to(root).parts)
+
+
 def iter_python_files(root: Path, *, skip: tuple[str, ...] = ()) -> Iterator[Path]:
     for path in sorted(root.rglob("*.py")):
         if path.name == "__init__.py":
             continue
-        if any(part in skip for part in path.parts):
+        if _skipped(path, root, skip):
             continue
         yield path
 
 
 def iter_shell_files(root: Path, *, skip: tuple[str, ...] = ()) -> Iterator[Path]:
-    """Shell scripts under ``root``.
-
-    ``.venv`` holds thousands of vendored scripts that are not ours to police.
-    ``.worktrees`` and ``.git`` hold *copies of this same repo* checked out at other
-    revisions — a guard that scans them reports the same violation two or three times
-    and, worse, goes red because of a branch someone else is mid-way through. All three
-    are skipped unconditionally rather than left to each caller to remember.
-    """
-    ignored = {".venv", ".worktrees", ".git", "node_modules"}
+    """Shell scripts under ``root``, minus ``IGNORED_DIRS``."""
     for path in sorted(root.rglob("*.sh")):
-        if any(part in skip or part in ignored for part in path.parts):
+        if _skipped(path, root, skip):
             continue
         yield path
 
@@ -413,89 +421,86 @@ def assert_no_schema_construction(
 
 
 # --------------------------------------------------------------------------- #
-# G9 — conftests do not rewrite the environment
+# G9 — tests do not write the process environment
 # --------------------------------------------------------------------------- #
 
-_ENV_OWNED = {
-    "DATABASE_URL",
-    "TEST_DATABASE_URL",
-    "REDIS_URL",
-    "CELERY_BROKER_URL",
-    "CELERY_RESULT_BACKEND",
-}
+_ENVIRON_WRITE_METHODS = frozenset(
+    {"setdefault", "update", "pop", "popitem", "clear", "__setitem__", "__delitem__"}
+)
+_OS_ENV_WRITERS = frozenset({"putenv", "unsetenv"})
+
+
+def _is_environ(node: ast.expr) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id == "environ"
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "environ"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+    )
+
+
+def _writes_environ(target: ast.expr) -> bool:
+    return _is_environ(target) or (isinstance(target, ast.Subscript) and _is_environ(target.value))
 
 
 def detect_env_mutation(source: str) -> list[int]:
-    """Assignment into ``os.environ`` for a variable the plugin owns.
+    """A direct write to the process environment, any key.
 
-    ``setdefault`` is caught too: it is what a developer's exported shell
-    variable defeats, which is the realistic path to a test run pointed at a
-    remote database.
+    ``monkeypatch``, ``pytest.MonkeyPatch().context()`` and ``patch.dict(os.environ, ...)``
+    restore what they change, so they are not flagged; neither is building a new dict
+    from ``os.environ``.
     """
     hits: list[int] = []
-    tree = ast.parse(source)
-
-    for node in ast.walk(tree):
-        for target in _assignment_targets(node):
-            if not isinstance(target, ast.Subscript):
-                continue
-            base = target.value
-            is_environ = (isinstance(base, ast.Attribute) and base.attr == "environ") or (
-                isinstance(base, ast.Name) and base.id == "environ"
-            )
-            key = target.slice
-            if (
-                is_environ
-                and isinstance(key, ast.Constant)
-                and isinstance(key.value, str)
-                and key.value in _ENV_OWNED
-            ):
-                hits.append(target.lineno)
-
-        if isinstance(node, ast.Call):
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = list(_assignment_targets(node))
+        elif isinstance(node, (ast.AugAssign, ast.Delete)):
+            targets = [node.target] if isinstance(node, ast.AugAssign) else node.targets
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             func = node.func
-            if (
-                isinstance(func, ast.Attribute)
-                and func.attr == "setdefault"
-                and isinstance(func.value, ast.Attribute)
-                and func.value.attr == "environ"
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and node.args[0].value in _ENV_OWNED
+            if (func.attr in _ENVIRON_WRITE_METHODS and _is_environ(func.value)) or (
+                func.attr in _OS_ENV_WRITERS
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "os"
             ):
                 hits.append(node.lineno)
-
+            continue
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in _OS_ENV_WRITERS:
+                hits.append(node.lineno)
+            continue
+        else:
+            continue
+        if any(_writes_environ(t) for t in targets):
+            hits.append(node.lineno)
     return sorted(set(hits))
 
 
-def assert_no_env_mutation_in_conftest(
-    tests_root: Path, allowlist: Mapping[str, Exemption] | None = None
+def assert_no_env_mutation_in_tests(
+    repo_root: Path, *, allowlist: Mapping[str, Exemption] | None = None
 ) -> None:
-    """G9. The plugin owns the infrastructure variables.
+    """G9. The test plugin owns the test environment; tests never write it directly.
 
-    Scoped to conftests, because that is where a value set at import time wins
-    the race against the app's engine construction.
+    Every file under ``repo_root / "tests"`` is scanned; allowlist keys are
+    ``repo_root``-relative. A test that needs a variable uses the ``monkeypatch``
+    fixture, ``pytest.MonkeyPatch.context()`` or ``patch.dict``.
     """
-    found_conftests = {str(p.relative_to(tests_root)): p for p in tests_root.rglob("conftest.py")}
-    violations = {}
-    for rel, path in found_conftests.items():
-        hits = detect_env_mutation(path.read_text(encoding="utf-8-sig"))
-        if hits:
-            violations[rel] = hits
-
-    allow = allowlist or {}
-    undocumented = {m: v for m, v in violations.items() if m not in allow}
-    assert not undocumented, (
-        "A conftest is rewriting infrastructure environment variables the test "
-        "plugin owns. Setting them here re-introduces the divergence where two "
-        f"suites in one process talk to two different databases:\n{undocumented}"
+    tests_root = repo_root / "tests"
+    files = list(iter_python_files(tests_root))
+    assert files, (
+        f"G9 scanned zero Python files under {tests_root}; the guard would pass vacuously."
     )
-    stale = set(allow) - set(violations)
-    assert not stale, f"Stale G9 exemptions: {sorted(stale)}"
+    _check(
+        repo_root,
+        find_violations(repo_root, detect_env_mutation, iterator=lambda root, skip=(): iter(files)),
+        allowlist or {},
+        "A test writes os.environ directly. The plugin owns the test environment; use the "
+        "monkeypatch fixture, pytest.MonkeyPatch.context() or patch.dict(os.environ, ...).",
+    )
 
 
-# --------------------------------------------------------------------------- #
-# G10 / G11 / G12
 # --------------------------------------------------------------------------- #
 
 
@@ -1434,4 +1439,111 @@ def assert_error_codes_carry_prefix(
         "tr_shared.contracts.ErrorCategory and the category of the class that raises it; NNN "
         "is 001 or higher, written as a literal. Rename it, or raise the shared class without "
         "code= and the handler renders {PREFIX}_{CATEGORY}_000.",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# G18 — nothing reads a dotenv file
+# --------------------------------------------------------------------------- #
+
+_DOTENV_NAMES = frozenset({"env_file", "_env_file"})
+_CONFIG_DICT_CALLS = frozenset({"SettingsConfigDict", "ConfigDict", "dict"})
+
+
+def _is_dotenv_module(name: str | None) -> bool:
+    return name is not None and (name == "dotenv" or name.startswith("dotenv."))
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _target_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def detect_dotenv_loading(source: str) -> list[int]:
+    """Lines that import dotenv or configure pydantic-settings to read a dotenv file."""
+    hits: list[int] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            if any(_is_dotenv_module(alias.name) for alias in node.names):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            if _is_dotenv_module(node.module) or any(
+                alias.name == "DotEnvSettingsSource" for alias in node.names
+            ):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg == "_env_file" or (
+                    keyword.arg == "env_file" and _call_name(node) in _CONFIG_DICT_CALLS
+                ):
+                    hits.append(node.lineno)
+        elif isinstance(node, ast.Dict):
+            if any(
+                isinstance(key, ast.Constant) and key.value in _DOTENV_NAMES for key in node.keys
+            ):
+                hits.append(node.lineno)
+        elif isinstance(node, ast.Subscript):
+            if isinstance(node.slice, ast.Constant) and node.slice.value in _DOTENV_NAMES:
+                hits.append(node.lineno)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            if any(_target_name(t) in _DOTENV_NAMES for t in _assignment_targets(node)):
+                hits.append(node.lineno)
+    return sorted(set(hits))
+
+
+def _git_python_files(repo_root: Path) -> list[Path]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ]
+        + ["--", "*.py"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"G18: git ls-files failed in {repo_root}: {result.stderr}"
+    names = sorted({name for name in result.stdout.split("\0") if name})
+    return [repo_root / name for name in names if (repo_root / name).is_file()]
+
+
+def assert_no_dotenv_loading(
+    repo_root: Path, *, allowlist: Mapping[str, Exemption] | None = None
+) -> None:
+    """G18. Code reads only the process environment; launchers own ``.env``.
+
+    Scans every Python file git tracks or would track under ``repo_root``. Flags any
+    ``dotenv`` import, a ``DotEnvSettingsSource`` import, ``_env_file=`` on any call,
+    ``env_file=`` on ``SettingsConfigDict``/``ConfigDict``/``dict``, either name as a
+    dict-literal key or subscript, and any assignment target with either name.
+    """
+    files = _git_python_files(repo_root)
+    assert files, (
+        f"G18 scanned zero Python files under {repo_root}; the guard would pass vacuously."
+    )
+    found = find_violations(
+        repo_root, detect_dotenv_loading, iterator=lambda root, skip=(): iter(files)
+    )
+    _check(
+        repo_root,
+        found,
+        allowlist or {},
+        "Code reads a dotenv file. Settings read only the process environment; the "
+        "launcher (compose env_file, Railway variables, `uv run --env-file .env`) owns .env.",
     )

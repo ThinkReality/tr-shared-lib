@@ -316,9 +316,10 @@ class TestConnectionPoolDefaults:
 
         assert calls == [{"close": False}]
 
-    def test_settings_defaults_mirror_the_factory(self):
+    def test_settings_defaults_mirror_the_factory(self, monkeypatch: pytest.MonkeyPatch):
         # Services that forward DATABASE_POOL_SIZE/MAX_OVERFLOW from settings must get
         # the same numbers as services that pass nothing — one policy, two entry points.
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test")
         s = BaseServiceSettings(SERVICE_NAME="test-svc")
         assert s.DATABASE_POOL_SIZE == DEFAULT_POOL_SIZE
         assert s.DATABASE_MAX_OVERFLOW == DEFAULT_MAX_OVERFLOW

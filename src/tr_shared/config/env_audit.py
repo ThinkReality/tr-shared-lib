@@ -1,15 +1,3 @@
-"""Report .env keys that no settings class claims.
-
-Every service's Settings is extra="ignore", so a renamed or typo'd env key is
-discarded without a word. This module names them.
-
-Scope note: one .env feeds many BaseSettings classes (AuthLibSettings with
-env_prefix="AUTH_LIB_", WAM's LLMConfig, realty-hub's eight module settings).
-The comparison MUST union all reachable classes; comparing against one class
-reports live keys as orphans and pushes people into re-declaring fields that
-already have an owner.
-"""
-
 from __future__ import annotations
 
 import re
@@ -18,24 +6,16 @@ from pathlib import Path
 from pydantic import AliasChoices, AliasPath
 from pydantic_settings import BaseSettings
 
-from tr_shared.logging.setup import get_logger
-
-logger = get_logger(__name__)
-
 _KEY_RE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
 def parse_env_keys(path: Path | str) -> set[str]:
     """Key names in a dotenv file. Values, comments and blank lines are ignored.
 
-    Never raises: a missing, unreadable (permissions), or non-UTF-8 file all
-    resolve to no keys rather than propagating the read error.
+    A missing, unreadable or non-UTF-8 file raises: a key-set check that reads nothing
+    would pass vacuously.
     """
-    file = Path(path)
-    try:
-        text = file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return set()
+    text = Path(path).read_text(encoding="utf-8")
     return {match.group(1) for line in text.splitlines() if (match := _KEY_RE.match(line))}
 
 
@@ -49,7 +29,7 @@ def _aliases(alias: object) -> set[str]:
     return set()
 
 
-def _declared_env_keys_by_sensitivity(
+def declared_env_keys_by_sensitivity(
     *classes: type[BaseSettings],
 ) -> tuple[set[str], set[str]]:
     """Every env var name the given classes can consume, split by whether the
@@ -114,115 +94,11 @@ def _declared_env_keys(*classes: type[BaseSettings]) -> set[str]:
     names in their declared case, case-insensitive names upper-cased, unioned
     together. It is NOT safe to test a candidate key's membership in this set
     to decide ownership when case-sensitive and case-insensitive classes are
-    mixed (see ``_declared_env_keys_by_sensitivity``) — a public,
+    mixed (see ``declared_env_keys_by_sensitivity``) — a public,
     obvious-sounding name here is exactly what previously led an
     ownership-decision caller to re-derive this same false-negative-prone
     merge instead of using ``unclaimed_env_keys``, which keeps the split form
     internally for that reason. Kept for tests exercising the merge itself.
     """
-    case_sensitive_declared, case_insensitive_declared = _declared_env_keys_by_sensitivity(*classes)
+    case_sensitive_declared, case_insensitive_declared = declared_env_keys_by_sensitivity(*classes)
     return case_sensitive_declared | case_insensitive_declared
-
-
-def _is_test_defined(cls: type[BaseSettings]) -> bool:
-    """True when the class is declared inside the test tree.
-
-    The rule, not a list of instances: a settings class that lives in test code is
-    a fixture, never this service's configuration. Encoded as three module-path
-    shapes because pytest's import modes produce all three — a packaged test
-    module (``tests.config.test_x``), a rootdir-relative one (``test_x``), and a
-    conftest (``tests.conftest`` / ``conftest``).
-    """
-    module = cls.__module__
-    segments = module.split(".")
-    return "tests" in segments or "conftest" in segments or segments[-1].startswith("test_")
-
-
-def config_owner_classes() -> set[type[BaseSettings]]:
-    """Settings classes eligible to own this service's config.
-
-    Every imported BaseSettings subclass, transitively, minus those defined in
-    test modules. Called at startup, after the app's modules are imported, so
-    module-level settings classes (realty-hub) and library ones (AuthLibSettings)
-    are present.
-
-    Test-defined classes are excluded because this function INFERS ownership from
-    what happens to be imported. Under pytest that set includes fixture classes,
-    and a fixture declaring a key would mark a genuinely-orphaned key as claimed —
-    a false negative in the guard. Callers who mean to include a specific class
-    say so through ``unclaimed_env_keys(classes=...)`` or the .env.example guard's
-    ``extra_classes=``; this exclusion never touches those.
-
-    Named for what it returns, not for the walk it performs: it was
-    ``reachable_settings_classes`` while it returned everything reachable, and
-    that name stopped being true the moment the exclusion landed.
-    """
-    seen: set[type[BaseSettings]] = set()
-    stack = list(BaseSettings.__subclasses__())
-    while stack:
-        cls = stack.pop()
-        if cls in seen:
-            continue
-        seen.add(cls)
-        stack.extend(cls.__subclasses__())
-    return {cls for cls in seen if not _is_test_defined(cls)}
-
-
-def unclaimed_env_keys(
-    env_file: Path | str = ".env",
-    classes: tuple[type[BaseSettings], ...] | None = None,
-) -> list[str]:
-    """Keys present in ``env_file`` that no settings class declares.
-
-    A key is claimed if ANY owning class would actually bind it: a
-    case-sensitive class only via an exact match, a case-insensitive class via
-    a case-insensitive match. The two checks are kept separate per class (see
-    ``_declared_env_keys_by_sensitivity``) so a case-insensitive match on one
-    class can never stand in for a case-sensitive class's exact-match
-    requirement.
-    """
-    owners = classes if classes is not None else tuple(config_owner_classes())
-    case_sensitive_declared, case_insensitive_declared = _declared_env_keys_by_sensitivity(*owners)
-    parsed = parse_env_keys(env_file)
-    return sorted(
-        key
-        for key in parsed
-        if key not in case_sensitive_declared and key.upper() not in case_insensitive_declared
-    )
-
-
-def log_unclaimed_env_keys(env_file: Path | str = ".env") -> list[str]:
-    """Warn once per unclaimed key. Never raises — a local .env is not a contract.
-
-    A missing file is the normal case (staging/production get config from
-    Railway as OS env vars, not a .env) and stays silent. A file that EXISTS
-    but cannot be read (permissions) or decoded (not UTF-8) is different: it
-    silently defeats this whole audit — the developer sees no warning and
-    reasonably assumes their .env is clean, when the truth is the audit never
-    ran. That failure mode gets its own warning rather than being folded into
-    "found nothing".
-    """
-    file = Path(env_file)
-    if file.exists():
-        try:
-            file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "env_file_unreadable",
-                env_file=str(file),
-                error=str(exc),
-                hint="Could not read this .env to audit it for unclaimed keys; "
-                "treating it as empty rather than failing startup.",
-            )
-            return []
-
-    unclaimed = unclaimed_env_keys(env_file)
-    if unclaimed:
-        logger.warning(
-            "env_keys_unclaimed",
-            env_file=str(env_file),
-            keys=unclaimed,
-            hint="No settings class declares these — renamed field or typo. "
-            "They are silently ignored (extra='ignore').",
-        )
-    return unclaimed

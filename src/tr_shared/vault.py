@@ -1,39 +1,19 @@
 """
-Vault-backed secret resolution for ThinkRealty services.
+Supabase Vault access for per-tenant secrets a service creates at runtime.
 
-At startup, for each entry in secret_map, looks up the Vault UUID from the
-named env var and overwrites the settings field with the decrypted plaintext.
-Empty UUID env var → silent skip (plain env var value remains).
-
-Usage in lifespan()::
-
-    from tr_shared.vault import resolve_vault_secrets
-
-    async with AsyncSession(engine) as db:
-        await resolve_vault_secrets(
-            settings=settings,
-            db_session=db,
-            secret_map={
-                "AUTH_LIB_GATEWAY_SIGNING_SECRET": "AUTH_LIB_GATEWAY_SIGNING_SECRET_VAULT_UUID",
-                "AUTH_LIB_SERVICE_TOKEN": "AUTH_LIB_SERVICE_TOKEN_VAULT_UUID",
-            },
-        )
-
-The write path is :class:`VaultService` — create/read/update/delete of a single
-secret, session injected by the caller::
+:class:`VaultService` is create/read/update/delete of a single secret, session
+injected by the caller::
 
     from tr_shared.vault import VaultService
 
     vault = VaultService(db_session)
     secret_id = await vault.create_secret(refresh_token, name=f"calendar:conn:{connection_id}")
 
-Unlike ``resolve_vault_secrets``, whose contract is "startup is never blocked",
-every :class:`VaultService` method raises on failure.
+Every :class:`VaultService` method raises on failure.
 """
 
 import asyncio
 import logging
-import os
 from collections.abc import Awaitable, Callable
 from typing import TypeVar, cast
 from uuid import UUID
@@ -48,67 +28,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_VAULT_TIMEOUT_SECONDS = 5.0
 
 _T = TypeVar("_T")
-
-
-async def resolve_vault_secrets(
-    settings: object,
-    db_session: AsyncSession,
-    secret_map: dict[str, str],
-) -> None:
-    """Resolve Vault-backed secrets into a settings instance at startup.
-
-    Empty/missing UUID env var skips silently — local-dev fallback keeps the
-    plain env var value. Any error (bad UUID, DB failure or timeout, secret not
-    found) leaves the field unchanged and logs a warning; startup is never blocked.
-    """
-    for field_name, uuid_env_var in secret_map.items():
-        vault_uuid = os.environ.get(uuid_env_var, "").strip()
-        if not vault_uuid:
-            logger.debug(
-                "Vault UUID env var %s not set; using plain env var for field %s",
-                uuid_env_var,
-                field_name,
-            )
-            continue
-
-        try:
-            uuid_obj = UUID(vault_uuid)
-        except ValueError:
-            logger.warning(
-                "Invalid UUID value in env var %s: %r — skipping vault resolution for %s",
-                uuid_env_var,
-                vault_uuid,
-                field_name,
-            )
-            continue
-
-        try:
-            await db_session.connection()
-            secret = await VaultService(db_session).read_secret(uuid_obj)
-        except Exception:
-            logger.exception(
-                "DB error while fetching vault secret for field %s (uuid=%s) — "
-                "keeping plain env var value",
-                field_name,
-                vault_uuid,
-            )
-            await db_session.rollback()
-            continue
-
-        if not secret:
-            logger.warning(
-                "Vault secret not found for UUID %s (field %s) — keeping plain env var value",
-                vault_uuid,
-                field_name,
-            )
-            continue
-
-        setattr(settings, field_name, secret)
-        logger.info(
-            "Resolved vault secret for settings field %s (vault_uuid=%s)",
-            field_name,
-            vault_uuid,
-        )
 
 
 class VaultService:

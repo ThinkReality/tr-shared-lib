@@ -7,6 +7,11 @@ from tr_shared.config.base import BaseServiceSettings
 from tr_shared.contracts import Environment
 
 
+@pytest.fixture(autouse=True)
+def _database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test")
+
+
 def _settings(env: str) -> BaseServiceSettings:
     """Build settings for `env`, supplying only what the production validator demands."""
     extra: dict[str, str] = {}
@@ -16,8 +21,6 @@ def _settings(env: str) -> BaseServiceSettings:
             "REDIS_URL": "redis://redis.internal:6379/0",
             "CELERY_BROKER_URL": "redis://redis.internal:6379/1",
             "SERVICE_TOKEN": "t",
-            "AUTH_LIB_GATEWAY_SIGNING_SECRET": "s",
-            "AUTH_LIB_SERVICE_TOKEN": "t",
         }
     return BaseServiceSettings(SERVICE_NAME="svc", ENVIRONMENT=env, **extra)
 

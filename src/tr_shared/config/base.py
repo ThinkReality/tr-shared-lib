@@ -1,6 +1,8 @@
 """Base settings class for all ThinkRealty services."""
 
-from pydantic import model_validator
+from typing import Annotated
+
+from pydantic import StringConstraints, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tr_shared.contracts.db_pool import (
@@ -14,8 +16,6 @@ from tr_shared.contracts.environment import Environment
 
 class BaseServiceSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
     )
@@ -26,7 +26,7 @@ class BaseServiceSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"  # "json" in production
 
-    DATABASE_URL: str = ""
+    DATABASE_URL: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     # Env-tunable per service; the numbers themselves live with the pool policy in
     # ``tr_shared.db.session`` so a service that forwards these and one that passes
     # nothing to the engine factory get the same pool.
@@ -48,20 +48,6 @@ class BaseServiceSettings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     CELERY_TASK_TIME_LIMIT: int = 600
     CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
-
-    AUTH_LIB_GATEWAY_SIGNING_SECRET: str = ""
-    AUTH_LIB_CRM_CORE_URL: str = "http://tr-crm-core:8000"
-    AUTH_LIB_SERVICE_TOKEN: str = ""
-
-    # ── Vault Secret Resolution (optional — empty = use plain env var) ──
-    # Set these to Vault secret UUIDs at deploy time; leave empty for local dev.
-    # ONLY these two resolve: vault.py's secret_map is an explicit dict, so a *_VAULT_UUID
-    # field with no entry there is inert. A third, SERVICE_TOKEN_VAULT_UUID, was declared
-    # here but absent from that map — it promised Vault resolution of the inbound
-    # SERVICE_TOKEN and silently delivered none. Removed 2026-08-10. If SERVICE_TOKEN
-    # should be vault-backed, add it to the map first; the field alone does nothing.
-    AUTH_LIB_GATEWAY_SIGNING_SECRET_VAULT_UUID: str = ""
-    AUTH_LIB_SERVICE_TOKEN_VAULT_UUID: str = ""
 
     EVENT_STREAM_NAME: str = "tr_event_bus"
     CONSUMER_GROUP_NAME: str = ""
@@ -119,8 +105,6 @@ class BaseServiceSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_config(self) -> "BaseServiceSettings":
         if self.is_production:
-            if not self.DATABASE_URL:
-                raise ValueError("DATABASE_URL required in production")
             # Supabase fields are only required when SUPABASE_URL is set
             # (i.e. services that talk to Supabase directly: crm-backend,
             # tr-api-gateway). Downstream services using shared-auth-lib
@@ -147,10 +131,6 @@ class BaseServiceSettings(BaseSettings):
                 )
             if not self.SERVICE_TOKEN:
                 raise ValueError("SERVICE_TOKEN required in production")
-            if not self.AUTH_LIB_GATEWAY_SIGNING_SECRET:
-                raise ValueError("AUTH_LIB_GATEWAY_SIGNING_SECRET required in production")
-            if not self.AUTH_LIB_SERVICE_TOKEN:
-                raise ValueError("AUTH_LIB_SERVICE_TOKEN required in production")
             for url_field in ("REDIS_URL", "CELERY_BROKER_URL", "DATABASE_URL"):
                 value = getattr(self, url_field)
                 if value and "localhost" in value:

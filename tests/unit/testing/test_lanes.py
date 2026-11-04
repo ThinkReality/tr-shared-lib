@@ -128,3 +128,31 @@ class TestRunNeedsInfrastructure:
 
     def test_negated_marker_does_not_provision(self, tree) -> None:
         assert run_needs_infrastructure(["tests/unit/"], "not integration", root=tree) is False
+
+
+class TestRunNeedsInfrastructureIsRootRelative:
+    @pytest.fixture
+    def checkout(self, tmp_path):
+        root = tmp_path / "api" / "svc"
+        (root / "tests/unit").mkdir(parents=True)
+        (root / "tests/unit/test_x.py").write_text("")
+        return root
+
+    def test_an_absolute_unit_path_under_a_directory_named_api_does_not_provision(
+        self, checkout
+    ) -> None:
+        assert run_needs_infrastructure([str(checkout / "tests/unit")], root=checkout) is False
+
+    def test_a_path_given_from_above_the_root_is_classified_from_the_root(self, checkout) -> None:
+        invoked_from = checkout.parent.parent
+        assert (
+            run_needs_infrastructure(
+                ["api/svc/tests/unit/"], root=checkout, invocation_dir=invoked_from
+            )
+            is False
+        )
+
+    def test_a_unit_path_outside_the_root_provisions(self, checkout, tmp_path) -> None:
+        outside = tmp_path / "other" / "tests" / "unit"
+        outside.mkdir(parents=True)
+        assert run_needs_infrastructure([str(outside)], root=checkout) is True

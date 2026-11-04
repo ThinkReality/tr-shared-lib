@@ -12,6 +12,19 @@ def test_version_matches_pyproject():
     assert tr_shared.__version__ == data["project"]["version"]
 
 
+def test_the_uvicorn_extra_pins_uvicorn_standard():
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    extras = tomllib.loads(pyproject.read_text())["project"]["optional-dependencies"]
+    assert extras["uvicorn"] == ["uvicorn[standard]==0.54.0"]
+
+
+def test_startup_vault_resolution_is_gone():
+    import tr_shared.vault
+
+    assert not hasattr(tr_shared.vault, "resolve_vault_secrets")
+    assert hasattr(tr_shared.vault, "VaultService")
+
+
 def test_new_surface_imports():
     from tr_shared.events.payloads import (  # noqa: F401
         CMSLandingPagePublishedV1,

@@ -350,7 +350,7 @@ def run_migrations(config: TestingConfig, dsn: str) -> subprocess.CompletedProce
     return subprocess.run(
         command,
         cwd=config.root,
-        env={**os.environ, "DATABASE_URL": dsn, "ENVIRONMENT": "test"},
+        env={**os.environ, "DATABASE_URL": dsn},
         capture_output=True,
         text=True,
     )
