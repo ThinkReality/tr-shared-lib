@@ -122,6 +122,30 @@ async def test_a_zero_recovery_window_admits_a_probe_at_once():
     assert breaker.state == CircuitState.CLOSED
 
 
+async def test_asking_whether_it_rejects_never_takes_the_probe():
+    breaker = await _opened()
+    await asyncio.sleep(RECOVERY * 1.5)
+
+    assert await breaker.is_rejecting() is False
+    assert await breaker.is_rejecting() is False
+    assert await breaker.is_open() is False
+    assert await breaker.is_open() is True
+
+
+async def test_asking_whether_it_rejects_agrees_with_is_open_in_every_state():
+    closed = CircuitBreaker("svc")
+    assert await closed.is_rejecting() is False
+
+    opened = await _opened(recovery=60)
+    assert await opened.is_rejecting() is True
+
+    probing = await _half_open()
+    assert await probing.is_rejecting() is True
+
+    await asyncio.sleep(RECOVERY * 1.5)
+    assert await probing.is_rejecting() is False
+
+
 @pytest.mark.parametrize("argument", ["redis_client", "state_ttl"])
 def test_state_lives_in_the_process_only(argument):
     assert argument not in inspect.signature(CircuitBreaker).parameters

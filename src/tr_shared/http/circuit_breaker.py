@@ -51,17 +51,25 @@ class CircuitBreaker:
         if self.state == CircuitState.CLOSED:
             return False
         now = time.monotonic()
-        if self.state == CircuitState.OPEN:
-            if now - self._opened_at < self.recovery_timeout:
-                return True
-            self._transition(CircuitState.HALF_OPEN)
-        elif (
-            self._probe_started_at is not None
-            and now - self._probe_started_at < self.recovery_timeout
-        ):
+        if self._rejects(now):
             return True
+        self._transition(CircuitState.HALF_OPEN)
         self._probe_started_at = now
         return False
+
+    async def is_rejecting(self) -> bool:
+        """What is_open() would answer now, without becoming the probe: for a caller that replies before it makes the call."""
+        return self._rejects(time.monotonic())
+
+    def _rejects(self, now: float) -> bool:
+        if self.state == CircuitState.CLOSED:
+            return False
+        if self.state == CircuitState.OPEN:
+            return now - self._opened_at < self.recovery_timeout
+        return (
+            self._probe_started_at is not None
+            and now - self._probe_started_at < self.recovery_timeout
+        )
 
     async def record_success(self) -> None:
         self.failure_count = 0
