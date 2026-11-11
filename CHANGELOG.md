@@ -12,9 +12,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   caller that replies before it makes the guarded call: crm-core's sign-in email step answers 202 before its
   background send, and asking `is_open()` there took the probe, so the send that followed was refused and the
   breaker stayed half-open until the probe was given up.
+- `RateLimitResult.store_unavailable` and `RateLimitInfo.store_unavailable`: true when a request was refused
+  because Redis was unreachable under `FailMode.CLOSED`, not because its limit was reached.
+- `create_rate_limit_dependency(unavailable_code=...)`: the code for that outage's 503.
 
 ### Changed
 - `is_open()` and `is_rejecting()` share one decision; `is_open()` behaves as before.
+- `create_rate_limit_dependency` answers a fail-closed refusal during a Redis outage with 503 and `Retry-After`
+  instead of 429: the caller did nothing wrong, and a 429 told sign-in users to wait out a limit they never hit.
+  Fail-open callers are unaffected.
 
 ## [0.115.0] - 2026-11-04
 

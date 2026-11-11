@@ -47,6 +47,10 @@ class RateLimitResult(BaseModel):
     remaining: int
     reset_at: int = Field(description="Unix timestamp when the window resets")
     retry_after: int = Field(default=0, description="Seconds until the client may retry")
+    store_unavailable: bool = Field(
+        default=False,
+        description="Refused because Redis was unreachable under fail_mode=CLOSED, not because the limit was reached",
+    )
 
 
 class RateLimitInfo(BaseModel):
@@ -54,3 +58,7 @@ class RateLimitInfo(BaseModel):
 
     results: list[RateLimitResult] = Field(default_factory=list)
     is_blocked: bool = False
+
+    @property
+    def store_unavailable(self) -> bool:
+        return any(result.store_unavailable for result in self.results)

@@ -136,6 +136,7 @@ class RateLimiter:
                 remaining=0,
                 reset_at=0,
                 retry_after=window.window_seconds,
+                store_unavailable=True,
             )
 
         if self._memory_fallback is not None:

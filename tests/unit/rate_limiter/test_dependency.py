@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from tr_shared.middleware import register_exception_handlers
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.dependency import create_rate_limit_dependency
+from tr_shared.rate_limiter.schemas import FailMode
 
 
 def _caller(x_caller: str | None = Header(default=None)) -> str:
@@ -19,16 +20,17 @@ def _caller_id(caller: str = Depends(_caller)) -> str:
     return f"user:{caller}"
 
 
-def _app(limit: int = 1) -> FastAPI:
+def _app(limiter: RateLimiter | None = None, **options) -> FastAPI:
     app = FastAPI()
     register_exception_handlers(app, code_prefix="TEST")
     check = create_rate_limit_dependency(
-        RateLimiter(),
+        limiter or RateLimiter(),
         identifier=_caller_id,
         code="TEST_RATE_LIMIT_001",
-        limit=limit,
+        limit=1,
         window=60,
         key_prefix="test",
+        **options,
     )
 
     @app.get("/items/{item_id}", dependencies=[Depends(check)])
@@ -97,3 +99,30 @@ class TestTheRefusal:
 def test_a_dependency_without_a_code_is_refused():
     with pytest.raises(TypeError, match="code"):
         create_rate_limit_dependency(RateLimiter(), identifier=_caller_id)
+
+
+class TestAStoreOutage:
+    """Failing closed refuses the request, but the caller did nothing wrong, so it is a 503, not a 429."""
+
+    @pytest.fixture
+    async def closed_over_an_outage(self):
+        app = _app(
+            RateLimiter(redis_url="redis://127.0.0.1:1/0", enable_memory_fallback=False),
+            fail_mode=FailMode.CLOSED,
+            unavailable_code="TEST_UNAVAILABLE_001",
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
+
+    async def test_it_answers_503_with_the_callers_unavailable_code(self, closed_over_an_outage):
+        response = await _get(closed_over_an_outage, "alice")
+
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "TEST_UNAVAILABLE_001"
+
+    async def test_it_says_when_to_try_again(self, closed_over_an_outage):
+        response = await _get(closed_over_an_outage, "alice")
+
+        assert int(response.headers["Retry-After"]) >= 1
