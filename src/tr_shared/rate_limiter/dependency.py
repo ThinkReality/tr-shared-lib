@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import Depends, Request
 
 from tr_shared.contracts.headers import HttpHeader
-from tr_shared.exceptions import RateLimitError
+from tr_shared.exceptions import RateLimitError, ServiceUnavailableError
 from tr_shared.rate_limiter.core import RateLimiter
 from tr_shared.rate_limiter.schemas import (
     Algorithm,
@@ -27,6 +27,7 @@ def create_rate_limit_dependency(
     algorithm: Algorithm = Algorithm.FIXED_WINDOW,
     key_prefix: str = "api",
     fail_mode: FailMode = FailMode.OPEN,
+    unavailable_code: str | None = None,
 ) -> Callable:
     config = RateLimitConfig(
         windows=[WindowConfig(limit=limit, window_seconds=window)],
@@ -47,6 +48,13 @@ def create_rate_limit_dependency(
         if info.is_blocked:
             tightest = next((r for r in info.results if not r.allowed), info.results[0])
             retry_after = max(1, tightest.retry_after)
+
+            if info.store_unavailable:
+                raise ServiceUnavailableError(
+                    detail="Rate limit store unavailable. Please try again shortly.",
+                    code=unavailable_code,
+                    retry_after=retry_after,
+                )
 
             logger.warning(
                 "Rate limit exceeded (dependency)",

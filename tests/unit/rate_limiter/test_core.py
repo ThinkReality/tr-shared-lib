@@ -151,6 +151,24 @@ class TestCheck:
         info = await limiter.check(key="test:key", config=config)
         assert info.is_blocked is True
 
+    async def test_a_fail_closed_block_says_the_store_was_unreachable(self):
+        limiter = RateLimiter(redis_url="redis://127.0.0.1:1/0", enable_memory_fallback=False)
+        info = await limiter.check(
+            key="test:key", config=RateLimitConfig(fail_mode=FailMode.CLOSED)
+        )
+        assert info.is_blocked is True
+        assert info.store_unavailable is True
+
+    async def test_a_caller_over_the_limit_is_not_reported_as_an_outage(
+        self, limiter_with_mock_redis
+    ):
+        limiter, mock_redis = limiter_with_mock_redis
+        mock_redis.eval.return_value = [101, 1, 30]
+        config = RateLimitConfig(fail_mode=FailMode.CLOSED)
+        info = await limiter.check(key="test:key", config=config)
+        assert info.is_blocked is True
+        assert info.store_unavailable is False
+
     async def test_memory_fallback_used_when_redis_fails(self):
         mock_redis = AsyncMock()
         mock_redis.eval.side_effect = Exception("Redis down")
